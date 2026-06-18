@@ -1,0 +1,67 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "减肥搭子",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/record/index",
+      "style": {
+        "navigationBarTitleText": "记录中心"
+      }
+    },
+    {
+      "path": "pages/museum/index",
+      "style": {
+        "navigationBarTitleText": "减肥博物馆"
+      }
+    },
+    {
+      "path": "pages/mine/index",
+      "style": {
+        "navigationBarTitleText": "我的"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "减肥搭子",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#F5F6FA"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#4CAF50",
+    "borderStyle": "white",
+    "backgroundColor": "#FFFFFF",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "搭子",
+        "iconPath": "static/tabbar/chat.png",
+        "selectedIconPath": "static/tabbar/chat-active.png"
+      },
+      {
+        "pagePath": "pages/record/index",
+        "text": "记录",
+        "iconPath": "static/tabbar/record.png",
+        "selectedIconPath": "static/tabbar/record-active.png"
+      },
+      {
+        "pagePath": "pages/museum/index",
+        "text": "博物馆",
+        "iconPath": "static/tabbar/museum.png",
+        "selectedIconPath": "static/tabbar/museum-active.png"
+      },
+      {
+        "pagePath": "pages/mine/index",
+        "text": "我的",
+        "iconPath": "static/tabbar/mine.png",
+        "selectedIconPath": "static/tabbar/mine-active.png"
+      }
+    ]
+  }
+}
