@@ -1,6 +1,13 @@
 // 请求基础配置
-const BASE_URL = 'http://localhost:3000/api';
-// 生产环境请改为你的服务器 HTTPS 地址
+// 开发环境（HBuilderX / H5 本地预览）用 localhost
+// 生产环境（Android / iOS / 小程序真机）用服务器 IP 或域名
+const isDev = import.meta.env?.DEV ?? process.env.NODE_ENV === 'development';
+
+const BASE_URL = isDev
+  ? 'http://localhost:3000/api'
+  : 'http://39.96.67.113/api';
+
+// 生产环境请改为你的 HTTPS 域名
 // const BASE_URL = 'https://your-domain.com/api';
 
 /**
