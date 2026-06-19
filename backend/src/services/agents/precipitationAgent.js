@@ -180,30 +180,131 @@ const PRECIPITATION_PROMPT = `# 角色定义
 | 0.70-0.84 | 不确定，部分信息缺失或表述模糊 | 待确认 |
 | 0.00-0.69 | 无法确定，不符合任何沉淀规则 | 不沉淀 |
 
+# 数量与热量估算规则（必须执行）
+1. 用户未明确分量时，按中国居民常见食用量估算，不能留空：
+   - 一碗米饭 ≈ 150g，一碗面条 ≈ 200g
+   - 一个鸡蛋 ≈ 50g，一杯牛奶 ≈ 250ml
+   - 一个苹果/橙子 ≈ 150g，一根香蕉 ≈ 100g
+   - 一份外卖牛肉面 ≈ 面 150g + 牛肉 50g + 汤油 20g
+2. 热量估算参考《中国食物成分表（第 6 版）》，常见参考：
+   - 米饭 116 千卡/100g，面条 137 千卡/100g，馒头 223 千卡/100g
+   - 鸡蛋 139 千卡/100g，鸡胸肉 133 千卡/100g，瘦牛肉 106 千卡/100g
+   - 食用油 9 千卡/g，若菜品明显油大额外加 50-100 千卡
+3. 运动只给距离未给时长时，按常见配速估算：
+   - 跑步：1 公里 ≈ 6 分钟（慢跑）
+   - 快走：1 公里 ≈ 10 分钟
+   - 骑行：1 公里 ≈ 3 分钟
+4. 无法估算时填写合理的近似值，不能全部填 null 或 0
+
 # 输出格式
-必须严格输出以下 JSON 格式，不要添加任何注释或额外文本：
+必须严格输出以下 JSON 格式，不要添加任何注释或额外文本。
+
+## 饮食记录示例
+输入："今天中午吃了一碗牛肉面和一个鸡蛋"
+输出：
 {
-  "extracted": true 或 false,
+  "extracted": true,
   "type": "diet_record",
   "sub_type": "lunch",
-  "content": "用户原始消息",
+  "content": "今天中午吃了一碗牛肉面和一个鸡蛋",
   "extracted_data": {
     "meal_time": "lunch",
-    "foods": [{"name": "牛肉面", "weight": 200, "calorie": 500, "protein": 20, "carb": 60, "fat": 15}],
-    "total_calorie": 500,
-    "total_protein": 20,
-    "total_carb": 60,
-    "total_fat": 15
+    "foods": [
+      {"name": "牛肉面", "weight": 200, "calorie": 500, "protein": 20, "carb": 60, "fat": 15},
+      {"name": "鸡蛋", "weight": 50, "calorie": 70, "protein": 6, "carb": 1, "fat": 5}
+    ],
+    "total_calorie": 570,
+    "total_protein": 26,
+    "total_carb": 61,
+    "total_fat": 20
   },
   "confidence": 0.96,
   "tags": ["外卖"],
-  "reason": "提取原因简短说明"
+  "reason": "明确提到中午吃牛肉面和鸡蛋，分量可估算"
 }
 
-如果无法提取，输出：
+## 运动记录示例
+输入："我今天跑了5公里"
+输出：
+{
+  "extracted": true,
+  "type": "exercise_record",
+  "sub_type": "aerobic",
+  "content": "我今天跑了5公里",
+  "extracted_data": {
+    "exercise_type": "aerobic",
+    "exercises": [
+      {"name": "跑步", "duration": 30, "intensity": "moderate", "calorie": 300}
+    ],
+    "total_duration": 30,
+    "total_calorie": 300
+  },
+  "confidence": 0.92,
+  "tags": ["有氧"],
+  "reason": "明确提到跑步 5 公里，按常见配速估算 30 分钟"
+}
+
+## 身体数据示例
+输入："今天体重120斤"
+输出：
+{
+  "extracted": true,
+  "type": "body_data",
+  "sub_type": "weight",
+  "content": "今天体重120斤",
+  "extracted_data": {
+    "sub_type": "weight",
+    "value": 60,
+    "unit": "kg"
+  },
+  "confidence": 0.98,
+  "tags": ["体重"],
+  "reason": "明确提到今日体重 120 斤，已换算为 kg"
+}
+
+## 喝水记录示例
+输入："今天喝了3杯水"
+输出：
+{
+  "extracted": true,
+  "type": "habit",
+  "sub_type": "water",
+  "content": "今天喝了3杯水",
+  "extracted_data": {
+    "sub_type": "water",
+    "value": 600,
+    "unit": "ml"
+  },
+  "confidence": 0.95,
+  "tags": ["喝水"],
+  "reason": "明确提到喝了 3 杯水，按一杯 200ml 估算"
+}
+
+## 励志金句示例
+输入："只要坚持就会有收获"
+输出：
+{
+  "extracted": true,
+  "type": "quote",
+  "sub_type": "positive",
+  "content": "只要坚持就会有收获",
+  "extracted_data": {
+    "author": "user",
+    "content": "只要坚持就会有收获",
+    "emotion": "positive",
+    "scene": "daily"
+  },
+  "confidence": 0.88,
+  "tags": ["金句"],
+  "reason": "符合励志金句句式"
+}
+
+## 无法提取示例
+输入："吃什么好？"
+输出：
 {
   "extracted": false,
-  "reason": "无法提取的原因"
+  "reason": "疑问句，不符合沉淀规则"
 }
 
 当前系统时间：{{current_time}}
