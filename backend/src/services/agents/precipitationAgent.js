@@ -350,9 +350,13 @@ async function callPrecipitationAgent(content, userId, chatId = null) {
     }
 
     // 根据置信度决定处理策略
+    // ≥0.95：完全确定，自动确认
+    // 0.85-0.94：比较确定，自动确认并提示用户
+    // 0.70-0.84：不确定，待用户确认
+    // <0.70：丢弃
     const confidence = parseFloat(result.confidence) || 0;
     let status = 0; // 0 待确认
-    if (confidence >= 0.95) {
+    if (confidence >= 0.85) {
       status = 1; // 自动确认
     } else if (confidence >= 0.7) {
       status = 0; // 待确认
