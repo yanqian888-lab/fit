@@ -8,7 +8,7 @@ const config = require('../../config');
 const { db } = require('../../db');
 
 const client = new OpenAI({
-  apiKey: config.doubao.apiKey,
+  apiKey: config.doubao.endpoints.helper.apiKey,
   baseURL: config.doubao.baseURL
 });
 

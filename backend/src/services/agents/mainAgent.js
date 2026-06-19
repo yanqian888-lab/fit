@@ -9,7 +9,7 @@ const precipitationAgent = require('./precipitationAgent');
 const helperAgent = require('./helperAgent');
 
 const client = new OpenAI({
-  apiKey: config.doubao.apiKey,
+  apiKey: config.doubao.endpoints.main.apiKey,
   baseURL: config.doubao.baseURL
 });
 
