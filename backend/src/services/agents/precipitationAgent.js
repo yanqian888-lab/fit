@@ -133,7 +133,7 @@ async function callPrecipitationAgent(content, userId, chatId = null) {
 
   try {
     const response = await client.chat.completions.create({
-      model: config.doubao.endpoints.precipitation,
+      model: config.doubao.endpoints.precipitation.id,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: content }

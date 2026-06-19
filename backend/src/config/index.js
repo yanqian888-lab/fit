@@ -14,9 +14,18 @@ module.exports = {
     apiKey: process.env.DOUBAO_API_KEY,
     baseURL: process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
     endpoints: {
-      main: process.env.DOUBAO_MAIN_AGENT_ENDPOINT,
-      precipitation: process.env.DOUBAO_PRECIPITATION_ENDPOINT,
-      helper: process.env.DOUBAO_HELPER_ENDPOINT
+      main: {
+        id: process.env.DOUBAO_MAIN_AGENT_ENDPOINT,
+        apiKey: process.env.DOUBAO_MAIN_AGENT_API_KEY || process.env.DOUBAO_API_KEY
+      },
+      precipitation: {
+        id: process.env.DOUBAO_PRECIPITATION_ENDPOINT,
+        apiKey: process.env.DOUBAO_PRECIPITATION_API_KEY || process.env.DOUBAO_API_KEY
+      },
+      helper: {
+        id: process.env.DOUBAO_HELPER_ENDPOINT,
+        apiKey: process.env.DOUBAO_HELPER_API_KEY || process.env.DOUBAO_API_KEY
+      }
     }
   },
   wechat: {

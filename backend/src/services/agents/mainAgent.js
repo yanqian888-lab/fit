@@ -171,7 +171,7 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
 
   try {
     const response = await client.chat.completions.create({
-      model: config.doubao.endpoints.main,
+      model: config.doubao.endpoints.main.id,
       messages,
       temperature: 0.7,
       max_tokens: 200

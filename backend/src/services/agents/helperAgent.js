@@ -78,7 +78,7 @@ async function callHelperAgent(question, userInfo = {}) {
 
   try {
     const response = await client.chat.completions.create({
-      model: config.doubao.endpoints.helper,
+      model: config.doubao.endpoints.helper.id,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: question }
