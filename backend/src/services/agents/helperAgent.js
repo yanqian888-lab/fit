@@ -1,343 +1,26 @@
 /**
  * 全能助手 Agent（理性层 + 执行层）
  * 职责：身体指标计算、营养评估、运动方案、专业问题解答
- * 模型：豆包 doubao-seed-2.0-lite
+ * 模型：豆包 doubao-seed-2.0-lite（备用：fit-Backup）
  */
-const OpenAI = require('openai');
-const config = require('../../config');
 const { db } = require('../../db');
-
-const client = new OpenAI({
-  apiKey: config.doubao.endpoints.helper.apiKey,
-  baseURL: config.doubao.baseURL
-});
-
-// 全能助手 Agent 系统提示词
-const HELPER_PROMPT = `# 角色定义与核心原则
-你是【减肥搭子APP】的专业全能助手，拥有注册营养师、ACE 认证健身教练、肥胖防治医师的专业知识体系。
-你的所有回答必须**100%基于下面列出的权威参考文献**，绝对不能编造任何数据、理论或案例。
-对于参考文献中没有明确提到的问题，你必须明确告知用户："这个问题目前没有足够的科学证据支持，建议咨询专业医生/营养师"。
-对于有争议的问题，你必须说明不同观点和对应的参考文献来源。
-
-## 绝对核心原则
-1. **文献优先**：所有建议必须有明确的参考文献支持，优先采用 A 级证据（随机对照试验、系统综述）
-2. **安全第一**：任何可能危害健康的建议绝对不能给出
-3. **个体化**：所有建议必须结合用户的具体情况（年龄、性别、体重、身体状况）
-4. **可执行**：所有建议必须具体、可操作，不要说空话
-5. **反焦虑**：强调健康减重，反对快速减重和极端方法
-6. **引用规范**：对于重要的科学结论和建议，必须在后面标注对应的参考文献编号
-
-# 权威参考文献列表（必须严格依据）
-## 营养学领域
-[1] 中国营养学会. 中国居民膳食指南(2022)[M]. 人民卫生出版社, 2022.
-[2] 中国营养学会. 中国居民膳食营养素参考摄入量(2023版)[M]. 科学出版社, 2023.
-[3] U.S. Department of Agriculture and U.S. Department of Health and Human Services. Dietary Guidelines for Americans, 2020-2025[M]. 9th ed. Washington, DC: U.S. Government Printing Office, 2020.
-[4] International Society of Sports Nutrition. ISSN position stand: Diets for body composition change[J]. Journal of the International Society of Sports Nutrition, 2021, 18(1): 57.
-[5] 杨月欣. 中国食物成分表(第6版)[M]. 北京大学医学出版社, 2021.
-
-## 运动学领域
-[6] American College of Sports Medicine. ACSM's Guidelines for Exercise Testing and Prescription[M]. 11th ed. Lippincott Williams & Wilkins, 2021.
-[7] 国家体育总局. 全民健身指南(2021)[M]. 人民体育出版社, 2021.
-[8] 王瑞元, 苏全生. 运动生理学[M]. 人民体育出版社, 2012.
-[9] International Society of Sports Nutrition. ISSN position stand: Exercise and protein metabolism[J]. Journal of the International Society of Sports Nutrition, 2022, 19(1): 43.
-
-## 减重科学领域
-[10] World Health Organization. Global action plan on physical activity 2018-2030: More active people for a healthier world[R]. Geneva: WHO, 2018.
-[11] World Health Organization. Obesity: Preventing and managing the global epidemic[R]. Geneva: WHO, 2000.
-[12] 中华医学会内分泌学分会. 中国肥胖防治指南(2020)[J]. 中华内分泌代谢杂志, 2021, 37(3): 189-204.
-[13] National Heart, Lung, and Blood Institute. Clinical Guidelines on the Identification, Evaluation, and Treatment of Overweight and Obesity in Adults[R]. Bethesda, MD: National Institutes of Health, 1998.
-[14] 中国营养学会肥胖防控分会. 中国成人肥胖防控营养指导专家共识[J]. 中华预防医学杂志, 2023, 57(5): 593-605.
-
-## 行为心理学领域
-[15] James Clear. Atomic Habits: An Easy & Proven Way to Build Good Habits & Break Bad Ones[M]. Avery, 2018.
-[16] 中国心理学会, 中国心理卫生协会. 中国国民心理健康发展报告(2022-2023)[M]. 社会科学文献出版社, 2023.
-
-# 完整专业知识体系（带文献标注）
-## 一、基础营养学
-### 1.1 宏量营养素
-#### 碳水化合物
-- 功能：人体最主要的能量来源，占总热量的 40%-50%[1,3]
-- 分类：
-  - 精制碳水：白米饭、白面条、白面包、糕点、含糖饮料（升糖快，容易饿）
-  - 复合碳水：糙米、藜麦、燕麦、玉米、红薯、山药、豆类（升糖慢，饱腹感强）
-- 推荐摄入量：每公斤体重 3-5 克/天[2]
-- 注意事项：
-  - 不要完全不吃碳水，会导致基础代谢下降、脱发、月经不调[12]
-  - 碳水最好集中在早餐和午餐吃，晚餐适量减少[1]
-  - 运动前 1-2 小时吃碳水可以提升运动表现[4]
-
-#### 蛋白质
-- 功能：维持肌肉量、提高饱腹感、修复组织，占总热量的 25%-30%[4]
-- 优质蛋白质来源：
-  - 动物蛋白：鸡蛋、牛奶、酸奶、鸡胸肉、鱼虾、瘦牛肉、瘦猪肉
-  - 植物蛋白：豆腐、豆浆、豆干、鹰嘴豆
-- 推荐摄入量：
-  - 普通人群：每公斤体重 1.0-1.2 克/天[2]
-  - 减重人群：每公斤体重 1.6-2.0 克/天[4,14]
-  - 力量训练人群：每公斤体重 2.0-2.4 克/天[9]
-- 注意事项：
-  - 每餐都要有蛋白质，每餐至少 20-30 克[4]
-  - 蛋白质的食物热效应最高（30%），多吃蛋白质可以增加能量消耗[4]
-  - 运动后 30 分钟内补充蛋白质有助于肌肉恢复[9]
-
-#### 脂肪
-- 功能：提供能量、维持激素水平、保护器官，占总热量的 20%-30%[1,3]
-- 分类：
-  - 健康脂肪：橄榄油、牛油果、坚果、鱼油、亚麻籽油
-  - 不健康脂肪：油炸食品、肥肉、动物内脏、加工肉类、反式脂肪
-- 推荐摄入量：每公斤体重 0.8-1.0 克/天[2]
-- 注意事项：
-  - 不要完全不吃脂肪，会导致激素紊乱、皮肤变差[12]
-  - 每天吃一小把坚果（10-15 克）对健康有益[1]
-  - 反式脂肪对健康危害极大，应完全避免[1]
-
-### 1.2 微量营养素
-- 维生素：
-  - 维生素 B 族：参与能量代谢，全谷物、瘦肉、豆类中含量丰富[2]
-  - 维生素 C：促进胶原蛋白合成，新鲜蔬菜和水果中含量丰富[2]
-  - 维生素 D：促进钙吸收，多晒太阳可以合成[2]
-- 矿物质：
-  - 钙：维持骨骼健康，牛奶、酸奶、豆腐中含量丰富[2]
-  - 铁：预防贫血，红肉、动物肝脏、菠菜中含量丰富[2]
-  - 钾：调节血压，香蕉、土豆、牛油果中含量丰富[2]
-- 膳食纤维：
-  - 推荐摄入量：25-30 克/天[1]
-  - 来源：全谷物、蔬菜、水果、豆类
-  - 作用：增加饱腹感、促进肠道蠕动、降低胆固醇[1]
-
-### 1.3 水与电解质
-- 每日饮水量：1500-2000 毫升，约 8 杯水[1]
-- 运动时：每运动 30 分钟补充 200-300 毫升水[6]
-- 大量出汗时：补充淡盐水或运动饮料，防止电解质紊乱[6]
-- 注意事项：
-  - 不要用饮料代替水[1]
-  - 饭前半小时喝一杯水可以增加饱腹感[14]
-  - 不要等到口渴了再喝水[1]
-
-## 二、运动生理学
-### 2.1 运动类型与能量消耗
-#### 有氧运动
-- 定义：低强度、长时间、有节奏的运动
-- 作用：主要消耗脂肪，提高心肺功能[6]
-- 常见运动及能量消耗（60 公斤体重，每小时）[5]：
-  - 快走（5 公里/小时）：250 千卡
-  - 慢跑（8 公里/小时）：450 千卡
-  - 游泳（自由泳）：550 千卡
-  - 跳绳：600 千卡
-  - 骑自行车（15 公里/小时）：300 千卡
-- 推荐频率：每周 3-5 次，每次 30-60 分钟[6,7]
-
-#### 力量训练
-- 定义：对抗阻力的运动，主要锻炼肌肉
-- 作用：增加肌肉量、提高基础代谢、塑造体型[6]
-- 常见动作：
-  - 上肢：俯卧撑、引体向上、哑铃推举
-  - 下肢：深蹲、弓步、硬拉
-  - 核心：平板支撑、卷腹、臀桥
-- 推荐频率：每周 2-3 次，每次 20-30 分钟，同一肌群间隔 48 小时[6,7]
-
-#### 拉伸与放松
-- 作用：增加柔韧性、预防运动伤害、缓解肌肉酸痛[6]
-- 推荐频率：每次运动后拉伸 10-15 分钟，每天睡前拉伸 5-10 分钟[6]
-
-### 2.2 运动安全原则
-1. 运动前热身 5-10 分钟，运动后拉伸 5-10 分钟[6]
-2. 新手从低强度、短时间开始，循序渐进[7]
-3. 运动时如果出现胸痛、头晕、呼吸困难，立即停止运动[6]
-4. 不要空腹运动，也不要饭后立即运动[6]
-5. 穿合适的运动鞋和运动服[7]
-6. 有高血压、心脏病、糖尿病等疾病的人，运动前应咨询医生[6]
-
-### 2.3 运动与减重的关系
-- 单纯运动减重效果有限，必须结合饮食控制[12,13]
-- 运动的主要作用是防止减重后反弹、维持肌肉量[12]
-- 力量训练比有氧运动更能提高基础代谢，长期减重效果更好[6]
-- 每天多走 1000 步，一年可以减重约 5 公斤[10]
-
-## 三、减重科学原理
-### 3.1 能量平衡定律
-- 减重的唯一科学原理：能量摄入 < 能量消耗[10,11,12,13]
-- 1 公斤脂肪约等于 7700 千卡热量[13]
-- 健康减重速度：每周 0.5-1 公斤，相当于每天 300-500 千卡的热量缺口[12,14]
-- 绝对不建议每天热量缺口超过 800 千卡，会导致肌肉流失、代谢下降、健康问题[12]
-
-### 3.2 基础代谢率(BMR)
-- 定义：人体在清醒而又极端安静的状态下，维持生命基本活动所需要的最低能量[8]
-- 计算公式（Mifflin-St Jeor 公式，目前最准确）[13]：
-  - 男性：BMR = 10 × 体重(kg) + 6.25 × 身高(cm) - 5 × 年龄 + 5
-  - 女性：BMR = 10 × 体重(kg) + 6.25 × 身高(cm) - 5 × 年龄 - 161
-- 影响因素：年龄、性别、体重、肌肉量、激素水平[8]
-- 注意事项：
-  - 基础代谢会随着年龄增长而下降，每 10 年下降约 2%-3%[8]
-  - 肌肉量越多，基础代谢越高[8]
-  - 过度节食会导致基础代谢下降 10%-20%[12]
-
-### 3.3 代谢适应与平台期
-- 定义：随着体重下降，基础代谢会随之下降，导致能量消耗减少，减重速度变慢甚至停止[12,14]
-- 这是正常的生理现象，不是减肥失败
-- 平台期解决方案（按优先级排序）[12,14]：
-  1. 保持当前饮食和运动不变，继续坚持 1-2 周，身体会自动调整
-  2. 适当减少 100-200 千卡的热量摄入
-  3. 增加运动强度或改变运动方式
-  4. 增加力量训练，提高肌肉量
-  5. 保证充足的睡眠（每天 7-8 小时）
-  6. 每周安排一次欺骗餐，提高代谢
-
-### 3.4 减重后反弹
-- 80% 的减重人群会在 1-2 年内反弹[12]
-- 主要原因：
-  - 恢复了原来的饮食习惯
-  - 停止了运动
-  - 基础代谢下降
-- 预防反弹的方法[12,14]：
-  1. 减重成功后，继续保持健康的饮食习惯和运动习惯
-  2. 定期称重，每周 1-2 次
-  3. 保持肌肉量，坚持力量训练
-  4. 不要追求过快的减重速度
-
-## 四、行为心理学与习惯养成
-### 4.1 情绪性进食
-- 定义：因为情绪问题（如压力、焦虑、无聊、难过）而吃东西，而不是因为饥饿[16]
-- 识别方法：
-  - 突然想吃某种特定的食物
-  - 吃东西后会感到愧疚
-  - 不饿的时候也想吃东西
-- 应对方法[15,16]：
-  1. 先喝一杯水，等 10 分钟
-  2. 做其他事情转移注意力（如散步、听音乐、看书）
-  3. 记录情绪日记，找出触发情绪性进食的原因
-  4. 不要把食物当作奖励或安慰
-
-### 4.2 习惯养成
-- 一个新习惯的养成平均需要 66 天[15]
-- 微习惯原则：从非常小的、容易完成的习惯开始，如每天走 100 步、每天喝一杯水[15]
-- 习惯叠加：把新习惯和已有的习惯绑定在一起，如"刷牙后做 5 个深蹲"[15]
-- 奖励机制：完成习惯后给自己一个非食物的奖励[15]
-
-## 五、特殊人群注意事项
-### 5.1 女性
-- 生理期：体重会增加 1-2 公斤，这是正常的水肿，不是胖了[12]
-- 生理期可以适当减少运动强度，多休息[6]
-- 不要在生理期过度节食[12]
-- 产后减重：顺产 6 周后、剖腹产 3 个月后可以开始减重，每周减重不超过 0.5 公斤[14]
-
-### 5.2 青少年
-- 青少年正处于生长发育期，不建议过度节食[1]
-- 重点是养成健康的饮食习惯和运动习惯[7]
-- 保证充足的蛋白质和钙摄入，促进生长发育[2]
-
-### 5.3 中老年人
-- 中老年人基础代谢下降，减重速度会慢一些[8]
-- 重点是保持肌肉量，预防肌肉减少症[6]
-- 多做力量训练和平衡训练，预防跌倒[7]
-- 有慢性疾病的人，减重前应咨询医生[12]
-
-### 5.4 疾病人群
-- 糖尿病：减重可以改善胰岛素抵抗，但要注意血糖监测，避免低血糖[12]
-- 高血压：低盐饮食，适量运动，避免剧烈运动[12]
-- 痛风：低嘌呤饮食，多喝水，避免高嘌呤食物（动物内脏、海鲜、啤酒）[12]
-- 所有有疾病的人，减重前必须咨询专业医生[12]
-
-## 六、常见减肥误区纠正
-1. ❌ 误区：不吃主食能快速减肥
-   ✅ 纠正：不吃主食会导致基础代谢下降、肌肉流失、月经不调，而且容易反弹[12]
-2. ❌ 误区：只吃水果能减肥
-   ✅ 纠正：很多水果糖分很高，只吃水果会导致蛋白质摄入不足，营养不良[1]
-3. ❌ 误区：运动后吃东西会胖
-   ✅ 纠正：运动后 30 分钟内补充蛋白质和碳水，有助于肌肉恢复，不会胖[9]
-4. ❌ 误区：体重不变就是没瘦
-   ✅ 纠正：可能是脂肪减少、肌肉增加，体型会变好，体重变化不大[12]
-5. ❌ 误区：局部减肥是可能的
-   ✅ 纠正：脂肪是全身性消耗的，不存在局部减肥，只能通过全身减脂+局部塑形来改善[6]
-6. ❌ 误区：排毒减肥、代餐减肥、减肥药效果好
-   ✅ 纠正：这些方法大多没有科学依据，而且可能对健康造成危害[12,14]
-7. ❌ 误区：每天必须走 1 万步
-   ✅ 纠正：每天走 6000-8000 步就足够了，关键是坚持[10]
-8. ❌ 误区：出汗越多，减肥效果越好
-   ✅ 纠正：出汗主要是水分流失，不是脂肪燃烧，补水后体重会恢复[8]
-
-# 精确计算规则（必须严格遵守）
-## 1. 基础代谢率(BMR)
-- 男性：BMR = 10 × 体重(kg) + 6.25 × 身高(cm) - 5 × 年龄 + 5 [13]
-- 女性：BMR = 10 × 体重(kg) + 6.25 × 身高(cm) - 5 × 年龄 - 161 [13]
-
-## 2. 每日总消耗(TDEE)
-TDEE = BMR × 活动系数 [13]
-- 久坐（几乎不运动）：1.2
-- 轻度活动（每周运动 1-3 次）：1.375
-- 中度活动（每周运动 3-5 次）：1.55
-- 高度活动（每周运动 6-7 次）：1.725
-- 极高度活动（体力劳动者/专业运动员）：1.9
-
-## 3. 推荐摄入量
-- 减重期：TDEE - 300~500 千卡 [12,14]
-- 维持期：TDEE
-- 绝对不建议摄入低于 BMR [12]
-
-## 4. 三大营养素分配
-- 碳水：(总热量 × 45%) / 4 克 [1,3]
-- 蛋白质：(总热量 × 25%) / 4 克 [4,14]
-- 脂肪：(总热量 × 30%) / 9 克 [1,3]
-
-# 不同场景回答规范
-## 1. 计算类问题
-- 先给出最终结果，再列出计算过程
-- 所有数值保留一位小数
-- 解释每个指标的含义和正常范围
-- 标注计算公式的参考文献编号
-
-## 2. 饮食建议类问题
-- 结合用户的饮食偏好和忌口
-- 给出具体的一日三餐示例
-- 分点列出 3 条最核心的建议
-- 重要建议标注参考文献编号
-
-## 3. 运动建议类问题
-- 结合用户的运动基础和时间
-- 给出具体的每周运动计划
-- 强调运动安全和循序渐进
-- 重要建议标注参考文献编号
-
-## 4. 问题解答类问题
-- 先直接回答问题
-- 解释背后的科学原理
-- 给出可执行的解决方案
-- 所有科学结论标注参考文献编号
-
-# 输出要求
-1. 回答简洁明了，重点突出，不要有废话
-2. 分点列出建议，最多不超过 3 点
-3. 所有数据必须准确，有明确的参考文献支持
-4. 重要的科学结论和建议必须标注对应的参考文献编号
-5. 用用户能听懂的话解释专业术语
-6. 对于有争议的问题，说明不同观点和对应的参考文献来源
-7. 绝对不要推荐任何产品、药品、保健品
-8. 遇到严重健康问题，必须建议用户咨询专业医生
-
-# 绝对禁忌
-1. 绝对不要推荐极端节食、断食、单一饮食等不健康的减肥方法
-2. 绝对不要说"某某产品减肥效果好"
-3. 绝对不要编造任何数据、理论或案例
-4. 绝对不要给有严重疾病的用户提供医疗建议
-5. 绝对不要承诺"多少天一定能瘦多少斤"
-6. 绝对不要引用任何非权威来源的信息
-
-# 当前用户信息
-{{user_info}}
-`;
+const { callWithPrompt } = require('../aiClient');
+const promptService = require('../promptService');
+const webSearchService = require('../webSearchService');
+const nutritionService = require('../nutritionService');
 
 /**
  * 调用全能助手 Agent
- * @param {string} question 用户问题
- * @param {object} userInfo 用户信息
- * @returns {string} 专业回答
  */
-async function callHelperAgent(question, userInfo = {}) {
-  // 优先本地计算常见指标
-  const localAnswer = tryLocalCalculation(question, userInfo);
-  if (localAnswer) {
-    return localAnswer;
-  }
+async function callHelperAgent(question, userInfo = {}, partnerInfo = {}) {
+  // 修正常见口误/笔误："热量控制在900克左右" 里的 "克" 实际指 "千卡"
+  const normalizedQuestion = question.replace(
+    /(\d+(?:\.\d+)?)\s*克(?=[^，,。；;\n]*?(?:热量|卡路里|千卡|大卡|摄入|控制))/g,
+    '$1千卡'
+  );
+
+  // 数据库表使用内部自增 id 作为 user_id，优先用 id（而不是对外 6 位 user_id）
+  const userId = userInfo.id || userInfo.user_id;
 
   const userInfoStr = JSON.stringify({
     gender: userInfo.gender || '未知',
@@ -349,20 +32,186 @@ async function callHelperAgent(question, userInfo = {}) {
     daily_calorie_target: userInfo.daily_calorie_target || '未知'
   }, null, 2);
 
-  const systemPrompt = HELPER_PROMPT.replace('{{user_info}}', userInfoStr);
+  // 获取/刷新用户今天的营养数据（在构建问题时实时查询，确保包含最新沉淀记录）
+  let todayNutrition = null;
+  let todayFoods = [];
+  let todayExercises = [];
+  if (userId) {
+    try {
+      todayNutrition = getTodayNutrition(userId);
+      todayFoods = getTodayFoods(userId);
+      todayExercises = getTodayExercises(userId);
+    } catch (e) {
+      console.error('获取今日营养数据失败:', e.message);
+    }
+  }
+
+  // 优先本地计算常见指标（需要先拿到今日运动记录，确保和记录一致）
+  const localAnswer = tryLocalCalculation(normalizedQuestion, userInfo, todayExercises);
+  if (localAnswer) {
+    return localAnswer;
+  }
+
+  // 构建包含今日营养数据的问题（实时查询数据库）
+  let enhancedQuestion = normalizedQuestion;
+  const needsFoodData = /(吃|喝|食物|酸奶|饭|菜|肉|水果|饮料|晚餐|午餐|早餐|加餐|零食|热量|卡路里|千卡|摄入|吃了多少|总计|汇总|算|脂肪|蛋白质|碳水|营养)/.test(normalizedQuestion);
+  const needsExerciseData = /(运动|训练|健身|哑铃|杠铃|跑步|游泳|跳绳|骑车|骑行|瑜伽|帕梅拉|周六野|刘畊宏|肩背|胸|腿|臀|腹|有氧|无氧|HIIT|Tabata|拉伸|深蹲|俯卧撑|平板支撑|卷腹|开合跳|波比跳|快走|慢跑|爬楼|爬山|登山|动感单车|椭圆机|划船机|壶铃|TRX|战绳|拳击|打拳|搏击|尊巴|舞蹈|跳操|健身操|有氧操|力量训练|体能训练|功能性训练|核心训练|臀腿训练|背部训练|肩部训练|手臂训练|胸部训练|腹部训练|拉伸训练|热身|冷身|放松|按摩|泡沫轴|筋膜枪|运动康复|体能测试|体测|马拉松|半程马拉松|越野跑|接力跑|冲刺跑|折返跑|高抬腿|登山跑|俄罗斯转体|臀桥|桥式|死虫式|鸟狗式|侧平板|倒立|手倒立|单腿硬拉|箭步蹲|保加利亚蹲|靠墙静蹲|马步|引体向上|仰卧起坐|弹力带|阻力带|拉力带|8字拉力器|开肩美背|哑铃弯举|哑铃推举|哑铃飞鸟|哑铃划船|哑铃深蹲|哑铃硬拉|哑铃侧平举|哑铃前平举|杠铃深蹲|杠铃硬拉|杠铃卧推|杠铃划船|杠铃推举|杠铃弯举|杠铃臀推|相扑硬拉|罗马尼亚硬拉|器械训练|器械推胸|器械划船|器械夹胸|腿举|腿弯举|腿屈伸|坐姿划船|高位下拉|史密斯机|龙门架|蝴蝶机|推胸机|壶铃摇摆|壶铃抓举|壶铃深蹲|壶铃推举|土耳其起立|TRX划船|TRX深蹲|TRX俯卧撑|悬挂训练|甩绳|药球|沙袋|轮胎翻|农夫行走|雪橇推|攀岩|攀冰|溯溪|漂流|滑雪|滑冰|轮滑|滑板|羽毛球|乒乓球|网球|排球|篮球|足球|棒球|垒球|高尔夫球|保龄球|台球|门球|壁球|橄榄球|曲棍球|冰球|手球|水球|马球|藤球|毽球|射箭|射击|击剑|马术|赛马|赛艇|皮划艇|帆船|帆板|冲浪|潜水|浮潜|深潜|跳水|水球|花样游泳|体操|艺术体操|蹦床|技巧|健美操|啦啦操|体育舞蹈|街舞|霹雳舞|爵士舞|芭蕾舞|现代舞|民族舞|古典舞|拉丁舞|国标舞|交谊舞|摇摆舞|广场舞|健身舞|燃脂舞|减脂舞|太极|气功|普拉提|冥想|正念|呼吸训练|产后恢复|盆底肌训练|凯格尔运动|腹直肌修复|办公室运动|椅子瑜伽|坐姿运动|床上运动|睡前拉伸|晨间唤醒|午休运动|碎片化运动|微运动|办公室微运动)/i.test(normalizedQuestion);
+  const needsBodyContext = /(体重|掉秤|涨秤|没瘦|徘徊|不动|平台期|体脂|腰围|臀围|胸围|腿围|臂围|BMI|进度|最近.*体重|这个体重|体重下|体重上)/i.test(normalizedQuestion);
+
+  if (needsFoodData) {
+    // 再次刷新，确保沉淀已完成
+    if (userId) {
+      try {
+        const latestNutrition = getTodayNutrition(userId);
+        if (latestNutrition) todayNutrition = latestNutrition;
+        const latestFoods = getTodayFoods(userId);
+        if (latestFoods) todayFoods = latestFoods;
+      } catch (e) {
+        console.error('刷新今日营养数据失败:', e.message);
+      }
+    }
+    if (todayNutrition) {
+      const foodList = todayFoods.length > 0
+        ? todayFoods.map(f => {
+            const macros = [];
+            if ((f.protein || 0) > 0) macros.push(`蛋白质${Math.round(f.protein)}g`);
+            if ((f.carb || 0) > 0) macros.push(`碳水${Math.round(f.carb)}g`);
+            if ((f.fat || 0) > 0) macros.push(`脂肪${Math.round(f.fat)}g`);
+            const macroStr = macros.length > 0 ? `（${macros.join(' / ')}）` : '';
+            return `- ${f.name} ${f.weight || ''}${f.unit || 'g'}：约${Math.round(f.calorie || 0)}千卡${macroStr}`;
+          }).join('\n')
+        : '今日暂无食物记录。';
+      const hasMacros = (todayNutrition.protein || 0) > 0 || (todayNutrition.carb || 0) > 0 || (todayNutrition.fat || 0) > 0;
+      const macroLines = hasMacros
+        ? `- 蛋白质：${Math.round(todayNutrition.protein)}g\n- 碳水：${Math.round(todayNutrition.carb)}g\n- 脂肪：${Math.round(todayNutrition.fat)}g`
+        : '- 蛋白质/碳水/脂肪：当前食物库暂未提供这些数值，请勿编造';
+      const recordedMeals = new Set(todayFoods.map(f => f.meal_time).filter(Boolean)).size;
+      const mealCountText = recordedMeals === 0
+        ? '今天暂无已记录的餐别'
+        : `今天已记录 ${recordedMeals} 个餐别`;
+      const lowIntakeWarningRule = recordedMeals < 2
+        ? '【重要】今天仅记录了不到 2 个餐别，数据不完整，禁止判断“总摄入过低”或提醒用户热量不足，也禁止建议加餐/补充热量。只需回答用户当前问题即可。'
+        : '【重要】今天已记录至少 2 个餐别，可以基于总摄入给出合理的饮食建议或热量提醒。';
+
+      // 如果用户提到的饮品/食品不在今日记录和食物库中，且明显在询问热量/含糖情况，尝试联网检索热量（区分有糖/无糖）
+      let webSearchBlock = '';
+      const unknownFood = extractUnknownFoodQuery(normalizedQuestion, todayFoods);
+      const asksCalorieOrSugar = /(热量|卡路里|千卡|大卡|含糖|无糖|有糖|低糖|能喝|能吃|可以喝|可以吃|多少卡|胖不胖|减肥|减脂|热量高)/.test(normalizedQuestion);
+      if (unknownFood && asksCalorieOrSugar) {
+        try {
+          const searchQuery = `${normalizedQuestion}（${unknownFood} 热量 含糖/无糖）`;
+          const webResult = await webSearchService.searchNutrition(searchQuery);
+          if (webResult) {
+            webSearchBlock = `\n【网络检索参考】用户提到的“${unknownFood}”不在今日记录和食物库中，已从公开网络/营养资料检索到以下参考信息：\n${webResult}\n`;
+          }
+        } catch (e) {
+          console.error('[callHelperAgent] 网络检索失败:', e.message);
+        }
+      }
+
+      enhancedQuestion = `${normalizedQuestion}
+
+【系统数据】用户今天已记录的饮食数据（实时）：
+- 总摄入热量：${Math.round(todayNutrition.intake)} kcal
+${macroLines}
+- 运动消耗：${Math.round(todayNutrition.burned)} kcal
+- ${mealCountText}
+
+${lowIntakeWarningRule}
+
+今天已记录的食物明细（食物名后面的 g/个 是该食物的重量/数量，冒号后是热量）：
+${foodList}
+${webSearchBlock}
+请基于以上实际记录数据回答。注意：总摄入热量的单位是千卡，不是克数，不要把总热量数字错当成某种食物的重量。不要自行估算食物热量，也不要把用户说的重量（如"100克"）直接当成热量。单个食物的热量必须与上方明细中的数值一致，禁止把今日总摄入 ${Math.round(todayNutrition.intake)} 千卡错填成某个食物的热量。如果用户提到的食物已在上方记录中，可直接引用记录里的热量；如果不在记录中但上方附有【网络检索参考】，可基于检索参考给出估算热量（需区分有糖/无糖，并说明是估算）；如果不在记录中且没有检索参考，只给出营养成分/减脂建议等专业结论，不要给出具体热量数字。`;
+    }
+  }
+
+  // 运动相关问题：补充今天已记录的运动明细，避免搭子回复与记录不一致
+  if (needsExerciseData && userId) {
+    try {
+      const latestExercises = getTodayExercises(userId);
+      if (latestExercises) todayExercises = latestExercises;
+    } catch (e) {
+      console.error('刷新今日运动数据失败:', e.message);
+    }
+    const exerciseList = todayExercises.length > 0
+      ? todayExercises.map(e => `- ${e.name} ${e.duration || ''}分钟：${Math.round(e.calorie || 0)}千卡`).join('\n')
+      : '今日暂无运动记录。';
+    const totalBurned = todayExercises.reduce((sum, e) => sum + (e.calorie || 0), 0);
+
+    enhancedQuestion = `${enhancedQuestion}
+
+【系统数据】用户今天已记录的运动数据（实时）：
+- 总运动消耗：${Math.round(totalBurned)} kcal
+- 运动明细：
+${exerciseList}
+
+请基于以上实际记录数据回答。如果用户提到的运动/训练已在上方记录中，必须直接引用记录里的消耗数值，不要再按 MET 或网络估算覆盖；如果不在记录中但运动库（exercise_db）中有匹配项，请使用运动库的 MET/每小时热量计算；如果都没有，才可给出估算范围并明确说明是估算。`;
+  }
+
+  // 体重/平台期/进度类问题：补充近几天的真实记录，避免泛泛而谈
+  if (needsBodyContext && userId) {
+    try {
+      const bodyContext = getRecentBodyContext(userId, 7);
+      enhancedQuestion = `${normalizedQuestion}\n\n${bodyContext}`;
+    } catch (e) {
+      console.error('获取近期身体数据失败:', e.message);
+    }
+  }
+
+  const modeMap = {
+    gentle: '温柔鼓励型',
+    strict: '严格监督型',
+    tease: '毒舌模式'
+  };
+  const partnerMode = modeMap[partnerInfo.mode] || '温柔鼓励型';
+
+  const systemPrompt = promptService.getPrompt('helper_agent', {
+    user_info: userInfoStr,
+    partner_mode: partnerMode
+  });
 
   try {
-    const response = await client.chat.completions.create({
-      model: config.doubao.endpoints.helper.id,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: question }
-      ],
-      temperature: 0.5,
-      max_tokens: 800
-    });
-
-    return response.choices[0].message.content || '这个问题我暂时没有思路，你换个问法试试？';
+    console.log(`[callHelperAgent] 开始调用，问题: ${normalizedQuestion.substring(0, 50)}...`);
+    const response = await Promise.race([
+      callWithPrompt(
+        'helper_agent',
+        [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'system',
+            content: '补充规则：1）当用户询问的饮品/食品不在今日记录和食物库中时，你可以使用用户消息中附带的【网络检索参考】数据给出估算热量，并区分有糖/无糖版本；如果没有附带检索参考，仍禁止编造具体热量，只给出营养成分/减脂建议等专业结论。2）APP 目前没有睡眠、盐分摄入、水肿记录功能，回答中不要建议用户记录或分析睡眠、盐分、水肿相关内容。'
+          },
+          { role: 'user', content: enhancedQuestion }
+        ],
+        { temperature: 0.5, max_tokens: 2000 }
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('全能助手 Agent 调用超时')), 120000)
+      )
+    ]);
+    console.log('[callHelperAgent] 调用成功');
+    let reply = stripThinkingTags(response.choices[0].message.content || '这个问题我暂时没有思路，你换个问法试试？');
+    
+    // 修正回复中的热量数值，确保与数据库记录一致（修正前再刷新一次最新数据）
+    if (userId) {
+      try {
+        const latestNutrition = getTodayNutrition(userId);
+        if (latestNutrition) todayNutrition = latestNutrition;
+      } catch (e) {
+        console.error('修正前刷新今日营养数据失败:', e.message);
+      }
+    }
+    if (todayNutrition) {
+      const explicitMealSum = extractExplicitCalories(normalizedQuestion);
+      const corrected = correctCalorieNumbers(reply, todayNutrition, normalizedQuestion, explicitMealSum, todayFoods);
+      if (corrected !== reply) {
+        console.log('[callHelperAgent] 热量数值已修正:', reply.substring(0, 100), '→', corrected.substring(0, 100));
+        reply = corrected;
+      }
+    }
+    
+    return reply;
   } catch (error) {
     console.error('全能助手 Agent 调用失败:', error.message);
     return '哎呀，我这边算不过来了，你等一下再问好不好？';
@@ -370,9 +219,227 @@ async function callHelperAgent(question, userInfo = {}) {
 }
 
 /**
+ * 去除模型内部思考/推理过程（如 <think>、<thinking>、<think_xxx> 标签）
+ * 防止把思考过程泄露给用户
+ */
+function stripThinkingTags(content) {
+  let result = content
+    // 标准 think/thinking 标签对
+    .replace(/<think(?:ing)?[^>]*>[\s\S]*?<\/think(?:ing)?[^>]*>/gi, '');
+
+  // 豆包 Seed 等模型可能只输出 </think_xxx> 结束标记，取标记之后的内容
+  const thinkEndMatch = result.match(/<\/think_[^>]+>/);
+  if (thinkEndMatch && thinkEndMatch.index !== undefined) {
+    result = result.slice(thinkEndMatch.index + thinkEndMatch[0].length);
+  }
+
+  return result.trim();
+}
+
+/**
+ * 修正回复中的热量数值，确保与数据库记录一致
+ * 防止LLM自行计算导致数值错误
+ */
+/**
+ * 从问题中提取用户明确写出的热量数字并求和
+ */
+function extractExplicitCalories(question) {
+  if (!question) return 0;
+  const regex = /(\d+(?:\.\d+)?)\s*(千卡|kcal|大卡|卡路里)/gi;
+  let sum = 0;
+  let match;
+  while ((match = regex.exec(question)) !== null) {
+    const val = parseFloat(match[1]);
+    if (!isNaN(val) && val > 0) sum += val;
+  }
+  return Math.round(sum);
+}
+
+function correctCalorieNumbers(reply, todayNutrition, question, explicitMealSum, todayFoods = []) {
+  if (!todayNutrition) return reply;
+
+  const intake = Math.round(todayNutrition.intake);
+  const burned = Math.round(todayNutrition.burned);
+  const protein = Math.round(todayNutrition.protein);
+  const carb = Math.round(todayNutrition.carb);
+  const fat = Math.round(todayNutrition.fat);
+
+  let corrected = reply;
+
+  // 取匹配片段中最后一个“数字+热量单位”，即汇总词后面的那个数字
+  function getLastNumberInMatch(match) {
+    const nums = match.match(/(\d{2,4})\s*(kcal|千卡|大卡|卡)/gi);
+    if (!nums || nums.length === 0) return null;
+    const m = nums[nums.length - 1].match(/(\d{2,4})/);
+    return m ? parseInt(m[1]) : null;
+  }
+
+  function replaceLastNumberInMatch(match, target) {
+    const nums = match.match(/(\d{2,4})\s*(kcal|千卡|大卡|卡)/gi);
+    if (!nums || nums.length === 0) return match;
+    const numStr = nums[nums.length - 1].match(/(\d{2,4})/)[1];
+    const idx = match.lastIndexOf(numStr);
+    if (idx === -1) return match;
+    return match.slice(0, idx) + String(target) + match.slice(idx + numStr.length);
+  }
+
+  // 1. 修正总摄入热量：只修正明确指“今日/今天总摄入”的汇总数字，避免误改单食物热量
+  // 例如“今日总摄入约 632 千卡”→改成系统真实值；但“200克黄瓜总热量约 30 千卡”不应被改
+  const totalPatterns = [
+    /(?:今日|今天|当前|目前)[^。；\n]*?总摄入[^。；\n]*?(\d{2,4})\s*(kcal|千卡|大卡|卡)/gi,
+    /总摄入[^。；\n]*?(?:约|为|是|大概|大约|约莫)?\s*(\d{2,4})\s*(kcal|千卡|大卡|卡)/gi,
+    /(?:今日|今天|当前|目前)[^。；\n]*?累计摄入[^。；\n]*?(\d{2,4})\s*(kcal|千卡|大卡|卡)/gi,
+    /(?:今日|今天|当前|目前)[^。；\n]*?总热量[^。；\n]*?(\d{2,4})\s*(kcal|千卡|大卡|卡)/gi,
+  ];
+
+  for (const pattern of totalPatterns) {
+    corrected = corrected.replace(pattern, (match) => {
+      if (/缺口|这顿|这餐|这些|单根|单个|每|克/.test(match)) return match;
+      const originalNum = getLastNumberInMatch(match);
+      if (originalNum === null) return match;
+      if (Math.abs(originalNum - intake) > 20) {
+        return replaceLastNumberInMatch(match, intake);
+      }
+      return match;
+    });
+  }
+
+  // 1.5 修正单个食物热量：防止模型把今日总摄入错填成某个食物的热量
+  // 只处理“食物名...数字+热量单位”且数字等于总摄入的片段，跳过含汇总词的句子
+  if (Array.isArray(todayFoods) && todayFoods.length > 0 && intake > 0) {
+    for (const food of todayFoods) {
+      const foodCalorie = Math.round(food.calorie || 0);
+      if (!foodCalorie || !food.name) continue;
+      const escapedName = food.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const foodPattern = new RegExp(`${escapedName}[^。；\\n]*?(\\d{2,4})\\s*(kcal|千卡|大卡|卡)`, 'gi');
+      corrected = corrected.replace(foodPattern, (match, numStr) => {
+        if (/今日|今天|当前|目前|累计|总摄入|总热量|运动消耗/.test(match)) return match;
+        const num = parseInt(numStr, 10);
+        if (num === intake && Math.abs(num - foodCalorie) > 20) {
+          return match.replace(numStr, String(foodCalorie));
+        }
+        return match;
+      });
+    }
+  }
+
+  // 2. 修正营养素：匹配"分别为A、B、Cg"格式，按顺序替换为数据库值
+  const respectivelyMatch = corrected.match(/分别为[^(]*?(\d{1,3})\s*g\s*、[^(]*?(\d{1,3})\s*g\s*、[^(]*?(\d{1,3})\s*g/i);
+  if (respectivelyMatch) {
+    const nums = [parseInt(respectivelyMatch[1]), parseInt(respectivelyMatch[2]), parseInt(respectivelyMatch[3])];
+    const targets = [protein, carb, fat];
+    let newStr = '分别为';
+    for (let i = 0; i < 3; i++) {
+      if (Math.abs(nums[i] - targets[i]) >= 3) {
+        newStr += targets[i] + 'g';
+      } else {
+        newStr += nums[i] + 'g';
+      }
+      if (i < 2) newStr += '、';
+    }
+    corrected = corrected.replace(respectivelyMatch[0], newStr);
+  }
+
+  // 3. 修正运动消耗（只修正明确的“运动消耗”，避免误改 TDEE、BMR、日常活动消耗等估算值）
+  const burnPattern = /(?:今日|今天)?运动消耗[^。；\n]*?(\d{2,4})\s*(kcal|千卡|大卡|卡)/gi;
+  corrected = corrected.replace(burnPattern, (match) => {
+    const originalNum = getLastNumberInMatch(match);
+    if (originalNum === null) return match;
+    if (Math.abs(originalNum - burned) > 20) {
+      return replaceLastNumberInMatch(match, burned);
+    }
+    return match;
+  });
+
+  // 4. 修正"这顿/这餐/这些食物"的热量：使用用户明确给出的数字之和
+  // 限制在同一句话内（不超过句号/分号/换行），避免误改"包含这顿的今日总摄入"
+  if (explicitMealSum > 0) {
+    const mealPatterns = [
+      /(这顿|这餐|这些食物|这一顿|这顿饭|这份餐|以上食物|这一餐)[^。；\n]*?(热量|总热量|卡路里|千卡|大卡)[^。；\n]*?(\d{2,4})\s*(kcal|千卡|大卡|卡)/gi,
+      /(这顿|这餐|这些食物|这一顿|这顿饭|这份餐|以上食物|这一餐)[^。；\n]*?(一共|总计|加起来|合计|总共)[^。；\n]*?(\d{2,4})\s*(kcal|千卡|大卡|卡)/gi,
+    ];
+    for (const pattern of mealPatterns) {
+      corrected = corrected.replace(pattern, (match) => {
+        // 如果匹配到的文本里出现了"今日/今天/累计/总摄入"，说明是全天汇总，不要改
+        if (/今日|今天|累计|总摄入/.test(match)) return match;
+        const originalNum = getLastNumberInMatch(match);
+        if (originalNum === null) return match;
+        if (Math.abs(originalNum - explicitMealSum) > 20) {
+          return replaceLastNumberInMatch(match, explicitMealSum);
+        }
+        return match;
+      });
+    }
+  }
+
+  // 5. 兜底：如果回复里出现了与系统总摄入或用户明确数字之和偏差很大的孤立热量数值，也进行修正
+  if (explicitMealSum > 0) {
+    const looseTotalPattern = /(总热量|热量一共|一共|总计|合计|加起来)[^。；\n]*?(\d{2,4})\s*(kcal|千卡|大卡|卡)/gi;
+    corrected = corrected.replace(looseTotalPattern, (match) => {
+      // 同样跳过全天汇总表述
+      if (/今日|今天|累计|总摄入/.test(match)) return match;
+      const originalNum = getLastNumberInMatch(match);
+      if (originalNum === null) return match;
+      if (Math.abs(originalNum - explicitMealSum) > 20 && Math.abs(originalNum - intake) > 20) {
+        // 问题里明确给了数字，优先按用户给出的数字之和修正
+        return replaceLastNumberInMatch(match, explicitMealSum);
+      }
+      return match;
+    });
+  }
+
+  return corrected;
+}
+
+/**
+ * 从用户问题中提取可能不在今日记录/食物库中的饮品/食品名称
+ * 仅用于触发联网热量检索
+ */
+function extractUnknownFoodQuery(question, todayFoods = []) {
+  if (!question) return null;
+  const normalized = question.replace(/[，。！？；、,.!?;]/g, ' ');
+  const candidates = new Set();
+
+  // 数量+单位+名称（如：500ml羽衣甘蓝汁、一杯美式）
+  const unitAfterRe = /(\d+(?:\.\d+)?)\s*(ml|mL|毫升|L|升|g|克|kg|千克|个|杯|瓶|罐|份|碗|袋|包|盒|只|片|支|根|条|粒|颗|口)\s*([\u4e00-\u9fa5a-zA-Z]{2,})/g;
+  // 名称+数量+单位（如：羽衣甘蓝汁500ml）
+  const unitBeforeRe = /([\u4e00-\u9fa5a-zA-Z]{2,})\s*(\d+(?:\.\d+)?)\s*(ml|mL|毫升|L|升|g|克|kg|千克|个|杯|瓶|罐|份|碗|袋|包|盒|只|片|支|根|条|粒|颗|口)/g;
+  // 常见饮品/食品关键词（无数量时也尝试）
+  const drinkRe = /([\u4e00-\u9fa5]{2,}(?:汁|饮|茶|奶|酸奶|咖啡|酒|水|汽水|苏打|气泡|美式|拿铁|摩卡|果汁|奶茶))/g;
+
+  let m;
+  while ((m = unitAfterRe.exec(normalized)) !== null) candidates.add(m[3]);
+  while ((m = unitBeforeRe.exec(normalized)) !== null) candidates.add(m[1]);
+  while ((m = drinkRe.exec(normalized)) !== null) candidates.add(m[1]);
+
+  const stopWords = new Set([
+    '今天','现在','这个','那个','这些','那些','多少','热量','卡路里','千卡','大卡',
+    '含糖','无糖','有糖','糖分','蛋白质','脂肪','碳水','摄入','食物','饮品','饮料'
+  ]);
+  const prefixNoise = /^(的|了|吗|呢|吧|啊|哦|嗯|喂|是|有|吃|喝|要|想|问|算|约|大概|大约|差不多|可能|应该|建议|推荐|怎么|如何|什么|多少|热量|卡路里|千卡|大卡|含糖|无糖|有糖|纯|鲜|现|一杯|一瓶|一碗|一份|一个|一包|一袋|一盒|一罐|一支|一根|一条|一片|一只)/;
+  const suffixNoise = /(的|了|吗|呢|吧|啊|哦|嗯|热量|卡路里|千卡|大卡|含糖|无糖|有糖|多少)$/;
+
+  for (const raw of candidates) {
+    let cleaned = raw.replace(prefixNoise, '').replace(suffixNoise, '').trim();
+    if (!cleaned || cleaned.length < 2 || stopWords.has(cleaned) || /^\d+$/.test(cleaned)) continue;
+
+    // 是否已在今日记录中
+    const inToday = todayFoods.some(f => f.name && (f.name.includes(cleaned) || cleaned.includes(f.name)));
+    if (inToday) continue;
+
+    // 是否在食物库中
+    const inDb = nutritionService.getFoodNutrition(cleaned);
+    if (inDb) continue;
+
+    return cleaned;
+  }
+  return null;
+}
+
+/**
  * 尝试本地计算
  */
-function tryLocalCalculation(question, userInfo) {
+function tryLocalCalculation(question, userInfo, todayExercises = []) {
   const weight = parseFloat(userInfo.current_weight);
   const height = parseFloat(userInfo.height);
   const age = parseInt(userInfo.age);
@@ -393,7 +460,7 @@ function tryLocalCalculation(question, userInfo) {
     return `你的 BMI 是 ${bmi}，属于${status}范围。BMI = 体重(kg) / 身高(m)² = ${weight} / ${heightM.toFixed(2)}²。`;
   }
 
-  // 基础代谢 BMR（Mifflin-St Jeor 公式）
+  // 基础代谢 BMR
   if (q.includes('基础代谢') || q.includes('bmr')) {
     if (!weight || !height || !age || !gender) return null;
     let bmr;
@@ -405,8 +472,8 @@ function tryLocalCalculation(question, userInfo) {
     return `你的基础代谢（BMR）大约是 ${Math.round(bmr)} 千卡/天。这是维持生命活动最低需要的热量。`;
   }
 
-  // 热量缺口
-  if (q.includes('热量缺口') || q.includes('每天吃多少')) {
+  // 热量缺口 / 每天吃多少：只回答“应该吃多少/摄入目标”类问题，不拦截“能减多少体重/脂肪”类问题
+  if (/每天吃多少|每天应该吃多少|每天摄入多少|推荐摄入|建议吃多少|要吃多少卡|摄入目标/.test(q) && !/(一周|一个月|能减|减多少|掉多少|瘦多少|脂肪|体重).*?(多少|几斤|几公斤)/.test(q)) {
     if (!weight || !height || !age || !gender) return null;
     let bmr;
     if (gender === 1) {
@@ -414,12 +481,348 @@ function tryLocalCalculation(question, userInfo) {
     } else {
       bmr = 10 * weight + 6.25 * height - 5 * age - 161;
     }
-    const tdee = bmr * 1.375; // 假设轻度活动
+    const tdee = bmr * 1.375;
     const target = tdee - 500;
-    return `你的每日总消耗约 ${Math.round(tdee)} 千卡，建议每天摄入 ${Math.round(target)} 千卡左右，制造 500 千卡缺口。`;
+    return `你的每日总消耗（TDEE，包含基础代谢、日常活动和运动消耗）约 ${Math.round(tdee)} 千卡。想健康减重，建议每天摄入 ${Math.round(target)} 千卡左右，制造约 500 千卡热量缺口。`;
+  }
+
+  // 每日总消耗 / TDEE / 加上运动系数的代谢
+  if (q.includes('总消耗') || q.includes('tdee') || q.includes('每天代谢') || q.includes('每日代谢') ||
+      (q.includes('代谢') && (q.includes('运动') || q.includes('活动') || q.includes('系数')))) {
+    if (!weight || !height || !age || !gender) return null;
+    let bmr;
+    if (gender === 1) {
+      bmr = 10 * weight + 6.25 * height - 5 * age + 5;
+    } else {
+      bmr = 10 * weight + 6.25 * height - 5 * age - 161;
+    }
+    const tdee = bmr * 1.375;
+    return `你的每日总消耗（TDEE，按轻体力活动系数 1.375 计算，包含基础代谢、日常活动和基础运动）约 ${Math.round(tdee)} 千卡/天。其中基础代谢（BMR）约 ${Math.round(bmr)} 千卡，日常活动消耗约 ${Math.round(tdee - bmr)} 千卡。`;
+  }
+
+  // 热量、卡路里、千卡相关查询（需要系统数据的，跳过本地计算）
+  if ((q.includes('今天') || q.includes('今日') || q.includes('总共') || q.includes('合计') || q.includes('汇总') || q.includes('记录')) &&
+      (q.includes('热量') || q.includes('卡路里') || q.includes('千卡') || q.includes('摄入') || q.includes('吃了多少'))) {
+    return null; // 跳过本地计算，让AI使用系统数据回答
+  }
+
+  // 运动热量消耗计算（基于MET值，科学准确）
+  if ((q.includes('热量') || q.includes('消耗') || q.includes('卡路里') || q.includes('千卡')) && 
+      (q.includes('运动') || q.includes('跑') || q.includes('走') || q.includes('游') || q.includes('跳') || q.includes('骑') || q.includes('练') || q.includes('帕梅拉') || q.includes('周六野') || q.includes('刘畊宏'))) {
+    // 如果问题里同时提到饮食/食物，交给 LLM 统一回答，不要只算运动消耗
+    const hasFood = /吃|喝|食物|早餐|午餐|晚餐|加餐|零食|饭|菜|肉|水果|鸡蛋|香蕉|酸奶|面包|米饭|面条|燕麦|牛奶|豆浆|咖啡|坚果|蔬菜|主食/.test(question);
+    if (hasFood) return null;
+    if (!weight) return null;
+
+    // 先解析时长
+    let duration = 30;
+    const durationMatch = question.match(/(\d+)\s*(分钟|分|min|小时|h)/);
+    if (durationMatch) {
+      const num = parseInt(durationMatch[1]);
+      if (durationMatch[2].includes('小时') || durationMatch[2].includes('h')) {
+        duration = num * 60;
+      } else {
+        duration = num;
+      }
+    }
+    const qLower = q.toLowerCase();
+
+    // 1) 优先使用今天已记录的运动消耗，确保搭子回复和记录一致
+    if (todayExercises && todayExercises.length > 0) {
+      const recorded = todayExercises.find(e => {
+        const name = String(e.name || '').toLowerCase();
+        return name && (qLower.includes(name) || name.includes(qLower)) && Math.abs((e.duration || 0) - duration) <= 5;
+      });
+      if (recorded) {
+        return `${recorded.name}${recorded.duration}分钟消耗 ${Math.round(recorded.calorie)} 千卡（与你今天的运动记录一致）。`;
+      }
+    }
+
+    // 2) 查询运动库 exercise_db，有数据就按库里 MET 计算
+    const dbExercise = getExerciseFromDb(question);
+    if (dbExercise && dbExercise.met_value) {
+      const met = parseFloat(dbExercise.met_value);
+      const totalCalorie = Math.round(met * weight * (duration / 60) * 1.05);
+      return `${dbExercise.exercise_name}${duration}分钟大约消耗 ${totalCalorie} 千卡（按运动库数据，MET值${met}计算）。`;
+    }
+    
+    // 3) 兜底：本地MET值参考表
+    const metValues = {
+      // 拉伸/瑜伽
+      '瑜伽': 2.5, '拉伸': 2.0, '普拉提': 3.0, '冥想': 1.5, '太极': 3.0,
+      '美丽芭蕾': 3.0, '天鹅臂': 2.5, '天鹅腿': 3.0,
+      '欧阳春晓': 4.5, '欧阳春晓直角肩': 3.0, '欧阳春晓少女背': 3.0,
+      'Yuuka': 3.0, 'Yuuka瘦背': 2.5,
+      
+      // 低强度有氧
+      '慢走': 2.5, '散步': 2.5, '走路': 3.0, '逛街': 2.5,
+      '超慢跑': 3.5, '原地跑': 3.5,
+      
+      // 中等强度有氧
+      '快走': 5.0, '健走': 5.5, '徒步': 5.0, '暴走': 5.5,
+      '骑车': 5.5, '骑行': 5.5, '自行车': 5.0, '动感单车': 6.0,
+      '椭圆机': 5.5, '划船机': 6.0, '磁控车': 4.5,
+      '跳舞': 5.0, '广场舞': 4.5, '健身操': 5.0, '有氧操': 5.5,
+      '搏击操': 6.0, '尊巴': 5.5, '街舞': 5.5, '拉丁舞': 5.0,
+      '芭蕾舞': 5.0, '爵士舞': 5.0, '现代舞': 5.0, '民族舞': 4.5,
+      '交谊舞': 4.0, '摇摆舞': 4.5, '燃脂舞': 5.5, '减脂舞': 5.5, '健身舞': 5.0,
+      '爬楼梯': 6.0, '爬楼': 6.0,
+      
+      // 球类
+      '乒乓球': 4.0, '台球': 3.0, '门球': 3.5,
+      '排球': 4.0, '羽毛球': 5.5,
+      '篮球': 6.5, '足球': 7.0, '网球': 7.0,
+      '壁球': 8.0, '保龄球': 3.5, '高尔夫': 4.0,
+      
+      // 格斗
+      '咏春': 4.5, '跆拳道': 8.0, '空手道': 8.0, '柔道': 8.0,
+      '散打': 9.0, '拳击': 9.0, '打拳': 8.0, '泰拳': 10.0,
+      
+      // 跑步
+      '跑步': 8.0, '慢跑': 7.0, '快跑': 10.0,
+      '变速跑': 9.0, '间歇跑': 9.0, '长跑': 8.0,
+      '短跑': 12.0, '冲刺跑': 12.0,
+      '夜跑': 8.0, '晨跑': 8.0, '越野跑': 9.0,
+      '跑步机': 8.0, '爬坡跑': 10.0,
+      
+      // 游泳
+      '游泳': 8.0, '蛙泳': 8.0, '自由泳': 9.0, '仰泳': 7.0, '蝶泳': 10.0,
+      '水中漫步': 4.5, '水中有氧': 5.0,
+      
+      // 跳绳
+      '跳绳': 10.0, '单摇': 9.0, '双摇': 12.0, '花式跳绳': 10.0,
+      
+      // HIIT
+      'HIIT': 10.0, 'Tabata': 12.0, '高强度间歇': 10.0,
+      '开合跳': 8.0, '波比跳': 9.0, '高抬腿': 7.0,
+      
+      // 自重力量
+      '深蹲': 5.5, '徒手深蹲': 5.0, '箭步蹲': 5.0, '保加利亚蹲': 5.5,
+      '靠墙静蹲': 2.5, '马步': 2.5,
+      '俯卧撑': 5.0, '引体向上': 6.0, '引体向上机': 5.0,
+      '仰卧起坐': 4.0, '卷腹': 4.0, '俄罗斯转体': 4.5,
+      '臀桥': 3.5, '桥式': 3.5, '死虫式': 3.0, '鸟狗式': 3.0,
+      '平板支撑': 2.5, '侧平板': 2.5,
+      '倒立': 4.0, '手倒立': 4.5,
+      '登山跑': 6.0, '单腿硬拉': 4.5,
+      
+      // 弹力带
+      '弹力带': 3.0, '弹力带练背': 3.0, '弹力带练臀': 3.0,
+      '弹力带练肩': 3.0, '弹力带练胸': 3.0, '弹力带练腿': 3.0,
+      '弹力带训练': 3.0, '阻力带': 3.0, '拉力带': 3.0, '乳胶带': 3.0,
+      '8字拉力器': 2.5, '开肩美背': 2.5,
+      
+      // 哑铃
+      '哑铃': 4.5, '哑铃弯举': 4.0, '哑铃推举': 4.5,
+      '哑铃飞鸟': 4.0, '哑铃划船': 4.5, '哑铃深蹲': 5.0,
+      '哑铃硬拉': 5.0, '哑铃侧平举': 3.5, '哑铃前平举': 3.5,
+      
+      // 杠铃
+      '杠铃': 5.0, '杠铃深蹲': 6.0, '杠铃硬拉': 6.0,
+      '杠铃卧推': 5.5, '杠铃划船': 5.5, '杠铃推举': 5.0,
+      '杠铃弯举': 4.0, '杠铃臀推': 5.0,
+      '相扑硬拉': 6.0, '罗马尼亚硬拉': 5.5,
+      
+      // 器械
+      '器械训练': 5.0, '器械推胸': 4.5, '器械划船': 4.5,
+      '器械夹胸': 4.0, '腿举': 5.0, '腿弯举': 4.0, '腿屈伸': 4.0,
+      '坐姿划船': 4.5, '高位下拉': 4.5,
+      '史密斯机': 5.0, '龙门架': 4.5, '蝴蝶机': 3.5, '推胸机': 4.5,
+      
+      // 壶铃
+      '壶铃': 6.0, '壶铃摇摆': 7.0, '壶铃抓举': 7.0,
+      '壶铃深蹲': 6.0, '壶铃推举': 6.0, '土耳其起立': 6.0,
+      
+      // TRX
+      'TRX': 5.0, '悬挂训练': 5.0, 'TRX划船': 4.5,
+      'TRX深蹲': 4.5, 'TRX俯卧撑': 5.0,
+      
+      // 战绳
+      '战绳': 8.0, '甩绳': 8.0, '药球': 6.0, '药球抛': 6.0,
+      '沙袋': 6.0, '轮胎翻': 7.0, '农夫行走': 5.5, '雪橇推': 7.0,
+      
+      // 登山
+      '爬山': 6.5, '登山': 7.0, '攀岩': 8.0, '攀冰': 9.0,
+      '溯溪': 6.0, '漂流': 4.0,
+      
+      // 冰雪
+      '滑雪': 7.0, '滑冰': 7.0, '轮滑': 7.0, '滑板': 5.0,
+      
+      // 日常
+      '做家务': 2.5, '打扫卫生': 2.5, '拖地': 3.0,
+      '擦窗户': 3.0, '洗衣服': 2.5, '做饭': 2.5,
+      '洗碗': 2.0, '整理房间': 2.5,
+      '搬东西': 4.0, '抱孩子': 3.0, '遛狗': 3.0,
+      '园艺': 3.5, '种菜': 3.5, '洗车': 3.0,
+      
+      // 产后/特殊
+      '产后恢复': 3.0, '盆底肌训练': 2.0, '凯格尔运动': 2.0,
+      '腹直肌修复': 2.5, '办公室运动': 2.5,
+      '椅子瑜伽': 2.0, '坐姿运动': 2.0, '床上运动': 2.0,
+      '碎片化运动': 2.5, '微运动': 2.5, '办公室微运动': 2.0,
+      
+      // 帕梅拉
+      '帕梅拉': 6.0, '帕梅拉燃脂': 7.0, '帕梅拉HIIT': 8.0,
+      '帕梅拉腹肌': 5.5, '帕梅拉臀腿': 6.0, '帕梅拉有氧': 7.0,
+      '帕梅拉拉伸': 2.5, '帕梅拉舞蹈': 6.0,
+      '帕梅拉初学者': 4.5, '帕梅拉10分钟': 6.0,
+      '帕梅拉15分钟': 6.0, '帕梅拉20分钟': 6.0,
+      
+      // 周六野
+      '周六野': 5.0, '周六野燃脂': 6.0, '周六野拉伸': 2.5,
+      '周六野改善体态': 3.0, '周六野瘦小腿': 3.5,
+      '周六野瘦腰': 4.0, '周六野马甲线': 4.5,
+      '周六野全身燃脂': 6.0,
+      
+      // 欧阳春晓
+      '欧阳春晓': 4.5, '欧阳春晓沙漏腰': 4.0,
+      '欧阳春晓直角肩': 3.0, '欧阳春晓少女背': 3.0,
+      '欧阳春晓拉伸': 2.5,
+      
+      // 韩小四
+      '韩小四': 4.0, '韩小四瘦手臂': 3.5,
+      '韩小四瘦小腿': 3.5, '韩小四瘦大腿': 4.0,
+      '韩小四全身燃脂': 5.0,
+      
+      // 刘畊宏
+      '刘畊宏': 6.0, '刘畊宏毽子操': 6.0,
+      '刘畊宏本草纲目': 7.0, '刘畊宏龙拳': 8.0,
+      '刘畊宏牛仔很忙': 6.0,
+      '毽子操': 6.0, '本草纲目': 7.0, '龙拳': 8.0, '牛仔很忙': 6.0,
+      
+      // 郑多燕
+      '郑多燕': 4.5, '郑多燕小红帽': 5.0, '郑多燕小灰帽': 4.5,
+      
+      // 海外博主
+      'Chloe Ting': 6.0, 'Chloe Ting腹肌': 5.5, 'Chloe Ting燃脂': 7.0,
+      'Growingannanas': 7.0, 'Growingannanas HIIT': 8.0,
+      'Eleni Fit': 6.0, 'Eleni Fit站立': 5.5,
+      'Mizi': 5.0, 'Mizi瘦腰': 4.5,
+      'Yuuka Sagawa': 3.0, 'Yuuka瘦背': 2.5,
+      'Caroline Girvan': 7.0, 'Caroline力量': 6.0,
+      'Heather Robertson': 6.0,
+      'MadFit': 5.5, 'MadFit舞蹈': 5.0,
+      'Fitness Blender': 6.0,
+      'Blogilates': 4.5, 'Blogilates普拉提': 4.0,
+      
+      // 健身APP
+      'Keep': 5.5, 'Keep燃脂跑': 7.0, 'Keep马甲线': 4.5,
+      'Keep腹肌撕裂者': 5.0, 'Keep哑铃': 4.5,
+      'Keep瑜伽': 2.5, 'Keep拉伸': 2.0,
+      'KeepHIIT': 8.0, 'Keep跳绳': 9.0,
+      'Keep单车': 5.5, 'Keep操课': 5.0,
+      '薄荷健康': 5.0, '薄荷HIIT': 7.0, '薄荷瑜伽': 2.5,
+      '乐刻': 5.5, '乐刻团课': 6.0,
+      '超级猩猩': 7.0, '超级猩猩战绳': 8.0,
+      '超级猩猩单车': 7.0, '超级猩猩搏击': 8.0,
+      
+      // 局部训练
+      '瘦手臂操': 3.0, '瘦腿操': 3.5, '瘦腰操': 4.0,
+      '全身燃脂操': 6.0
+    };
+    
+    // 查找匹配的运动（优先最长匹配）
+    let met = 0;
+    let bestMatch = '';
+    for (const [exercise, value] of Object.entries(metValues)) {
+      if (q.includes(exercise.toLowerCase()) && exercise.length > bestMatch.length) {
+        met = value;
+        bestMatch = exercise;
+      }
+    }
+    
+    if (bestMatch) {
+      const durationHour = duration / 60;
+      const totalCalorie = Math.round(met * weight * durationHour * 1.05);
+      return `${bestMatch}${duration}分钟大约消耗 ${totalCalorie} 千卡（按你当前体重 ${weight}kg，MET值${met}计算）。`;
+    }
   }
 
   return null;
+}
+
+/**
+ * 获取今日已记录的食物明细
+ */
+function getTodayFoods(userId) {
+  const today = new Date().toISOString().split('T')[0];
+
+  const rows = db.prepare(`
+    SELECT meal_time, foods
+    FROM diet_records
+    WHERE user_id = ? AND record_date = ? AND status = 1
+  `).all(userId, today);
+
+  const foods = [];
+  for (const row of rows) {
+    const list = JSON.parse(row.foods || '[]');
+    for (const food of list) {
+      if (food && food.name) {
+        foods.push({
+          name: food.name,
+          weight: food.weight || 0,
+          unit: food.unit || 'g',
+          calorie: food.calorie || 0,
+          protein: food.protein || 0,
+          carb: food.carb || 0,
+          fat: food.fat || 0,
+          meal_time: row.meal_time
+        });
+      }
+    }
+  }
+  return foods;
+}
+
+/**
+ * 获取今日已记录的运动明细
+ */
+function getTodayExercises(userId) {
+  const today = new Date().toISOString().split('T')[0];
+  const rows = db.prepare(`
+    SELECT exercises
+    FROM exercise_records
+    WHERE user_id = ? AND record_date = ? AND status = 1
+  `).all(userId, today);
+
+  const exercises = [];
+  for (const row of rows) {
+    const list = JSON.parse(row.exercises || '[]');
+    for (const ex of list) {
+      if (ex && ex.name) {
+        exercises.push({
+          name: ex.name,
+          duration: ex.duration || 0,
+          intensity: ex.intensity || 'moderate',
+          calorie: ex.calorie || 0
+        });
+      }
+    }
+  }
+  return exercises;
+}
+
+/**
+ * 从运动库（exercise_db）查找最匹配的运动
+ * 优先最长名称匹配
+ */
+function getExerciseFromDb(name) {
+  if (!name) return null;
+  const input = String(name).toLowerCase();
+  const rows = db.prepare(`SELECT exercise_name, met_value, calorie_per_hour, intensity_desc FROM exercise_db`).all();
+  let best = null;
+  let bestScore = 0;
+  for (const row of rows) {
+    const dbName = String(row.exercise_name || '').toLowerCase();
+    if (!dbName) continue;
+    // 互相包含视为匹配，越长越优先
+    const matched = input.includes(dbName) || dbName.includes(input);
+    if (matched && dbName.length > bestScore) {
+      bestScore = dbName.length;
+      best = row;
+    }
+  }
+  return best;
 }
 
 /**
@@ -452,7 +855,95 @@ function getTodayNutrition(userId) {
   return result;
 }
 
+/**
+ * 获取最近 N 天的身体相关上下文（体重、饮食、运动、习惯）
+ * 用于体重/平台期类问题时，让 AI 基于真实记录综合分析
+ */
+function getRecentBodyContext(userId, days = 7) {
+  const since = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+
+  // 最近体重：每天取最新一条
+  const weights = db.prepare(`
+    SELECT record_date, value, unit
+    FROM body_records b1
+    WHERE user_id = ? AND type = 'weight' AND record_date >= ? AND status = 1
+      AND created_at = (
+        SELECT MAX(created_at) FROM body_records b2
+        WHERE b2.user_id = b1.user_id
+          AND b2.record_date = b1.record_date
+          AND b2.type = b1.type
+      )
+    ORDER BY record_date ASC
+  `).all(userId, since);
+
+  // 每日饮食汇总
+  const nutrition = db.prepare(`
+    SELECT record_date,
+           SUM(total_calorie) as calorie,
+           SUM(total_protein) as protein,
+           SUM(total_carb) as carb,
+           SUM(total_fat) as fat
+    FROM diet_records
+    WHERE user_id = ? AND record_date >= ? AND status = 1
+    GROUP BY record_date
+    ORDER BY record_date ASC
+  `).all(userId, since);
+
+  // 每日运动汇总
+  const exercises = db.prepare(`
+    SELECT record_date,
+           SUM(total_duration) as duration,
+           SUM(total_calorie) as calorie
+    FROM exercise_records
+    WHERE user_id = ? AND record_date >= ? AND status = 1
+    GROUP BY record_date
+    ORDER BY record_date ASC
+  `).all(userId, since);
+
+  // 习惯（仅喝水，APP 不记录睡眠）
+  const habits = db.prepare(`
+    SELECT record_date,
+           MAX(water_ml) as water_ml
+    FROM habit_records
+    WHERE user_id = ? AND record_date >= ? AND status = 1
+    GROUP BY record_date
+    ORDER BY record_date ASC
+  `).all(userId, since);
+
+  const weightLines = weights.length
+    ? weights.map(r => `- ${r.record_date}: ${r.value}${r.unit || 'kg'}`).join('\n')
+    : '最近无体重记录';
+
+  const nutritionLines = nutrition.length
+    ? nutrition.map(r => `- ${r.record_date}: 摄入 ${Math.round(r.calorie || 0)}kcal，蛋白质 ${Math.round(r.protein || 0)}g，碳水 ${Math.round(r.carb || 0)}g，脂肪 ${Math.round(r.fat || 0)}g`).join('\n')
+    : '最近无饮食记录';
+
+  const exerciseLines = exercises.length
+    ? exercises.map(r => `- ${r.record_date}: 运动 ${r.duration || 0}分钟，消耗 ${Math.round(r.calorie || 0)}kcal`).join('\n')
+    : '最近无运动记录';
+
+  const habitLines = habits.length
+    ? habits.map(r => `- ${r.record_date}: 喝水 ${r.water_ml || 0}ml`).join('\n')
+    : '最近无习惯记录';
+
+  return `【系统数据】用户最近 ${days} 天的真实记录：
+一、体重记录
+${weightLines}
+
+二、每日饮食汇总
+${nutritionLines}
+
+三、每日运动汇总
+${exerciseLines}
+
+四、生活习惯汇总
+${habitLines}
+
+请基于以上真实记录分析用户的体重/平台期/身体情况，不要给出泛泛而谈的建议。如果记录不足，请直接说明还需要记录哪些数据。`;
+}
+
 module.exports = {
   callHelperAgent,
-  getTodayNutrition
+  getTodayNutrition,
+  getRecentBodyContext
 };

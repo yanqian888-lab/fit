@@ -5,13 +5,30 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
+    "start:test": "NODE_ENV=test node src/app.js",
+    "start:prod": "NODE_ENV=production node src/app.js",
     "dev": "nodemon src/app.js",
-    "init-db": "node src/scripts/init-db.js"
+    "pm2:test": "pm2 start ecosystem.config.js --only fit-backend-test",
+    "pm2:prod": "pm2 start ecosystem.config.js --only fit-backend-prod",
+    "pm2:stop:test": "pm2 stop fit-backend-test",
+    "pm2:stop:prod": "pm2 stop fit-backend-prod",
+    "pm2:restart:test": "pm2 restart fit-backend-test",
+    "pm2:restart:prod": "pm2 restart fit-backend-prod",
+    "init-db": "node src/scripts/init-db.js",
+    "import-foods": "node src/scripts/import-foods.js",
+    "import-exercises": "node src/scripts/import-exercises.js",
+    "backup:db": "node scripts/backup-db.js"
   },
-  "keywords": ["diet", "ai", "agent", "uniapp"],
+  "keywords": [
+    "diet",
+    "ai",
+    "agent",
+    "uniapp"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^9.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

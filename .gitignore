@@ -5,9 +5,14 @@ frontend/dist/
 frontend/unpackage/
 
 # Environment variables
+# 后端真实环境配置（含密钥），不提交
 backend/.env
-frontend/.env
+backend/.env.test
+backend/.env.production
+# 前端/管理后台 .env.test / .env.production 只含公开域名，默认提交
+# 如需本地覆盖，请使用 .env.test.local / .env.production.local
 *.env.local
+*.env.*.local
 
 # Database
 backend/data/*.db
@@ -57,3 +62,10 @@ __pycache__/
 # Misc
 *.tmp
 *.temp
+server-keys/
+.preview/
+# Uploaded user-generated files (keep .gitkeep only)
+backend/public/avatars/*
+!backend/public/avatars/.gitkeep
+backend/public/uploads/*
+!backend/public/uploads/.gitkeep

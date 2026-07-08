@@ -20,16 +20,79 @@
       "android": {
         "package": "com.example.jianfeidazi",
         "minSdkVersion": 21,
-        "targetSdkVersion": 34,
-        "abiFilters": ["armeabi-v7a", "arm64-v8a"],
+        "targetSdkVersion": 35,
+        "abiFilters": [
+          "armeabi-v7a",
+          "arm64-v8a"
+        ],
         "permissions": [
           "<uses-permission android:name=\"android.permission.INTERNET\" />",
           "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />",
-          "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\" />"
+          "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\" />",
+          "<uses-permission android:name=\"android.permission.CAMERA\" />",
+          "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" />",
+          "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" />",
+          "<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />"
         ]
       },
-      "ios": {},
-      "sdkConfigs": {}
+      "ios": {
+        "idfa": false,
+        "privacyDescription": {
+          "NSCameraUsageDescription": "需要访问相机，用于拍摄上传头像、反馈配图和博物馆配图",
+          "NSPhotoLibraryUsageDescription": "需要访问相册，用于选择上传头像、反馈配图和博物馆配图",
+          "NSPhotoLibraryAddUsageDescription": "需要保存图片到相册，用于保存应用内生成的图片"
+        }
+      },
+      "sdkConfigs": {},
+      "icons": {
+        "android": {
+          "hdpi": "static/app/icons/android_hdpi.png",
+          "xhdpi": "static/app/icons/android_xhdpi.png",
+          "xxhdpi": "static/app/icons/android_xxhdpi.png",
+          "xxxhdpi": "static/app/icons/android_xxxhdpi.png"
+        },
+        "ios": {
+          "appstore": "static/app/icons/ios_appstore.png",
+          "ipad": {
+            "app": "static/app/icons/ios_ipad_app.png",
+            "app@2x": "static/app/icons/ios_ipad_app@2x.png",
+            "proapp@2x": "static/app/icons/ios_ipad_proapp@2x.png",
+            "notification": "static/app/icons/ios_ipad_notification.png",
+            "notification@2x": "static/app/icons/ios_ipad_notification@2x.png",
+            "settings": "static/app/icons/ios_ipad_settings.png",
+            "settings@2x": "static/app/icons/ios_ipad_settings@2x.png",
+            "spotlight": "static/app/icons/ios_ipad_spotlight.png",
+            "spotlight@2x": "static/app/icons/ios_ipad_spotlight@2x.png"
+          },
+          "iphone": {
+            "app@2x": "static/app/icons/ios_iphone_app@2x.png",
+            "app@3x": "static/app/icons/ios_iphone_app@3x.png",
+            "notification@2x": "static/app/icons/ios_iphone_notification@2x.png",
+            "notification@3x": "static/app/icons/ios_iphone_notification@3x.png",
+            "settings@2x": "static/app/icons/ios_iphone_settings@2x.png",
+            "settings@3x": "static/app/icons/ios_iphone_settings@3x.png",
+            "spotlight@2x": "static/app/icons/ios_iphone_spotlight@2x.png",
+            "spotlight@3x": "static/app/icons/ios_iphone_spotlight@3x.png"
+          }
+        }
+      },
+      "splashscreen": {
+        "androidStyle": "common",
+        "useOriginalMsgbox": true,
+        "android": {
+          "hdpi": "static/app/splash/android/splash_hdpi.png",
+          "xhdpi": "static/app/splash/android/splash_xhdpi.png",
+          "xxhdpi": "static/app/splash/android/splash_xxhdpi.png"
+        },
+        "ios": {
+          "iphone": {
+            "retina55": "static/app/splash/ios/splash_retina55.png",
+            "retina47": "static/app/splash/ios/splash_retina47.png",
+            "retina40": "static/app/splash/ios/splash_retina40.png",
+            "iphonex": "static/app/splash/ios/splash_iphonex.png"
+          }
+        }
+      }
     }
   },
   "quickapp": {},

@@ -86,7 +86,7 @@ CREATE TABLE partners (
   name VARCHAR(32) DEFAULT '瘦瘦' COMMENT '搭子名字',
   gender TINYINT DEFAULT 2 COMMENT '性别：1 男，2 女',
   avatar_url VARCHAR(255) DEFAULT NULL,
-  mode VARCHAR(16) DEFAULT 'gentle' COMMENT '模式：gentle 温柔，strict 严格，tease 损友',
+  mode VARCHAR(16) DEFAULT 'gentle' COMMENT '模式：gentle 温柔，strict 严格，tease 毒舌',
   voice_speed TINYINT DEFAULT 5 COMMENT '语速 1-10',
   strictness TINYINT DEFAULT 5 COMMENT '严格程度 1-10',
   humor TINYINT DEFAULT 5 COMMENT '幽默感 1-10',

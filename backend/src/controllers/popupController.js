@@ -1,0 +1,256 @@
+/**
+ * C 端弹窗广告接口
+ */
+const { db } = require('../db');
+const { success, error } = require('../utils/response');
+
+function safeJsonParse(str, fallback = {}) {
+  try {
+    return JSON.parse(str || '{}');
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function getNow() {
+  return new Date().toISOString();
+}
+
+// 将 CMS 录入的北京时间字符串解析为时间戳（兼容 '2026-07-07 00:00:00' 和 ISO 格式）
+function parseChinaTime(str) {
+  if (!str) return null;
+  const s = String(str).trim();
+  if (s.includes('T')) {
+    return new Date(s).getTime();
+  }
+  return new Date(s.replace(' ', 'T') + '+08:00').getTime();
+}
+
+// 语义化版本号比较
+function compareVersion(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const na = isNaN(pa[i]) ? 0 : pa[i];
+    const nb = isNaN(pb[i]) ? 0 : pb[i];
+    if (na !== nb) return na - nb;
+  }
+  return 0;
+}
+
+/**
+ * 获取当前弹窗全局配置与可用弹窗列表
+ * GET /api/app/popup/config/list
+ */
+function getConfigList(req, res) {
+  const userId = req.userId || null;
+  const { app_version, os_type, device_id } = req.query;
+
+  if (!device_id) {
+    return res.status(400).json(error('缺少设备标识 device_id', 400));
+  }
+
+  // 获取当前登录用户的对外 user_id（6 位字母+数字）
+  const userRow = userId ? db.prepare('SELECT user_id FROM users WHERE id = ?').get(userId) : null;
+  const userCode = userRow ? userRow.user_id : '';
+
+  // 全局配置
+  const globalRows = db.prepare(`
+    SELECT config_key, config_value FROM app_configs
+    WHERE config_key IN ('popup_global_enabled', 'popup_daily_limit')
+  `).all();
+  const globalConfig = {};
+  for (const row of globalRows) {
+    globalConfig[row.config_key] = row.config_value;
+  }
+
+  const globalEnabled = globalConfig.popup_global_enabled !== '0';
+  const dailyLimit = Math.max(1, parseInt(globalConfig.popup_daily_limit || '3', 10) || 3);
+
+  const nowMs = Date.now();
+
+  // 取已启用弹窗，在 JS 层按北京时间统一比较，避免服务器时区/字符串比较歧义
+  const rows = db.prepare(`
+    SELECT * FROM popups
+    WHERE status = 'enabled'
+    ORDER BY priority DESC, sort_order ASC, id DESC
+  `).all();
+
+  const routeIds = new Set();
+  rows.forEach(p => {
+    if (p.jump_type === 'internal' && p.jump_route_id) {
+      routeIds.add(p.jump_route_id);
+    }
+  });
+
+  const routeMap = {};
+  if (routeIds.size > 0) {
+    const placeholders = Array.from(routeIds).map(() => '?').join(',');
+    db.prepare(`SELECT id, route_key, path, params_schema FROM app_routes WHERE id IN (${placeholders})`)
+      .all(...routeIds)
+      .forEach(r => {
+        routeMap[r.id] = r;
+      });
+  }
+
+  const popups = [];
+  for (const p of rows) {
+    // 用户定向过滤
+    const targetUsers = safeJsonParse(p.target_users, []);
+    if (targetUsers.length > 0 && !targetUsers.includes(userCode)) {
+      continue;
+    }
+
+    // 生效时间过滤（北京时间）
+    const startMs = parseChinaTime(p.start_time);
+    const endMs = parseChinaTime(p.end_time);
+    if (startMs && nowMs < startMs) continue;
+    if (endMs && nowMs > endMs) continue;
+
+    // OS 过滤
+    if (os_type) {
+      const osList = safeJsonParse(p.os_type, ['ios', 'android', 'h5', 'mp-weixin']);
+      if (Array.isArray(osList) && osList.length > 0 && !osList.includes(os_type)) {
+        continue;
+      }
+    }
+
+    // 版本号语义化比较
+    if (app_version && p.version_min && compareVersion(app_version, p.version_min) < 0) continue;
+    if (app_version && p.version_max && compareVersion(app_version, p.version_max) > 0) continue;
+
+    const item = {
+      id: p.id,
+      name: p.name,
+      style: p.style,
+      type: p.type,
+      priority: p.priority,
+      image_url: p.image_url,
+      title: p.title,
+      content: p.content,
+      show_close_button: p.show_close_button === 1,
+      mask_closeable: p.mask_closeable === 1,
+      jump_type: p.jump_type,
+      jump_url: p.jump_url || '',
+      jump_params: safeJsonParse(p.jump_params, {}),
+      scope_type: p.scope_type,
+      scope_pages: safeJsonParse(p.scope_pages, []),
+      excluded_pages: safeJsonParse(p.excluded_pages, []),
+      trigger_type: p.trigger_type,
+      trigger_delay_seconds: p.trigger_delay_seconds || 0,
+      frequency_period: p.frequency_period,
+      frequency_max: p.frequency_max,
+      one_time: p.one_time === 1,
+      wifi_only: p.wifi_only === 1
+    };
+
+    if (p.jump_type === 'internal' && p.jump_route_id && routeMap[p.jump_route_id]) {
+      const r = routeMap[p.jump_route_id];
+      item.jump_route_key = r.route_key;
+      item.jump_route_path = r.path || '';
+      item.jump_route_params_schema = safeJsonParse(r.params_schema, {});
+    }
+
+    popups.push(item);
+  }
+
+  // 下发启用状态的白名单域名，供客户端二次校验
+  const whitelist = db.prepare(`SELECT domain FROM h5_whitelist WHERE status = 'enabled' ORDER BY id DESC`).all().map(r => r.domain);
+
+  return res.json(success({
+    global: {
+      enabled: globalEnabled,
+      daily_limit: dailyLimit,
+      block_pages: ['pages/pay/index', 'pages/pay/checkout', 'pages/user/realname', 'pages/user/privacy']
+    },
+    popups,
+    whitelist
+  }));
+}
+
+/**
+ * 批量上报弹窗事件
+ * POST /api/app/popup/report
+ */
+function reportEvents(req, res) {
+  const userId = req.userId || null;
+  const { device_id, app_version, os_type, events } = req.body || {};
+
+  if (!device_id) {
+    return res.status(400).json(error('缺少设备标识 device_id', 400));
+  }
+
+  if (!Array.isArray(events) || events.length === 0) {
+    return res.status(400).json(error('上报事件不能为空', 400));
+  }
+
+  const validTypes = ['show', 'click', 'close'];
+  const validCloseWays = ['close_btn', 'mask', 'back', 'swipe'];
+  const now = getNow();
+  const date = now.slice(0, 10);
+
+  const insertEvent = db.prepare(`
+    INSERT INTO popup_events
+      (popup_id, user_id, device_id, page, event_type, trigger, close_way, app_version, os_type, event_time, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const upsertStat = db.prepare(`
+    INSERT INTO popup_daily_stats
+      (date, popup_id, shows, clicks, closes, close_btn, mask, back, swipe, updated_at)
+    VALUES (?, ?, 0, 0, 0, 0, 0, 0, 0, ?)
+    ON CONFLICT(date, popup_id) DO UPDATE SET updated_at = excluded.updated_at
+  `);
+
+  const transaction = db.transaction((items) => {
+    for (const ev of items) {
+      const popupId = ev.popup_id;
+      const type = ev.event_type;
+      if (!popupId || !validTypes.includes(type)) continue;
+
+      const closeWay = validCloseWays.includes(ev.close_way) ? ev.close_way : '';
+      insertEvent.run(
+        popupId,
+        userId,
+        device_id,
+        ev.page || '',
+        type,
+        ev.trigger || '',
+        closeWay,
+        app_version || '',
+        os_type || '',
+        ev.event_time || now,
+        now
+      );
+
+      upsertStat.run(date, popupId, now);
+
+      const field = type === 'show' ? 'shows' : type === 'click' ? 'clicks' : 'closes';
+      db.prepare(`UPDATE popup_daily_stats SET ${field} = ${field} + 1, updated_at = ? WHERE date = ? AND popup_id = ?`)
+        .run(now, date, popupId);
+
+      if (type === 'close' && closeWay) {
+        const col = {
+          close_btn: 'close_btn',
+          mask: 'mask',
+          back: 'back',
+          swipe: 'swipe'
+        }[closeWay];
+        if (col) {
+          db.prepare(`UPDATE popup_daily_stats SET ${col} = ${col} + 1, updated_at = ? WHERE date = ? AND popup_id = ?`)
+            .run(now, date, popupId);
+        }
+      }
+    }
+  });
+
+  transaction(events);
+
+  return res.json(success(null, '上报成功'));
+}
+
+module.exports = {
+  getConfigList,
+  reportEvents
+};

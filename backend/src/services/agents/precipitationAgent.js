@@ -1,569 +1,1775 @@
 /**
- * 信息沉淀 Agent（独立后台）
- * 职责：聊天记录实时扫描、7 大类信息提取、置信度计算、数据同步
- * 模型：豆包 doubao-lite-32k
+ * 从食物数据库获取食物营养数据
+ * 支持多种匹配策略：精确匹配 → 正向模糊 → 反向模糊 → 关键词提取
  */
-const OpenAI = require('openai');
-const config = require('../../config');
-const { db } = require('../../db');
-
-const client = new OpenAI({
-  apiKey: config.doubao.endpoints.precipitation.apiKey,
-  baseURL: config.doubao.baseURL
-});
-
-// 信息沉淀 Agent 系统提示词
-const PRECIPITATION_PROMPT = `# 角色定义
-你是【减肥搭子APP】专属聊天内容自动沉淀提取引擎 v1.0。
-你的核心目标是：实现"聊天即记录"，让用户无需手动操作就能自动沉淀所有减肥相关内容。
-你不需要回复用户任何自然语言，只需要输出严格的 JSON 格式。
-
-# 核心原则
-1. 只提取用户发送的消息，不提取搭子发送的消息
-2. 宁可不沉淀，也不误沉淀
-3. 所有不确定的内容都标记为低置信度，交给用户确认
-4. 严格遵循输出格式，不要添加任何额外内容
-
-# 可提取的 7 大类 23 小类内容
-
-## 一、核心业务类（自动确认）
-### 1. 饮食记录（type: diet_record）
-- 提取字段：sub_type (breakfast/lunch/dinner/snack), foods ([{"name": "食物名称", "weight": 克数, "calorie": 千卡, "protein": 克, "carb": 克, "fat": 克}]), total_calorie, total_protein, total_carb, total_fat
-- 自动判断用餐时段：6-9点早餐，11-14点午餐，17-20点晚餐，其他加餐
-
-### 2. 运动记录（type: exercise_record）
-- 提取字段：sub_type (aerobic/strength/stretch/ball), exercises ([{"name": "运动名称", "duration": 分钟, "intensity": low/moderate/high, "calorie": 千卡}]), total_duration, total_calorie
-
-### 3. 身体数据记录（type: body_data）
-- 提取字段：sub_type (weight/body_fat/muscle/waist/hip/chest/thigh), value(数值), unit(斤/厘米/%)
-
-### 4. 生活习惯记录（type: habit）
-- 提取字段：sub_type (water/sleep/defecation/mood), value(数值)
-
-## 二、个人资产类（待确认）
-### 5. 减脂食谱（type: recipe）
-### 6. 减肥方法（type: method）
-### 7. 踩坑教训（type: pitfall）
-### 8. 好物工具（type: product）
-
-## 三、情感成长类（自动确认）
-### 9. 励志金句（type: quote）
-- 提取字段：author (user/partner), content, emotion (positive/neutral/negative), scene (daily/milestone/frustration)
-
-### 10. 心路感悟（type: insight）
-### 11. 情绪记录（type: emotion）
-- 提取字段：emotion (happy/excited/anxious/frustrated/guilty/sad), intensity(1-5), content
-
-## 四、里程碑类（自动确认）
-### 12. 体重里程碑（type: milestone_weight）
-### 13. 时长里程碑（type: milestone_duration）
-### 14. 行为里程碑（type: milestone_behavior）
-
-## 五、多媒体类（自动确认）
-### 15. 身材对比照（type: photo_body）
-### 16. 食物照片（type: photo_food）
-### 17. 运动照片（type: photo_exercise）
-
-## 六、计划目标类（待确认）
-### 18. 每日计划（type: plan_daily）
-### 19. 每周计划（type: plan_weekly）
-### 20. 欺骗餐计划（type: plan_cheat_meal）
-
-## 七、问题咨询类（待确认）
-### 21. 常见问题（type: question）
-### 22. 专业建议（type: advice）
-
-# 精准信号锚点体系（严格按以下标准执行）
-
-## 2.1 核心业务类信号锚点（准确率要求≥95%）
-
-### 2.1.1 饮食记录（type: diet_record）
-动词锚点：吃、喝、尝、买、点、做、煮、炒、烤、蒸、煎、炸、炖、拌、炫、啃、扒、嗦、喝、干、造、吃了、喝了、点了、做了、尝了、啃了、嗦了、干了、造了、吃了碗、喝了杯、点了份、做了盘
-名词锚点（分类完整版）：
-- 主食类：米饭、面条、馒头、包子、饺子、馄饨、面包、吐司、三明治、汉堡、披萨、煎饼、油条、油饼、烧麦、粽子、汤圆、玉米、红薯、紫薯、山药、芋头、燕麦、荞麦面、全麦面包、糙米饭
-- 蛋白质类：鸡蛋、鸭蛋、鹅蛋、鸡胸肉、鸡腿、鸡翅、牛肉、羊肉、猪肉、鱼虾、虾仁、三文鱼、鳕鱼、龙利鱼、豆腐、豆浆、豆干、腐竹、牛奶、酸奶、奶酪
-- 蔬菜类：白菜、青菜、菠菜、芹菜、韭菜、生菜、油麦菜、西兰花、菜花、黄瓜、西红柿、冬瓜、南瓜、丝瓜、苦瓜、茄子、豆角、土豆、胡萝卜、白萝卜、洋葱、大蒜、辣椒
-- 水果类：苹果、香蕉、橙子、橘子、柚子、草莓、蓝莓、葡萄、西瓜、芒果、菠萝、猕猴桃、火龙果、梨、桃子、李子、樱桃
-- 饮品类：水、茶、咖啡、牛奶、酸奶、豆浆、果汁、可乐、雪碧、奶茶、果茶、啤酒、白酒、红酒、碳酸饮料
-- 零食类：薯片、饼干、巧克力、糖果、坚果、瓜子、花生、冰淇淋、雪糕、蛋糕、面包、蛋挞、泡芙、蛋黄派
-- 外卖快餐类：麻辣烫、麻辣香锅、火锅、烧烤、炸鸡、汉堡、薯条、盖浇饭、炒饭、炒面、螺蛳粉、米线、凉皮、肉夹馍
-- 烘焙甜品类：蛋糕、面包、饼干、蛋挞、泡芙、蛋黄派、提拉米苏、慕斯、芝士蛋糕
-句式锚点（完整版）："我今天吃了 X"、"早上/中午/晚上吃了 X"、"刚才吃了 X"、"刚刚吃了 X"、"喝了一杯 X"、"喝了一瓶 X"、"点了一份 X"、"买了 X"、"做了 X"、"煮了 X"、"炒了 X"、"烤了 X"、"蒸了 X"、"煎了 X"、"炸了 X"、"炖了 X"、"拌了 X"、"炫了一碗 X"、"啃了个 X"、"嗦了碗 X"、"干了杯 X"、"造了一堆 X"、"吃了顿 X"、"吃了个 X"、"吃了块 X"、"吃了片 X"、"吃了根 X"、"吃了串 X"
-特殊规则：
-1. 包含数量词自动提取分量（一碗、一杯、一个、一份、一两、一斤）
-2. 提到"偷吃"、"放纵"、"欺骗餐"、"破戒"自动加对应标签
-3. 否定句（"没吃 X"、"没喝 X"、"不想吃 X"）绝对不沉淀
-4. 疑问句（"吃什么好？"、"能吃 X 吗？"）不沉淀
-5. 提到"明天吃 X"、"以后吃 X"不沉淀
-
-### 2.1.2 运动记录（type: exercise_record）
-动词锚点：跑、走、跳、练、做、游、骑、爬、打、踢、跳、撸、跟练、打卡、运动、锻炼、健身
-名词锚点（分类完整版）：
-- 有氧运动：跑步、快走、散步、慢跑、快跑、游泳、骑行、跳绳、跳操、HIIT、椭圆机、动感单车、爬楼梯、爬山
-- 力量训练：撸铁、举铁、哑铃、杠铃、俯卧撑、仰卧起坐、平板支撑、深蹲、弓步、硬拉、卧推、引体向上、臀桥、卷腹
-- 拉伸放松：瑜伽、普拉提、拉伸、筋膜放松、冥想
-- 球类运动：篮球、足球、羽毛球、乒乓球、网球、排球
-- 日常活动：走路、散步、逛街、做家务、打扫卫生
-句式锚点（完整版）："我今天跑了 X 公里"、"走了 X 步"、"走了 X 公里"、"练了 X 分钟 X"、"做了 X 组 X"、"游了 X 米"、"骑了 X 公里"、"爬了 X 层楼"、"爬了 X 山"、"打了 X 小时 X"、"踢了 X 小时 X"、"跳了 X 分钟绳"、"跳了 X 分钟操"、"跟练了帕梅拉 X 分钟"、"跟练了刘畊宏 X 分钟"、"撸铁 X 小时"、"健身 X 小时"、"运动了 X 分钟"、"锻炼了 X 小时"、"做了 X 个俯卧撑"、"做了 X 个仰卧起坐"、"平板支撑了 X 分钟"、"深蹲了 X 个"
-特殊规则：
-1. 提取时长和强度（慢、中、快、低强度、中强度、高强度）
-2. 提到"偷懒"、"没坚持"、"只做了 X 分钟"自动加备注
-3. 否定句（"没运动"、"没锻炼"）不沉淀
-4. 疑问句（"做什么运动好？"）不沉淀
-
-### 2.1.3 身体数据记录（type: body_data）
-动词锚点：称、量、测、重、围、量了、测了、称了
-名词锚点：体重、体脂、体脂率、肌肉量、内脏脂肪、腰围、臀围、胸围、大腿围、小腿围、臂围、BMI
-句式锚点（完整版）："今天体重 X 斤"、"今天称了 X 斤"、"体重 X 公斤"、"体脂率 X%"、"腰围 X 厘米"、"腰围 X 尺"、"臀围 X 厘米"、"胸围 X 厘米"、"大腿围 X 厘米"、"测了体脂 X%"、"量了腰围 X"
-特殊规则：
-1. 自动计算与上次记录的差值
-2. 识别里程碑（减 5 斤、减 10 斤、达到目标体重）自动触发庆祝
-3. 否定句（"没称体重"）不沉淀
-
-### 2.1.4 生活习惯记录（type: habit）
-动词锚点：喝、睡、拉、起、醒、喝了、睡了、起了、醒了
-名词锚点：水、觉、厕所、床、厕所、大便、小便、睡眠
-句式锚点（完整版）："今天喝了 X 杯水"、"喝了 X 毫升水"、"睡了 X 小时"、"昨晚睡了 X 小时"、"早上 X 点起的"、"早上 X 点醒的"、"今天拉了 X 次"、"排便了"
-特殊规则：
-1. 喝水自动同步到喝水记录进度条
-2. 睡眠不足 6 小时自动给出建议
-3. 否定句（"没喝水"、"没睡好"）不沉淀
-
-## 2.2 个人资产类信号锚点（准确率要求≥85%，默认待确认）
-
-### 2.2.1 减脂食谱（type: recipe）
-触发信号："这个食谱很好用"、"这个做法绝了"、"低卡又好吃"、"分享一个超赞的减脂餐"、"我今天做了 X，超好吃"、"推荐你们试试 X"、"这个 X 这么做巨掉秤"、"给你们分享个减脂餐做法"、"食材：X、Y、Z，做法：..."、"X 的做法很简单，先... 再..."、"这个热量只有 X 大卡"、"减脂期也能吃的 X"、"无油版 X 做法"、"低卡版 X 教程"
-排除信号："这个食谱不好吃"、"这个做法太难了"、"有人会做 X 吗？"、"X 怎么做？"、"求 X 的做法"、"有没有好吃的 X 推荐？"、"只提到单个食材没有做法"
-
-### 2.2.2 减肥方法（type: method）
-触发信号："我发现 X 很有用"、"我发现一个绝招"、"亲测 X 最有效"、"亲测掉秤最快的方法"、"这么做真的有用"、"我是这样瘦下来的"、"总结一下我的减肥经验"、"分享我的减肥方法"、"给大家一个建议"、"千万不要 X，要 Y"、"我之前就是 X，后来改成 Y 就瘦了"、"坚持 X 真的会有效果"、"最重要的是 X"、"减肥的关键是 X"
-排除信号："这个方法没用"、"X 有用吗？"、"有人试过 X 吗？"、"求推荐减肥方法"、"怎么才能瘦下来？"、"引用别人的方法但自己没试过"
-
-### 2.2.3 踩坑教训（type: pitfall）
-触发信号："千万不要 X"、"千万别做 X"、"我之前踩过 X 的坑"、"大家不要学我"、"我就是因为 X 才胖的"、"我就是因为 X 才不掉秤"、"后悔做了 X"、"早知道就不 X 了"、"血的教训"、"踩过最大的坑就是 X"、"避坑指南：不要 X"、"提醒大家不要 X"
-排除信号："别人踩过 X 的坑"、"有没有人踩过 X 的坑？"、"听说 X 是个坑"
-
-## 2.3 情感成长类信号锚点（准确率要求≥80%）
-
-### 2.3.1 励志金句（type: quote）
-情绪锚点：积极、坚定、鼓舞、自信、充满希望
-句式锚点："只要坚持就会有收获"、"今天也是努力的一天"、"我一定能瘦下来"、"加油，坚持就是胜利"、"没有瘦不下来的胖子"、"自律给我自由"、"付出总会有回报"、"今天的努力是明天的收获"、"离目标又近了一步"、"再坚持一下就成功了"、"你可以的"、"我能行"、"不要放弃"、"坚持住"
-
-### 2.3.2 心路感悟（type: insight）
-情绪锚点：感慨、反思、顿悟、释然、成长
-句式锚点："原来减肥最重要的是 X"、"这段时间我明白了 X"、"减肥其实是和自己和解"、"原来不是不能吃，是要适量"、"减肥改变的不只是体重"、"慢慢发现 X 比什么都重要"、"原来坚持下来是这种感觉"、"以前总想着快速瘦，现在才明白..."、"减肥教会了我 X"、"这一路走来，我学会了 X"
-
-### 2.3.3 情绪记录（type: emotion）
-情绪锚点：
-- 开心/兴奋："今天好开心"、"太开心了"、"太棒了"、"激动死了"、"太惊喜了"、"终于瘦了"、"掉秤了"、"破平台期了"
-- 焦虑/烦躁："有点焦虑"、"好焦虑"、"烦死了"、"好烦"、"心态崩了"、"emo 了"、"压力好大"、"好想吃东西"
-- 愧疚/自责："好愧疚"、"又偷吃了"、"又破戒了"、"我怎么这么没用"、"又摆烂了"、"今天又没忍住"、"对不起自己"
-- 挫败/难过："好难过"、"太难受了"、"又失败了"、"怎么都不掉秤"、"平台期好难熬"、"坚持不下去了"、"不想减了"
-句式锚点："今天好开心，瘦了 X 斤"、"太激动了，终于破平台期了"、"有点焦虑，想吃东西"、"心态崩了，今天偷吃了"、"好愧疚，又破戒了"、"好难过，体重又涨了"、"平台期好难熬，想放弃了"、"今天摆烂了，什么都没做"
-
-## 2.4 其他类别信号锚点
-
-### 里程碑类
-触发信号："我减了 X 斤了"、"已经坚持 X 天了"、"今天是减肥第 X 天"、"终于达到目标了"、"减肥成功了"、"完成了第一个小目标"
-
-### 计划目标类
-触发信号："我明天要 X"、"明天开始 X"、"这周的目标是 X"、"我计划 X"、"打算 X"、"下周日吃欺骗餐"、"周末去吃火锅"
-
-### 问题咨询类
-触发信号："为什么我不掉秤？"、"X 热量高吗？"、"减肥能吃 X 吗？"、"怎么做 X？"、"为什么会平台期？"、"运动完腿疼怎么办？"
-
-# 置信度评估标准（0-1 分，精确到小数点后两位）
-| 置信度区间 | 判断标准 | 处理策略 |
-|------------|----------|----------|
-| 0.95-1.00 | 完全确定，句式标准，所有信息明确，匹配多个信号锚点，与上下文一致 | 自动沉淀 |
-| 0.85-0.94 | 比较确定，句式口语化但意思明确，匹配 2 个以上信号锚点 | 自动沉淀并提示 |
-| 0.70-0.84 | 不确定，部分信息缺失或表述模糊 | 待确认 |
-| 0.00-0.69 | 无法确定，不符合任何沉淀规则 | 不沉淀 |
-
-# 数量与热量估算规则（必须执行）
-1. 用户未明确分量时，按中国居民常见食用量估算，不能留空：
-   - 一碗米饭 ≈ 150g，一碗面条 ≈ 200g
-   - 一个鸡蛋 ≈ 50g，一杯牛奶 ≈ 250ml
-   - 一个苹果/橙子 ≈ 150g，一根香蕉 ≈ 100g
-   - 一份外卖牛肉面 ≈ 面 150g + 牛肉 50g + 汤油 20g
-2. 热量估算参考《中国食物成分表（第 6 版）》，常见参考：
-   - 米饭 116 千卡/100g，面条 137 千卡/100g，馒头 223 千卡/100g
-   - 鸡蛋 139 千卡/100g，鸡胸肉 133 千卡/100g，瘦牛肉 106 千卡/100g
-   - 食用油 9 千卡/g，若菜品明显油大额外加 50-100 千卡
-3. 运动只给距离未给时长时，按常见配速估算：
-   - 跑步：1 公里 ≈ 6 分钟（慢跑）
-   - 快走：1 公里 ≈ 10 分钟
-   - 骑行：1 公里 ≈ 3 分钟
-4. 无法估算时填写合理的近似值，不能全部填 null 或 0
-
-# 输出格式
-必须严格输出以下 JSON 格式，不要添加任何注释或额外文本。
-
-## 饮食记录示例
-输入："今天中午吃了一碗牛肉面和一个鸡蛋"
-输出：
-{
-  "extracted": true,
-  "type": "diet_record",
-  "sub_type": "lunch",
-  "content": "今天中午吃了一碗牛肉面和一个鸡蛋",
-  "extracted_data": {
-    "meal_time": "lunch",
-    "foods": [
-      {"name": "牛肉面", "weight": 200, "calorie": 500, "protein": 20, "carb": 60, "fat": 15},
-      {"name": "鸡蛋", "weight": 50, "calorie": 70, "protein": 6, "carb": 1, "fat": 5}
-    ],
-    "total_calorie": 570,
-    "total_protein": 26,
-    "total_carb": 61,
-    "total_fat": 20
-  },
-  "confidence": 0.96,
-  "tags": ["外卖"],
-  "reason": "明确提到中午吃牛肉面和鸡蛋，分量可估算"
-}
-
-## 运动记录示例
-输入："我今天跑了5公里"
-输出：
-{
-  "extracted": true,
-  "type": "exercise_record",
-  "sub_type": "aerobic",
-  "content": "我今天跑了5公里",
-  "extracted_data": {
-    "exercise_type": "aerobic",
-    "exercises": [
-      {"name": "跑步", "duration": 30, "intensity": "moderate", "calorie": 300}
-    ],
-    "total_duration": 30,
-    "total_calorie": 300
-  },
-  "confidence": 0.92,
-  "tags": ["有氧"],
-  "reason": "明确提到跑步 5 公里，按常见配速估算 30 分钟"
-}
-
-## 身体数据示例
-输入："今天体重120斤"
-输出：
-{
-  "extracted": true,
-  "type": "body_data",
-  "sub_type": "weight",
-  "content": "今天体重120斤",
-  "extracted_data": {
-    "sub_type": "weight",
-    "value": 60,
-    "unit": "kg"
-  },
-  "confidence": 0.98,
-  "tags": ["体重"],
-  "reason": "明确提到今日体重 120 斤，已换算为 kg"
-}
-
-## 喝水记录示例
-输入："今天喝了3杯水"
-输出：
-{
-  "extracted": true,
-  "type": "habit",
-  "sub_type": "water",
-  "content": "今天喝了3杯水",
-  "extracted_data": {
-    "sub_type": "water",
-    "value": 600,
-    "unit": "ml"
-  },
-  "confidence": 0.95,
-  "tags": ["喝水"],
-  "reason": "明确提到喝了 3 杯水，按一杯 200ml 估算"
-}
-
-## 励志金句示例
-输入："只要坚持就会有收获"
-输出：
-{
-  "extracted": true,
-  "type": "quote",
-  "sub_type": "positive",
-  "content": "只要坚持就会有收获",
-  "extracted_data": {
-    "author": "user",
-    "content": "只要坚持就会有收获",
-    "emotion": "positive",
-    "scene": "daily"
-  },
-  "confidence": 0.88,
-  "tags": ["金句"],
-  "reason": "符合励志金句句式"
-}
-
-## 无法提取示例
-输入："吃什么好？"
-输出：
-{
-  "extracted": false,
-  "reason": "疑问句，不符合沉淀规则"
-}
-
-当前系统时间：{{current_time}}
-`;
-
-/**
- * 调用信息沉淀 Agent
- * @param {string} content 要沉淀的聊天内容
- * @param {number} userId 用户 ID
- * @param {number} chatId 聊天记录 ID
- * @returns {object} 沉淀结果
- */
-async function callPrecipitationAgent(content, userId, chatId = null) {
-  if (!content || !content.trim()) {
-    return { extracted: false, reason: '内容为空' };
-  }
-
-  const systemPrompt = PRECIPITATION_PROMPT.replace('{{current_time}}', new Date().toISOString());
-
+function getFoodNutrition(foodName) {
   try {
-    const response = await client.chat.completions.create({
-      model: config.doubao.endpoints.precipitation.id,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: content }
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.1,
-      max_tokens: 800
-    });
-
-    const resultText = response.choices[0].message.content || '{}';
-    let result = {};
-    try {
-      result = JSON.parse(resultText);
-    } catch (e) {
-      console.error('沉淀结果 JSON 解析失败:', resultText);
-      return { extracted: false, reason: '解析失败' };
+    const name = foodName.trim();
+    if (!name) return null;
+    
+    // 策略1：精确匹配
+    let food = db.prepare(`
+      SELECT calories_per_100g as calorie_per_100g, 
+             protein_per_100g, carb_per_100g, fat_per_100g,
+             category, sub_category 
+      FROM food_db 
+      WHERE food_name = ?
+    `).get(name);
+    
+    if (food) {
+      console.log(`[食物匹配] 精确匹配: ${name}`);
+      return food;
     }
-
-    if (!result.extracted) {
-      return { extracted: false, reason: result.reason || '无法提取' };
+    
+    // 策略2：正向模糊匹配（食物名包含在数据库中）
+    food = db.prepare(`
+      SELECT calories_per_100g as calorie_per_100g, 
+             protein_per_100g, carb_per_100g, fat_per_100g,
+             category, sub_category 
+      FROM food_db 
+      WHERE food_name LIKE ?
+      LIMIT 1
+    `).get(`%${name}%`);
+    
+    if (food) {
+      console.log(`[食物匹配] 正向模糊: ${name}`);
+      return food;
     }
-
-    // 根据置信度决定处理策略
-    // ≥0.95：完全确定，自动确认
-    // 0.85-0.94：比较确定，自动确认并提示用户
-    // 0.70-0.84：不确定，待用户确认
-    // <0.70：丢弃
-    const confidence = parseFloat(result.confidence) || 0;
-    let status = 0; // 0 待确认
-    if (confidence >= 0.85) {
-      status = 1; // 自动确认
-    } else if (confidence >= 0.7) {
-      status = 0; // 待确认
-    } else {
-      return { extracted: false, reason: '置信度过低', confidence };
+    
+    // 策略3：反向模糊匹配（数据库名包含在食物名中）
+    // 提取食物名中的核心关键词（去掉量词、形容词等）
+    const keywords = extractFoodKeywords(name);
+    for (const kw of keywords) {
+      if (kw.length < 2) continue;
+      food = db.prepare(`
+        SELECT calories_per_100g as calorie_per_100g, 
+               protein_per_100g, carb_per_100g, fat_per_100g 
+        FROM food_db 
+        WHERE food_name LIKE ?
+        LIMIT 1
+      `).get(`%${kw}%`);
+      
+      if (food) {
+        console.log(`[食物匹配] 关键词匹配: ${name} → 关键词"${kw}"`);
+        return food;
+      }
     }
-
-    // 保存沉淀记录
-    const insert = db.prepare(`
-      INSERT INTO precipitation_records
-      (user_id, chat_id, type, sub_type, content, extracted_data, confidence, status, source, tags, remark)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const precipitationId = insert.run(
-      userId,
-      chatId,
-      result.type,
-      result.sub_type || null,
-      content,
-      JSON.stringify(result.extracted_data || {}),
-      confidence,
-      status,
-      0,
-      result.tags ? JSON.stringify(result.tags) : null,
-      null
-    ).lastInsertRowid;
-
-    // 根据类型同步到具体业务表
-    if (status === 1) {
-      await syncToBusinessTable(userId, precipitationId, result, content);
-    }
-
-    return {
-      extracted: true,
-      precipitation_id: precipitationId,
-      type: result.type,
-      confidence,
-      status,
-      extracted_data: result.extracted_data
+    
+    // 策略4：尝试匹配常见别名
+    const aliasMap = {
+      '米饭': ['熟制谷薯', '大米', '饭'],
+      '面条': ['熟制谷薯', '小麦', '面'],
+      '馒头': ['熟制谷薯', '小麦'],
+      '鸡蛋': ['鸡蛋', '蛋白', '蛋黄'],
+      '牛奶': ['奶', '乳'],
+      '酸奶': ['酸奶', '酸乳'],
+      '豆浆': ['豆浆', '豆奶'],
+      '卤牛肉': ['酱牛肉', '卤牛肉', '牛肉'],
+      '酱牛肉': ['酱牛肉', '卤牛肉'],
+      '牛肉': ['水煮瘦牛肉', '酱牛肉', '牛肉', '牛'],
+      '猪肉': ['猪肉', '猪'],
+      '鸡肉': ['鸡肉', '鸡'],
+      '鱼肉': ['鱼'],
+      '虾': ['虾'],
+      '豆腐': ['豆腐', '豆制品'],
+      '苹果': ['苹果'],
+      '香蕉': ['香蕉'],
+      '橙子': ['橙', '柑'],
+      '西瓜': ['西瓜'],
+      '葡萄': ['葡萄'],
+      '西红柿': ['西红柿', '番茄'],
+      '黄瓜': ['黄瓜'],
+      '白菜': ['白菜'],
+      '菠菜': ['菠菜'],
+      '胡萝卜': ['胡萝卜'],
+      '土豆': ['土豆', '马铃薯'],
+      '红薯': ['红薯', '地瓜', '甘薯'],
+      '玉米': ['玉米'],
+      '花生': ['花生'],
+      '核桃': ['核桃'],
+      '瓜子': ['瓜子', '葵花籽'],
+      '巧克力': ['巧克力'],
+      '饼干': ['饼干'],
+      '蛋糕': ['蛋糕'],
+      '面包': ['面包'],
+      '汉堡': ['汉堡'],
+      '披萨': ['披萨', '比萨'],
+      '可乐': ['可乐', '碳酸饮料'],
+      '奶茶': ['奶茶'],
+      '咖啡': ['咖啡'],
+      '茶': ['茶'],
+      '啤酒': ['啤酒'],
+      '白酒': ['白酒', '酒'],
+      '红酒': ['红酒', '葡萄酒']
     };
-  } catch (error) {
-    console.error('信息沉淀 Agent 调用失败:', error.message);
-    return { extracted: false, reason: 'AI 服务调用失败', error: error.message };
+    
+    for (const [alias, patterns] of Object.entries(aliasMap)) {
+      if (name.includes(alias)) {
+        for (const pattern of patterns) {
+          food = db.prepare(`
+            SELECT calories_per_100g as calorie_per_100g, 
+                   protein_per_100g, carb_per_100g, fat_per_100g 
+            FROM food_db 
+            WHERE food_name LIKE ?
+            LIMIT 1
+          `).get(`%${pattern}%`);
+          
+          if (food) {
+            console.log(`[食物匹配] 别名匹配: ${name} → 别名"${alias}" → 模式"${pattern}"`);
+            return food;
+          }
+        }
+      }
+    }
+    
+    console.log(`[食物匹配] 未找到: ${name}`);
+    return null;
+  } catch (e) {
+    console.error('查询食物数据库失败:', e.message);
+    return null;
   }
 }
 
 /**
- * 将沉淀数据同步到业务表
+ * 从食物名称中提取核心关键词
+ * 去掉常见量词、形容词、烹饪方式等
  */
-async function syncToBusinessTable(userId, precipitationId, result, content) {
-  const type = result.type;
-  const data = result.extracted_data || {};
-  const today = new Date().toISOString().split('T')[0];
+function extractFoodKeywords(foodName) {
+  // 去掉常见前缀/后缀
+  let cleaned = foodName
+    .replace(/^(一份|一个|一只|一片|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一盘|一碟|一点|一些|少量|适量|多|少|大|小|中|新|旧|生|熟|干|湿)/g, '')
+    .replace(/(一份|一个|一只|一片|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一盘|一碟)$/g, '')
+    .replace(/(炒|煮|蒸|炸|烤|煎|炖|焖|烧|拌|腌|卤|熏|爆|熘|烩|涮|焗|煨|熬|煲|凉拌|红烧|清蒸|油炸|干煸|水煮|蒜蓉|麻辣|香辣|酸甜|糖醋|椒盐|孜然|咖喱|番茄|芝士|奶油|黄油|酱油|醋|盐|糖|油|料酒|姜|葱|蒜|辣椒|花椒|八角|桂皮|香叶|胡椒)/g, '');
+  
+  // 按常见分隔符拆分
+  const parts = cleaned.split(/[,，、\s]+/).filter(p => p.length >= 2);
+  
+  // 返回按长度降序排列的关键词（优先匹配更长的）
+  return parts.sort((a, b) => b.length - a.length);
+}
+
+/**
+ * 清理食物名称中的常见前缀/后缀填充词，并判断是否为有效食物名
+ */
+const FOOD_NAME_PREFIX_FILLERS = /^(?:早上|上午|中午|下午|晚上|今天|今早|今晚|昨天|明天|刚才|刚刚|之前|后来|现在|早餐|午餐|晚餐|加餐|吃|吃了|喝了|还吃|又吃|刚吃|又吃了|还吃了|刚吃了|吃了个|吃了一个|那个|这个|刚才的|的|是|为|有|还有|我又|我又要|我又没|就|只是|不过|但是|而且|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中)+/;
+const FOOD_NAME_SUFFIX_FILLERS = /(?:一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中|的|了|吃|喝|还有|不过|但是|而且)$/;
+const FOOD_NAME_STOP_ONLY = /^(?:早上|上午|中午|下午|晚上|今天|今早|今晚|昨天|明天|刚才|刚刚|之前|后来|现在|早餐|午餐|晚餐|加餐|吃|吃了|喝了|还吃|又吃|刚吃|又吃了|还吃了|刚吃了|吃了个|吃了一个|那个|这个|刚才的|的|是|为|有|还有|我又|我又要|我又没|就|只是|不过|但是|而且|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中)+$/;
+
+function cleanFoodName(name) {
+  if (!name) return '';
+  let cleaned = name.trim();
+  // 循环去除前缀，直到没有变化
+  while (true) {
+    const next = cleaned.replace(FOOD_NAME_PREFIX_FILLERS, '').trim();
+    if (next === cleaned) break;
+    cleaned = next;
+  }
+  cleaned = cleaned.replace(FOOD_NAME_SUFFIX_FILLERS, '').trim();
+  return cleaned;
+}
+
+function isInvalidFoodName(name) {
+  if (!name || name.length < 2) return true;
+  return FOOD_NAME_STOP_ONLY.test(name);
+}
+
+/**
+ * 兜底补回用户明确写出热量的食物（如"卤鸭腿160千卡"）
+ * 防止LLM将其误判为热量修正而丢弃
+ */
+function recoverExplicitCalorieFoods(content, data) {
+  if (!data || !Array.isArray(data.foods) || !content) return data;
+  const foods = data.foods;
+  const regex = /([^，,、；;。]+?)\s*(\d+(?:\.\d+)?)\s*(千卡|kcal|大卡|卡路里)/gi;
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    const fullMatch = match[0];
+    const rawName = match[1].trim();
+    const calorie = parseFloat(match[2]);
+    if (!rawName || rawName.length < 2 || isNaN(calorie) || calorie <= 0) continue;
+    // 跳过热量汇总表述
+    if (/(热量|总|一共|累计|总共|卡路里|千卡|大卡|^是$|^为$|多少)/.test(rawName)) continue;
+
+    let foodName = cleanFoodName(rawName);
+    // 如果前缀清理后不是有效食物名，尝试取"X大卡的YY"中的YY
+    if (!foodName || isInvalidFoodName(foodName)) {
+      const matchEnd = match.index + fullMatch.length;
+      const after = content.slice(matchEnd);
+      const afterMatch = after.match(/^\s*的\s*([^，,、；;。\s]{1,15})/);
+      if (afterMatch) {
+        foodName = cleanFoodName(afterMatch[1]);
+      }
+    }
+    if (!foodName || isInvalidFoodName(foodName)) continue;
+
+    // 如果已存在（名称互相包含），不再重复添加
+    const exists = foods.some(f => {
+      if (!f || !f.name) return false;
+      const fn = cleanFoodName(f.name);
+      return fn === foodName || foodName.includes(fn) || fn.includes(foodName);
+    });
+    if (exists) continue;
+
+    foods.push({
+      name: foodName,
+      weight: 0,
+      quantity: 1,
+      unit: 'g',
+      calorie,
+      protein: 0,
+      carb: 0,
+      fat: 0
+    });
+    console.log(`[显式热量兜底] 补充食物: ${foodName} ${calorie}千卡`);
+  }
+  data.foods = foods;
+  return data;
+}
+
+/**
+ * 清理食物名称并过滤掉非食物（如"中午还吃了一个"）
+ */
+function sanitizeFoodNames(content, data) {
+  if (!content || !Array.isArray(data.foods)) return data;
+  const cleanedFoods = [];
+  for (const food of data.foods) {
+    if (!food || !food.name) {
+      cleanedFoods.push(food);
+      continue;
+    }
+    const name = cleanFoodName(food.name);
+    if (isInvalidFoodName(name)) {
+      console.log(`[食物名过滤] 移除非食物名称: ${food.name}`);
+      continue;
+    }
+    food.name = name;
+    cleanedFoods.push(food);
+  }
+  data.foods = cleanedFoods;
+  return data;
+}
+
+/**
+ * 把"半个/半根/半片..."等分数表达修正为 quantity=0.5
+ */
+function normalizeHalfQuantities(content, data) {
+  if (!content || !Array.isArray(data.foods)) return data;
+  const halfUnits = ['个', '根', '片', '块', '碗', '杯', '勺', '只', '条', '颗', '粒', '把', '瓣', '份', '盒', '袋', '瓶'];
+  for (const food of data.foods) {
+    if (!food.unit || food.quantity !== 1) continue;
+    if (halfUnits.includes(food.unit) && content.includes(`半${food.unit}`)) {
+      food.quantity = 0.5;
+      console.log(`[分数修正] ${food.name}: 1${food.unit} → 0.5${food.unit}`);
+    }
+  }
+  return data;
+}
+
+/**
+ * 通用计数单位→克换算表
+ */
+const UNIT_WEIGHTS = {
+  'kg': 1000,
+  '公斤': 1000,
+  '个': 50,      // 默认：1个鸡蛋/水果约50g（具体食物会覆盖）
+  '只': 50,
+  '片': 30,      // 1片面包约30g
+  '块': 30,      // 1块肉约30g
+  '杯': 250,     // 1杯牛奶/水约250g
+  '碗': 150,     // 1碗米饭约150g
+  '勺': 15,      // 1勺约15g
+  '盒': 200,     // 1盒牛奶/酸奶约200g
+  '瓶': 500,     // 1瓶水/饮料约500g
+  '根': 100,     // 1根黄瓜/香蕉约100g
+  '条': 50,      // 1条鱼约50g
+  '袋': 50,      // 1袋零食约50g
+  '粒': 5,       // 1粒药/糖果约5g
+  '颗': 5,
+  '口': 20       // 1口约20g
+};
+
+/**
+ * 常见食物单份典型重量（克）
+ * 用于覆盖通用换算表中过于笼统的默认值
+ */
+const FOOD_TYPICAL_WEIGHTS = {
+  '彩椒': { '个': 120 },
+  '黄椒': { '个': 120 },
+  '红椒': { '个': 120 },
+  '青椒': { '个': 120 },
+  '尖椒': { '个': 60 },
+  '辣椒': { '个': 15 },
+  '小米辣': { '个': 5 },
+  '朝天椒': { '个': 5 }
+};
+
+/**
+ * 判断原消息中是否明确给出了某食物的克数
+ */
+function hasExplicitGramWeight(content, foodName) {
+  if (!content || !foodName) return false;
+  const escaped = foodName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(escaped + '[^，,、；;。\\n]*?(\\d+(?:\\.\\d+)?)\\s*[克g](?!\\w)', 'i');
+  return regex.test(content);
+}
+
+/**
+ * 根据原消息推断食物的计数数量
+ */
+function inferCountFromContent(content, foodName) {
+  if (!content || !foodName) return null;
+  const escaped = foodName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const countUnits = '[个只片块杯碗勺条颗粒瓣份盒袋瓶根口]';
+  // 半个/半只/半片...
+  if (new RegExp(`半\\s*${countUnits}?\\s*${escaped}`).test(content)) {
+    return { quantity: 0.5, unit: '个' };
+  }
+  // X个/片/根...
+  const regex = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${countUnits})\\s*${escaped}`, 'i');
+  const match = content.match(regex);
+  if (match) {
+    return { quantity: parseFloat(match[1]), unit: match[2] };
+  }
+  return null;
+}
+
+/**
+ * 获取某食物在单位下的典型重量
+ */
+function getTypicalWeight(foodName, unit) {
+  if (!unit) return null;
+  // 优先按具体食物名匹配（取长匹配）
+  const names = Object.keys(FOOD_TYPICAL_WEIGHTS).sort((a, b) => b.length - a.length);
+  for (const name of names) {
+    if (foodName.includes(name)) {
+      const w = FOOD_TYPICAL_WEIGHTS[name][unit];
+      if (w) return w;
+    }
+  }
+  return UNIT_WEIGHTS[unit] || null;
+}
+
+/**
+ * 校验并修正 LLM 估算的食物重量，避免“半个彩椒 497g”这类离谱值
+ */
+function sanitizeFoodWeights(content, data) {
+  if (!content || !Array.isArray(data.foods)) return data;
+  for (const food of data.foods) {
+    const name = food.name || '';
+    let unit = food.unit || 'g';
+    let quantity = parseFloat(food.quantity);
+    if (isNaN(quantity) || quantity <= 0) quantity = 1;
+    const currentWeight = parseFloat(food.weight) || 0;
+
+    // 用户明确写了克数，直接信任
+    if (hasExplicitGramWeight(content, name)) continue;
+
+    // 如果只有热量没有重量（如“黄彩椒160千卡”），不碰重量
+    if (currentWeight <= 0 && (food.calorie || 0) > 0) continue;
+
+    // 若 LLM 把计数食物填成了 g，尝试从原文推断计数
+    let expectedUnit = unit;
+    let expectedQty = quantity;
+    if ((unit === 'g' || unit === '克') && currentWeight > 0) {
+      const inferred = inferCountFromContent(content, name);
+      if (inferred) {
+        expectedUnit = inferred.unit;
+        expectedQty = inferred.quantity;
+      } else {
+        continue; // 没有计数信息，无法校验
+      }
+    }
+
+    const typicalPerUnit = getTypicalWeight(name, expectedUnit);
+    if (!typicalPerUnit) continue;
+
+    const expectedWeight = expectedQty * typicalPerUnit;
+    // 阈值：超过期望 1.5 倍，或超过单份典型重量 3 倍
+    const threshold = Math.max(expectedWeight * 1.5, typicalPerUnit * 3);
+
+    if (currentWeight <= 0 || currentWeight > threshold) {
+      food.weight = expectedWeight;
+      food.unit = expectedUnit;
+      food.quantity = expectedQty;
+      // 清空 AI 估算的营养素，让 computeFoodNutrition 按修正后的重量重新计算
+      food.calorie = 0;
+      food.protein = 0;
+      food.carb = 0;
+      food.fat = 0;
+      console.log(`[重量校验] ${name}: ${currentWeight}g → ${expectedWeight}g (${expectedQty}${expectedUnit})`);
+    }
+  }
+  return data;
+}
+
+/**
+ * 兜底：聊天记录里明确写了「已知运动 + 时长」，但 LLM 没有提取成 exercise_record 时，
+ * 通过关键词扫描补回。避免「早餐吃了…然后哑铃臀腿40分钟…」这类消息只记录饮食。
+ */
+const EXERCISE_PREFIX_FILLERS = /^(?:然后|接着|再|又|刚|就|还|也|先|后|最后|并且|不过|但是|而且|练了|做了|运动了|锻炼了|训练了|了|的|吃|喝)+/;
+
+function cleanExerciseName(name) {
+  return name.replace(EXERCISE_PREFIX_FILLERS, '').trim();
+}
+
+function extractExerciseNamesAroundKeyword(content, kw, startIdx) {
+  // 向前后扩展中文，获取完整运动名称
+  let start = startIdx;
+  while (start > 0 && /[\u4e00-\u9fa5]/.test(content[start - 1]) && startIdx - start < 6) start--;
+  let end = startIdx + kw.length;
+  while (end < content.length && /[\u4e00-\u9fa5]/.test(content[end]) && end - start < 10) end++;
+  return cleanExerciseName(content.slice(start, end));
+}
+
+function recoverMissedExercises(content, rawItems) {
+  if (!content || !Array.isArray(rawItems)) return rawItems;
+
+  const knownExercises = Object.keys(EXERCISE_MET_VALUES).sort((a, b) => b.length - a.length);
+  const seenNames = new Set();
+
+  // 收集 LLM 已经提取的运动名，避免重复兜底
+  for (const item of rawItems) {
+    if (item.type !== 'exercise_record') continue;
+    for (const e of item.extracted_data?.exercises || []) {
+      if (e.name) seenNames.add(e.name);
+    }
+  }
+
+  for (const kw of knownExercises) {
+    if (!content.includes(kw)) continue;
+    let idx = content.indexOf(kw);
+    while (idx !== -1) {
+      const rawName = extractExerciseNamesAroundKeyword(content, kw, idx);
+      if (!rawName || rawName.length < 2) {
+        idx = content.indexOf(kw, idx + 1);
+        continue;
+      }
+
+      // 在运动名后 15 个字符内找「X分钟」
+      const after = content.slice(idx + kw.length, idx + kw.length + 15);
+      const durMatch = after.match(/(\d+(?:\.\d+)?)\s*分钟/);
+      if (durMatch) {
+        const duration = parseFloat(durMatch[1]);
+        const alreadyExtracted = [...seenNames].some(n =>
+          n === rawName || n.includes(rawName) || rawName.includes(n)
+        );
+        if (!alreadyExtracted && duration > 0) {
+          rawItems.push({
+            extracted: true,
+            type: 'exercise_record',
+            confidence: 0.9,
+            extracted_data: {
+              exercises: [{ name: rawName, duration, intensity: 'moderate', calorie: 0 }],
+              total_duration: duration,
+              total_calorie: 0
+            },
+            tags: ['运动']
+          });
+          seenNames.add(rawName);
+          console.log(`[运动兜底] 补充运动: ${rawName} ${duration}分钟`);
+        }
+      }
+      idx = content.indexOf(kw, idx + 1);
+    }
+  }
+  return rawItems;
+}
+
+/**
+ * 信息沉淀 Agent（独立后台）
+ * 职责：聊天记录实时扫描、信息提取、置信度计算、数据同步
+ * 模型：豆包 doubao-lite-32k（备用：fit-Backup）
+ */
+const { db } = require('../../db');
+const { callWithPrompt } = require('../aiClient');
+const { computeFoodNutrition } = require('../nutritionService');
+const promptService = require('../promptService');
+const tagMatcher = require('../tagMatcher');
+const { isQuestionContent, hasNegativeRecordIntent, hasSelfReportMarker } = require('../../utils/intent');
+
+
+/**
+ * 快速判断消息是否值得沉淀（本地过滤，避免浪费API调用）
+ */
+function shouldPrecipitate(content) {
+  const text = (content || '').trim();
+  if (text.length < 5) return false;
+
+  // 本地标签匹配器能识别出食物/运动/身体数据/喝水，直接触发沉淀
+  if (tagMatcher.matchMessageTags(text)) {
+    return true;
+  }
+
+  const contentLower = text.toLowerCase();
+
+  const keywords = [
+    '吃', '喝', '早餐', '午餐', '晚餐', '饭', '菜', '肉', '蛋', '奶', '水果', '零食',
+    '卡路里', '千卡', '热量', '碳水', '蛋白质', '脂肪', '糖', '油',
+    '运动', '健身', '跑步', '慢跑', '快跑', '超慢跑', '变速跑', '间歇跑', '长跑', '短跑', '冲刺跑', '夜跑', '晨跑',
+    '走路', '快走', '慢走', '散步', '健走', '徒步', '逛街', '爬楼梯', '爬山', '登山',
+    '游泳', '蛙泳', '自由泳', '仰泳', '蝶泳', '潜水', '浮潜',
+    '骑车', '骑行', '自行车', '动感单车', '椭圆机', '划船机',
+    '篮球', '足球', '排球', '羽毛球', '乒乓球', '网球', '台球', '保龄球', '高尔夫',
+    '瑜伽', '普拉提', '拉伸', '太极', '气功', '冥想',
+    '深蹲', '俯卧撑', '平板支撑', '仰卧起坐', '卷腹', '引体向上', '举重', '哑铃', '杠铃', '器械训练',
+    '跳绳', '跳舞', '广场舞', '健身操', '搏击操', '有氧操', '尊巴',
+    'HIIT', 'Tabata', '拳击', '打拳', '跆拳道', '空手道', '柔道', '轮滑', '滑板', '攀岩', '滑雪', '滑冰',
+    '有氧', '无氧', '力量', '训练', '公里', '千米', 'km', '分钟', '小时', '步', '米', 'm',
+    '有氧', '无氧', '力量', '训练', 'HIIT', '深蹲', '俯卧撑', '平板支撑',
+    '体重', '体脂', 'BMI', '腰围', '腿围', '臀围', '胸围', '肌肉',
+    '斤', '公斤', '厘米', 'kg',
+    '喝水', '睡眠', '睡觉', '熬夜', '排便', '便秘', '心情', '情绪',
+    '方法', '技巧', '建议', '经验', '分享', '食谱', '做法', '教程',
+    '感悟', '心得', '体会', '总结', '反思',
+    '发现', '意识到', '原来', '终于明白', '悟到',
+    '开心', '难过', '焦虑', '烦躁', '愧疚', '兴奋', '激动',
+    '坚持', '放弃', '成功', '失败', '平台期', '掉秤', '涨秤',
+    '目标', '计划', '今天', '明天'
+  ];
+  
+  return keywords.some(k => contentLower.includes(k));
+}
+
+const ASSET_TYPES = ['recipe', 'method', 'pitfall', 'insight', 'quote'];
+
+/**
+ * 个人资产类沉淀必须有实质内容
+ */
+function hasAssetContent(data) {
+  if (!data || typeof data !== 'object') return false;
+  return !!(
+    (data.title && String(data.title).trim()) ||
+    (data.name && String(data.name).trim()) ||
+    (data.content && String(data.content).trim()) ||
+    (Array.isArray(data.steps) && data.steps.length > 0) ||
+    (Array.isArray(data.ingredients) && data.ingredients.length > 0)
+  );
+}
+
+/**
+ * 验证沉淀项的有效性
+ * - diet_record: 必须有 foods 数组且至少一个食物
+ * - exercise_record: 必须有 exercises 数组且至少一项运动
+ * - body_data: 必须有 value
+ * - habit: 必须有 value 和 sub_type
+ * - 个人资产类(recipe/method/pitfall/insight/quote): 必须有实质内容
+ * - 其他类型: 有 extracted_data 即可
+ */
+function isValidPrecipitationItem(item) {
+  if (!item.type) return false;
+  
+  const data = item.extracted_data || {};
+  
+  switch (item.type) {
+    case 'diet_record': {
+      const foods = data.foods || [];
+      if (!Array.isArray(foods) || foods.length === 0) {
+        console.log(`[沉淀过滤] diet_record 被过滤: foods为空`);
+        return false;
+      }
+      // 检查每个食物是否有名称
+      const validFoods = foods.filter(f => f && f.name && f.name.trim());
+      if (validFoods.length === 0) {
+        console.log(`[沉淀过滤] diet_record 被过滤: 无有效食物名称`);
+        return false;
+      }
+      return true;
+    }
+    case 'exercise_record': {
+      const exercises = data.exercises || [];
+      if (!Array.isArray(exercises) || exercises.length === 0) {
+        console.log(`[沉淀过滤] exercise_record 被过滤: exercises为空`);
+        return false;
+      }
+      return true;
+    }
+    case 'body_data': {
+      if (data.value === undefined || data.value === null || data.value === '') {
+        console.log(`[沉淀过滤] body_data 被过滤: value为空`);
+        return false;
+      }
+      return true;
+    }
+    case 'habit': {
+      if (data.value === undefined || data.value === null) {
+        console.log(`[沉淀过滤] habit 被过滤: value为空`);
+        return false;
+      }
+      if (!data.sub_type) {
+        console.log(`[沉淀过滤] habit 被过滤: sub_type为空`);
+        return false;
+      }
+      return true;
+    }
+    default: {
+      if (ASSET_TYPES.includes(item.type)) {
+        if (!hasAssetContent(data)) {
+          console.log(`[沉淀过滤] ${item.type} 被过滤: 无实质内容`);
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+}
+
+/**
+ * 判断两个字符串是否有长度≥minLen的公共子串
+ */
+function hasCommonSubstring(a, b, minLen = 2) {
+  if (!a || !b) return false;
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  for (let len = minLen; len <= shorter.length; len++) {
+    for (let i = 0; i <= shorter.length - len; i++) {
+      if (longer.includes(shorter.slice(i, i + len))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 判断两个 exercise 数组是否重叠（同一条消息内去重）
+ */
+function exercisesOverlap(exercisesA, exercisesB) {
+  if (!exercisesA.length || !exercisesB.length) return false;
+  for (const a of exercisesA) {
+    for (const b of exercisesB) {
+      const aName = a.name || '';
+      const bName = b.name || '';
+      if (aName === bName) return true;
+      if (hasCommonSubstring(aName, bName, 2)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 对同一批沉淀记录中的运动记录进行去重，保留名称更具体（更长）的一条
+ */
+function deduplicateExercisesInBatch(items) {
+  const result = [];
+  for (const item of items) {
+    if (item.type !== 'exercise_record') {
+      result.push(item);
+      continue;
+    }
+    const newExercises = item.extracted_data?.exercises || [];
+    let merged = false;
+    for (let i = 0; i < result.length; i++) {
+      const existing = result[i];
+      if (existing.type !== 'exercise_record') continue;
+      const existingExercises = existing.extracted_data?.exercises || [];
+      if (exercisesOverlap(existingExercises, newExercises)) {
+        const existingLen = existingExercises.reduce((sum, e) => sum + (e.name || '').length, 0);
+        const newLen = newExercises.reduce((sum, e) => sum + (e.name || '').length, 0);
+        if (newLen > existingLen) {
+          result[i] = item;
+        }
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) result.push(item);
+  }
+  return result;
+}
+
+/**
+ * 从文本中提取所有顶层 JSON 对象
+ */
+function extractJsonObjects(text) {
+  const objects = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        objects.push(text.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return objects;
+}
+
+/**
+ * 处理单个沉淀项
+ */
+function processSinglePrecipitation(userId, chatId, content, item, recordDate) {
+  const confidence = parseFloat(item.confidence) || 0;
+  if (confidence < 0.7) return null;
+
+  let data = item.extracted_data || {};
+
+  // 感悟/金句的实质内容必须是用户原话，不要 LLM 改写或摘要
+  if (item.type === 'insight' || item.type === 'quote') {
+    data = { ...data, content: content.trim() };
+
+    // insight 原话不超过100字时，不需要标题（标题选填）
+    if (item.type === 'insight' && content.trim().length <= 100) {
+      data.title = '';
+    }
+  }
+
+  const isAutoConfirmAsset = item.type === 'insight' || item.type === 'quote';
+  const status = isAutoConfirmAsset ? 1 : (confidence >= 0.85 ? 1 : 2);
+
+  const insert = db.prepare(`
+    INSERT INTO precipitation_records
+    (user_id, chat_id, type, sub_type, content, extracted_data, confidence, status, source, tags, remark)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const precipitationId = insert.run(
+    userId, chatId, item.type, item.sub_type || null, content,
+    JSON.stringify(data), confidence, status, 0,
+    item.tags ? JSON.stringify(item.tags) : null, null
+  ).lastInsertRowid;
+
+  return { precipitation_id: precipitationId, type: item.type, sub_type: item.sub_type || null, confidence, status, extracted_data: data };
+}
+
+/**
+ * 检查今天是否已有相同或相似的记录（去重）
+ * 对于饮食记录：检查同一餐别是否已有相同食物
+ * 对于运动记录：检查今天是否已有相同运动
+ * 对于习惯记录：检查今天是否已有相同类型记录
+ * 对于身体数据：检查今天是否已有相同类型记录
+ */
+function hasDuplicateRecord(userId, type, data, recordDate) {
+  const today = recordDate || new Date().toISOString().split('T')[0];
+  
+  switch (type) {
+    case 'diet_record': {
+      const dietData = data || {};
+      const mealTime = dietData.meal_time || 'snack';
+      const newFoods = dietData.foods || [];
+      if (newFoods.length === 0) return { isDuplicate: false, recordId: null };
+      
+      // 查询今天该餐别的所有记录
+      const existingRecords = db.prepare(`
+        SELECT id, foods FROM diet_records 
+        WHERE user_id = ? AND record_date = ? AND meal_time = ?
+      `).all(userId, today, mealTime);
+      
+      // 检查每个新食物是否已存在（按名称模糊匹配：互相包含即视为同一食物）
+      const foodsToMerge = []; // 需要累加的食物
+      const foodsToUpdate = []; // 需要更新（热量修正）的食物
+      const newFoodsToAdd = []; // 全新的食物
+      
+      for (const newFood of newFoods) {
+        let foundExisting = false;
+        for (const record of existingRecords) {
+          const existingFoods = JSON.parse(record.foods || '[]');
+          // 模糊匹配：新食物名包含已有食物名，或已有食物名包含新食物名
+          const found = existingFoods.find(ef => {
+            const efName = ef.name || '';
+            const nfName = newFood.name || '';
+            return efName === nfName || 
+                   (efName.length > 1 && nfName.includes(efName)) || 
+                   (nfName.length > 1 && efName.includes(nfName));
+          });
+          if (found) {
+            foundExisting = true;
+            // 判断是累加还是更新：如果新记录没有明确的重量/数量，只有热量，视为修正
+            const isCorrection = (!newFood.weight || newFood.weight <= 0) && 
+                                  (!newFood.quantity || newFood.quantity <= 0) &&
+                                  (newFood.calorie > 0);
+            if (isCorrection) {
+              // 热量修正：用新热量替换旧热量
+              foodsToUpdate.push({
+                newFood,
+                recordId: record.id,
+                existingFood: found
+              });
+            } else {
+              // 正常累加
+              foodsToMerge.push({ 
+                newFood, 
+                recordId: record.id,
+                existingFood: found
+              });
+            }
+            break;
+          }
+        }
+        if (!foundExisting) {
+          newFoodsToAdd.push(newFood);
+        }
+      }
+      
+      // 如果有需要更新的食物（热量修正），返回更新标记
+      if (foodsToUpdate.length > 0) {
+        return {
+          isDuplicate: false,
+          recordId: null,
+          hasUpdate: true,
+          foodsToUpdate,
+          newFoodsToAdd
+        };
+      }
+      
+      // 如果有需要累加的食物，返回累加标记
+      if (foodsToMerge.length > 0) {
+        return { 
+          isDuplicate: false, 
+          recordId: null, 
+          hasMerge: true, 
+          foodsToMerge,
+          newFoodsToAdd
+        };
+      }
+      
+      // 如果所有食物都是全新的
+      if (newFoodsToAdd.length > 0) {
+        return { isDuplicate: false, recordId: null, newFoodsToAdd };
+      }
+      
+      return { isDuplicate: true, recordId: null };
+    }
+    case 'exercise_record': {
+      const exData = data || {};
+      const newExercises = exData.exercises || [];
+      if (newExercises.length === 0) return { isDuplicate: false, recordId: null };
+      
+      // 查询今天的所有运动记录
+      const existingRecords = db.prepare(`
+        SELECT id, exercises FROM exercise_records 
+        WHERE user_id = ? AND record_date = ?
+      `).all(userId, today);
+      
+      for (const record of existingRecords) {
+        const existingExercises = JSON.parse(record.exercises || '[]');
+        for (const newEx of newExercises) {
+          // 模糊匹配：名称完全相同，或存在≥2字的公共子串（如"哑铃练背"与"哑铃训练肩胸背"）
+          const isDuplicate = existingExercises.some(ee => {
+            const eeName = ee.name || '';
+            const newName = newEx.name || '';
+            const nameMatch = eeName === newName || hasCommonSubstring(eeName, newName, 2);
+            return nameMatch && ee.duration == newEx.duration;
+          });
+          if (isDuplicate) return { isDuplicate: true, recordId: record.id };
+        }
+      }
+      return { isDuplicate: false, recordId: null };
+    }
+    case 'habit': {
+      const habitData = data || {};
+      const subType = habitData.sub_type || 'water';
+      
+      // 查询今天是否有相同类型的习惯记录
+      const existing = db.prepare(`
+        SELECT id, value FROM habit_records 
+        WHERE user_id = ? AND record_date = ? AND type = ?
+      `).get(userId, today, subType);
+      
+      if (existing) {
+        // 对于喝水，累加；对于睡眠/排便，更新
+        return { isDuplicate: true, recordId: existing.id, existingValue: existing.value };
+      }
+      return { isDuplicate: false, recordId: null };
+    }
+    case 'body_data': {
+      const bodyData = data || {};
+      const subType = bodyData.sub_type || 'weight';
+      
+      // 查询今天是否有相同类型的身体数据记录
+      const existing = db.prepare(`
+        SELECT id FROM body_records 
+        WHERE user_id = ? AND record_date = ? AND type = ?
+      `).get(userId, today, subType);
+      
+      if (existing) return { isDuplicate: true, recordId: existing.id };
+      return { isDuplicate: false, recordId: null };
+    }
+    default:
+      return { isDuplicate: false, recordId: null };
+  }
+}
+
+/**
+ * 基于MET值计算运动热量消耗
+ * 公式: 热量(千卡) = MET值 × 体重(kg) × 时长(小时) × 1.05
+ * 默认体重60kg
+ * MET值来源: Compendium of Physical Activities (2011)
+ */
+// 完整MET值参考表 (基于60kg体重计算出的千卡/小时)
+const EXERCISE_MET_VALUES = {
+    // ===== 拉伸/瑜伽 (MET 1.5-3.5) =====
+    '冥想': 1.5, '正念': 1.5, '呼吸训练': 1.5,
+    '拉伸': 2.0, '静态拉伸': 2.0, '动态拉伸': 2.5, 'PNF拉伸': 2.5,
+    '筋膜放松': 2.0, '泡沫轴': 2.0,
+    '瑜伽': 2.5, '阴瑜伽': 2.0, '流瑜伽': 3.0, '哈他瑜伽': 2.5,
+    '阿斯汤加': 4.0, '高温瑜伽': 4.5, '空中瑜伽': 3.0,
+    '普拉提': 3.0, '美丽芭蕾': 3.0, '天鹅臂': 2.5, '天鹅腿': 3.0, '纤腰': 3.0,
+    '睡前拉伸': 1.5, '晨间唤醒': 2.5, '午休运动': 2.5,
+    
+    // ===== 低强度有氧 (MET 2.5-4.0) =====
+    '慢走': 2.5, '散步': 2.5, '走路': 3.0,
+    '超慢跑': 3.5, '原地跑': 3.5,
+    '逛街': 2.5, '站立': 2.0, '久坐': 1.5,
+    '太极': 3.0, '气功': 2.5,
+    
+    // ===== 中等强度有氧 (MET 4.0-6.0) =====
+    '快走': 5.0, '健走': 5.5, '徒步': 5.0, '暴走': 5.5,
+    '骑车': 5.5, '骑行': 5.5, '自行车': 5.0, '休闲骑车': 4.0,
+    '动感单车': 6.0, '室内单车': 5.5, '磁控车': 4.5,
+    '椭圆机': 5.5, '划船机': 6.0,
+    '跳舞': 5.0, '广场舞': 4.5, '健身操': 5.0, '有氧操': 5.5,
+    '搏击操': 6.0, '尊巴': 5.5, '街舞': 5.5, '拉丁舞': 5.0,
+    '芭蕾舞': 5.0, '爵士舞': 5.0, '现代舞': 5.0, '民族舞': 4.5,
+    '交谊舞': 4.0, '摇摆舞': 4.5, '燃脂舞': 5.5, '减脂舞': 5.5, '健身舞': 5.0,
+    '爬楼梯': 6.0, '爬楼': 6.0,
+    
+    // ===== 球类运动 (MET 4.0-7.0) =====
+    '乒乓球': 4.0, '台球': 3.0, '门球': 3.5,
+    '排球': 4.0, '羽毛球': 5.5,
+    '篮球': 6.5, '足球': 7.0, '网球': 7.0,
+    '壁球': 8.0, '保龄球': 3.5, '高尔夫': 4.0,
+    
+    // ===== 格斗类 (MET 6.0-10.0) =====
+    '咏春': 4.5, '太极': 3.0,
+    '跆拳道': 8.0, '空手道': 8.0, '柔道': 8.0,
+    '散打': 9.0, '拳击': 9.0, '打拳': 8.0, '泰拳': 10.0,
+    
+    // ===== 跑步 (MET 6.0-12.0) =====
+    '跑步': 8.0, '慢跑': 7.0, '快跑': 10.0,
+    '变速跑': 9.0, '间歇跑': 9.0, '长跑': 8.0,
+    '短跑': 12.0, '冲刺跑': 12.0,
+    '夜跑': 8.0, '晨跑': 8.0, '越野跑': 9.0,
+    '跑步机': 8.0, '爬坡跑': 10.0,
+    
+    // ===== 游泳 (MET 6.0-10.0) =====
+    '游泳': 8.0, '蛙泳': 8.0, '自由泳': 9.0, '仰泳': 7.0, '蝶泳': 10.0,
+    '水中漫步': 4.5, '水中有氧': 5.0,
+    
+    // ===== 跳绳 (MET 8.0-12.0) =====
+    '跳绳': 10.0, '单摇': 9.0, '双摇': 12.0, '花式跳绳': 10.0,
+    
+    // ===== 高强度间歇 (MET 8.0-12.0) =====
+    'HIIT': 10.0, 'Tabata': 12.0, '高强度间歇': 10.0,
+    '开合跳': 8.0, '波比跳': 9.0, '高抬腿': 7.0,
+    
+    // ===== 自重力量 (MET 3.5-6.0) =====
+    '深蹲': 5.5, '徒手深蹲': 5.0, '箭步蹲': 5.0, '保加利亚蹲': 5.5,
+    '靠墙静蹲': 2.5, '马步': 2.5,
+    '俯卧撑': 5.0, '引体向上': 6.0, '引体向上机': 5.0,
+    '仰卧起坐': 4.0, '卷腹': 4.0, '俄罗斯转体': 4.5,
+    '臀桥': 3.5, '桥式': 3.5, '死虫式': 3.0, '鸟狗式': 3.0,
+    '平板支撑': 2.5, '侧平板': 2.5,
+    '倒立': 4.0, '手倒立': 4.5,
+    '登山跑': 6.0, '单腿硬拉': 4.5,
+    
+    // ===== 弹力带/阻力带 (MET 2.5-3.5) =====
+    '弹力带': 3.0, '弹力带练背': 3.0, '弹力带练臀': 3.0,
+    '弹力带练肩': 3.0, '弹力带练胸': 3.0, '弹力带练腿': 3.0,
+    '弹力带训练': 3.0, '阻力带': 3.0, '拉力带': 3.0, '乳胶带': 3.0,
+    '8字拉力器': 2.5, '开肩美背': 2.5,
+    
+    // ===== 哑铃训练 (MET 3.5-5.5) =====
+    '哑铃': 4.5, '哑铃弯举': 4.0, '哑铃推举': 4.5,
+    '哑铃飞鸟': 4.0, '哑铃划船': 4.5, '哑铃深蹲': 5.0,
+    '哑铃硬拉': 5.0, '哑铃侧平举': 3.5, '哑铃前平举': 3.5,
+    '哑铃臀腿': 4.5, '臀腿': 4.5, '臀腿训练': 4.5,
+    
+    // ===== 杠铃训练 (MET 4.5-6.5) =====
+    '杠铃': 5.0, '杠铃深蹲': 6.0, '杠铃硬拉': 6.0,
+    '杠铃卧推': 5.5, '杠铃划船': 5.5, '杠铃推举': 5.0,
+    '杠铃弯举': 4.0, '杠铃臀推': 5.0,
+    '相扑硬拉': 6.0, '罗马尼亚硬拉': 5.5,
+    
+    // ===== 器械训练 (MET 4.0-6.0) =====
+    '器械训练': 5.0, '器械推胸': 4.5, '器械划船': 4.5,
+    '器械夹胸': 4.0, '腿举': 5.0, '腿弯举': 4.0, '腿屈伸': 4.0,
+    '坐姿划船': 4.5, '高位下拉': 4.5,
+    '史密斯机': 5.0, '龙门架': 4.5, '蝴蝶机': 3.5, '推胸机': 4.5,
+    
+    // ===== 壶铃训练 (MET 5.0-7.0) =====
+    '壶铃': 6.0, '壶铃摇摆': 7.0, '壶铃抓举': 7.0,
+    '壶铃深蹲': 6.0, '壶铃推举': 6.0, '土耳其起立': 6.0,
+    
+    // ===== TRX/悬挂 (MET 4.5-5.5) =====
+    'TRX': 5.0, '悬挂训练': 5.0, 'TRX划船': 4.5,
+    'TRX深蹲': 4.5, 'TRX俯卧撑': 5.0,
+    
+    // ===== 战绳/功能性 (MET 5.0-8.0) =====
+    '战绳': 8.0, '甩绳': 8.0, '药球': 6.0, '药球抛': 6.0,
+    '沙袋': 6.0, '轮胎翻': 7.0, '农夫行走': 5.5, '雪橇推': 7.0,
+    
+    // ===== 登山/攀岩 (MET 5.0-8.0) =====
+    '爬山': 6.5, '登山': 7.0, '攀岩': 8.0, '攀冰': 9.0,
+    '溯溪': 6.0, '漂流': 4.0,
+    
+    // ===== 冰雪运动 (MET 5.0-7.0) =====
+    '滑雪': 7.0, '滑冰': 7.0, '轮滑': 7.0, '滑板': 5.0,
+    
+    // ===== 日常活动 (MET 1.5-4.0) =====
+    '做家务': 2.5, '打扫卫生': 2.5, '拖地': 3.0,
+    '擦窗户': 3.0, '洗衣服': 2.5, '做饭': 2.5,
+    '洗碗': 2.0, '整理房间': 2.5,
+    '搬东西': 4.0, '抱孩子': 3.0, '遛狗': 3.0,
+    '园艺': 3.5, '种菜': 3.5, '洗车': 3.0,
+    
+    // ===== 产后/特殊 (MET 1.5-3.0) =====
+    '产后恢复': 3.0, '盆底肌训练': 2.0, '凯格尔运动': 2.0,
+    '腹直肌修复': 2.5, '办公室运动': 2.5,
+    '椅子瑜伽': 2.0, '坐姿运动': 2.0, '床上运动': 2.0,
+    '碎片化运动': 2.5, '微运动': 2.5, '办公室微运动': 2.0,
+    
+    // ===== 帕梅拉 (MET 6.0-8.0) =====
+    '帕梅拉': 6.0, '帕梅拉燃脂': 7.0, '帕梅拉HIIT': 8.0,
+    '帕梅拉腹肌': 5.5, '帕梅拉臀腿': 6.0, '帕梅拉有氧': 7.0,
+    '帕梅拉拉伸': 2.5, '帕梅拉舞蹈': 6.0,
+    '帕梅拉初学者': 4.5, '帕梅拉10分钟': 6.0,
+    '帕梅拉15分钟': 6.0, '帕梅拉20分钟': 6.0,
+    
+    // ===== 周六野 (MET 5.0-6.5) =====
+    '周六野': 5.0, '周六野燃脂': 6.0, '周六野拉伸': 2.5,
+    '周六野改善体态': 3.0, '周六野瘦小腿': 3.5,
+    '周六野瘦腰': 4.0, '周六野马甲线': 4.5,
+    '周六野全身燃脂': 6.0,
+    
+    // ===== 欧阳春晓 (MET 4.0-5.0) =====
+    '欧阳春晓': 4.5, '欧阳春晓沙漏腰': 4.0,
+    '欧阳春晓直角肩': 3.0, '欧阳春晓少女背': 3.0,
+    '欧阳春晓拉伸': 2.5,
+    
+    // ===== 韩小四 (MET 3.5-5.5) =====
+    '韩小四': 4.0, '韩小四瘦手臂': 3.5,
+    '韩小四瘦小腿': 3.5, '韩小四瘦大腿': 4.0,
+    '韩小四全身燃脂': 5.0,
+    
+    // ===== 刘畊宏 (MET 6.0-8.0) =====
+    '刘畊宏': 6.0, '刘畊宏毽子操': 6.0,
+    '刘畊宏本草纲目': 7.0, '刘畊宏龙拳': 8.0,
+    '刘畊宏牛仔很忙': 6.0,
+    '毽子操': 6.0, '本草纲目': 7.0, '龙拳': 8.0, '牛仔很忙': 6.0,
+    
+    // ===== 郑多燕 (MET 4.5-5.0) =====
+    '郑多燕': 4.5, '郑多燕小红帽': 5.0, '郑多燕小灰帽': 4.5,
+    
+    // ===== 海外博主 (MET 5.0-8.0) =====
+    'Chloe Ting': 6.0, 'Chloe Ting腹肌': 5.5, 'Chloe Ting燃脂': 7.0,
+    'Growingannanas': 7.0, 'Growingannanas HIIT': 8.0,
+    'Eleni Fit': 6.0, 'Eleni Fit站立': 5.5,
+    'Mizi': 5.0, 'Mizi瘦腰': 4.5,
+    'Yuuka Sagawa': 3.0, 'Yuuka瘦背': 2.5,
+    'Caroline Girvan': 7.0, 'Caroline力量': 6.0,
+    'Heather Robertson': 6.0,
+    'MadFit': 5.5, 'MadFit舞蹈': 5.0,
+    'Fitness Blender': 6.0,
+    'Blogilates': 4.5, 'Blogilates普拉提': 4.0,
+    
+    // ===== 健身APP (MET 4.5-7.0) =====
+    'Keep': 5.5, 'Keep燃脂跑': 7.0, 'Keep马甲线': 4.5,
+    'Keep腹肌撕裂者': 5.0, 'Keep哑铃': 4.5,
+    'Keep瑜伽': 2.5, 'Keep拉伸': 2.0,
+    'KeepHIIT': 8.0, 'Keep跳绳': 9.0,
+    'Keep单车': 5.5, 'Keep操课': 5.0,
+    '薄荷健康': 5.0, '薄荷HIIT': 7.0, '薄荷瑜伽': 2.5,
+    '乐刻': 5.5, '乐刻团课': 6.0,
+    '超级猩猩': 7.0, '超级猩猩战绳': 8.0,
+    '超级猩猩单车': 7.0, '超级猩猩搏击': 8.0,
+    
+    // ===== 瘦手臂/局部 (MET 3.0-4.5) =====
+    '瘦手臂操': 3.0, '瘦腿操': 3.5, '瘦腰操': 4.0,
+    '全身燃脂操': 6.0
+};
+
+/**
+ * 从运动库（exercise_db）查找最匹配的运动
+ * 优先最长名称匹配
+ */
+function getExerciseFromDb(name) {
+  if (!name) return null;
+  const input = String(name).toLowerCase();
+  try {
+    const rows = db.prepare(`SELECT exercise_name, met_value, calorie_per_hour, intensity_desc FROM exercise_db`).all();
+    let best = null;
+    let bestScore = 0;
+    for (const row of rows) {
+      const dbName = String(row.exercise_name || '').toLowerCase();
+      if (!dbName) continue;
+      const matched = input.includes(dbName) || dbName.includes(input);
+      if (matched && dbName.length > bestScore) {
+        bestScore = dbName.length;
+        best = row;
+      }
+    }
+    return best;
+  } catch (e) {
+    console.error('[getExerciseFromDb] 查询运动库失败:', e.message);
+    return null;
+  }
+}
+
+function calculateExerciseCalorie(exerciseName, duration, intensity = 'moderate', weight = 60) {
+  const name = (exerciseName || '').toLowerCase();
+
+  // 优先查询运动库
+  const dbExercise = getExerciseFromDb(exerciseName);
+  if (dbExercise && dbExercise.met_value) {
+    const met = parseFloat(dbExercise.met_value);
+    const durationHour = (duration || 0) / 60;
+    return Math.max(Math.round(met * weight * durationHour * 1.05), 10);
+  }
+
+  // 查找匹配的运动MET值（优先最长匹配）
+  let met = 0;
+  let bestMatch = '';
+  for (const [exercise, value] of Object.entries(EXERCISE_MET_VALUES)) {
+    if (name.includes(exercise.toLowerCase()) && exercise.length > bestMatch.length) {
+      met = value;
+      bestMatch = exercise;
+    }
+  }
+  
+  // 如果没有匹配到，根据强度使用默认值
+  if (met === 0) {
+    const intensityMet = {
+      'low': 3.0,
+      'moderate': 5.0,
+      'high': 8.0
+    };
+    met = intensityMet[intensity] || 5.0;
+  }
+  
+  // 计算热量: MET × 体重(kg) × 时长(小时) × 1.05
+  const durationHour = (duration || 0) / 60;
+  const calorie = Math.round(met * weight * durationHour * 1.05);
+  
+  return Math.max(calorie, 10); // 最少10千卡
+}
+
+const VALID_MEAL_TIMES = ['breakfast', 'lunch', 'dinner', 'snack'];
+const MEAL_TIME_MAP = {
+  '早餐': 'breakfast', '早饭': 'breakfast', '早上': 'breakfast',
+  '午餐': 'lunch', '午饭': 'lunch', '中午': 'lunch',
+  '晚餐': 'dinner', '晚饭': 'dinner', '晚上': 'dinner',
+  '加餐': 'snack', '下午': 'snack', '夜宵': 'snack'
+};
+
+function inferMealTimeByContent(content) {
+  if (!content) return null;
+  if (/早|早餐|早饭|早上/.test(content)) return 'breakfast';
+  if (/午|午餐|午饭|中午/.test(content)) return 'lunch';
+  if (/晚|晚餐|晚饭|晚上/.test(content)) return 'dinner';
+  if (/加餐|夜宵|下午/.test(content)) return 'snack';
+  return null;
+}
+
+function inferMealTimeByHour(hour = new Date().getHours()) {
+  if (hour >= 6 && hour < 10.5) return 'breakfast';
+  if (hour < 14.5) return 'lunch';
+  if (hour < 17) return 'snack';
+  return 'dinner';
+}
+
+function normalizeMealTime(mealTime, content) {
+  const contentMeal = inferMealTimeByContent(content);
+  const timeMeal = inferMealTimeByHour();
+
+  // 用户原文有明确餐别/时间词，优先级最高
+  if (contentMeal) return contentMeal;
+
+  // LLM 返回了有效餐别：只有和当前时间推断一致时才采用，否则以当前时间推断为准
+  // 避免中午无明确时间词时 LLM 错判成晚餐
+  if (mealTime) {
+    const mt = String(mealTime).trim();
+    const mapped = VALID_MEAL_TIMES.includes(mt) ? mt : MEAL_TIME_MAP[mt];
+    if (mapped) {
+      if (mapped === timeMeal) return mapped;
+      console.log(`[normalizeMealTime] LLM 返回 ${mapped} 与当前时间推断 ${timeMeal} 不一致，采用时间推断`);
+    }
+  }
+
+  return timeMeal;
+}
+
+function normalizeBodySubType(subType) {
+  const map = {
+    '体重': 'weight',
+    '体脂': 'body_fat',
+    '体脂率': 'body_fat',
+    '腰围': 'waist',
+    '臀围': 'hip',
+    '胸围': 'chest',
+    '手臂围': 'arm',
+    '臂围': 'arm',
+    '大腿围': 'thigh',
+    '腿围': 'thigh',
+    '小腿围': 'calf'
+  };
+  return map[subType] || subType || 'weight';
+}
+
+/**
+ * 判断两个食物名是否视为同一种食物（完全相等或互相包含）
+ */
+function foodNamesMatch(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.length > 1 && b.includes(a)) return true;
+  if (b.length > 1 && a.includes(b)) return true;
+  return false;
+}
+
+/**
+ * 把 newFood 的数量/重量/营养素累加到 existingFood
+ */
+function round1(v) {
+  return Math.round((parseFloat(v) || 0) * 10) / 10;
+}
+
+function mergeFoodInto(existingFood, newFood) {
+  existingFood.quantity = round1((parseFloat(existingFood.quantity) || 1) + (parseFloat(newFood.quantity) || 1));
+  existingFood.weight = round1((parseFloat(existingFood.weight) || 0) + (parseFloat(newFood.weight) || 0));
+  existingFood.calorie = round1((parseFloat(existingFood.calorie) || 0) + (parseFloat(newFood.calorie) || 0));
+  existingFood.protein = round1((parseFloat(existingFood.protein) || 0) + (parseFloat(newFood.protein) || 0));
+  existingFood.carb = round1((parseFloat(existingFood.carb) || 0) + (parseFloat(newFood.carb) || 0));
+  existingFood.fat = round1((parseFloat(existingFood.fat) || 0) + (parseFloat(newFood.fat) || 0));
+}
+
+/**
+ * 合并 foods 数组中的同名食物
+ */
+function mergeDuplicateFoodsInList(foods) {
+  const map = new Map();
+  for (const f of foods) {
+    if (!f || !f.name) continue;
+    const existing = map.get(f.name);
+    if (existing) {
+      mergeFoodInto(existing, f);
+    } else {
+      map.set(f.name, { ...f });
+    }
+  }
+  return Array.from(map.values());
+}
+
+/**
+ * 计算 foods 数组的总热量和三大营养素
+ */
+function calculateFoodTotals(foods) {
+  return {
+    calorie: foods.reduce((sum, f) => sum + (parseFloat(f.calorie) || 0), 0),
+    protein: foods.reduce((sum, f) => sum + (parseFloat(f.protein) || 0), 0),
+    carb: foods.reduce((sum, f) => sum + (parseFloat(f.carb) || 0), 0),
+    fat: foods.reduce((sum, f) => sum + (parseFloat(f.fat) || 0), 0)
+  };
+}
+
+/**
+ * 同步沉淀数据到业务表
+ */
+function syncToBusinessTable(userId, type, content, data, recordDate, subType = null, precipitationId = null) {
+  const today = recordDate || new Date().toISOString().split('T')[0];
+  
+  // 检查是否重复记录（饮食记录按 precipitation_id  upsert，不走旧的食物级去重）
+  const duplicateCheck = type === 'diet_record'
+    ? { isDuplicate: false }
+    : hasDuplicateRecord(userId, type, data, recordDate);
+  
+  if (duplicateCheck.isDuplicate) {
+    console.log(`[去重] 用户${userId}今天已有相同${type}记录，更新而非插入`);
+    
+    // 对于习惯记录（喝水），累加数值
+    // 对于饮食记录，如果有需要累加或更新的食物，执行相应操作
+    if (type === 'diet_record' && duplicateCheck.hasMerge && duplicateCheck.foodsToMerge) {
+      for (const merge of duplicateCheck.foodsToMerge) {
+        const { newFood, recordId, existingFood } = merge;
+        
+        // 累加数量、重量和热量
+        const updatedQuantity = (existingFood.quantity || 1) + (newFood.quantity || 1);
+        const updatedWeight = (existingFood.weight || 0) + (newFood.weight || 0);
+        const updatedCalorie = (existingFood.calorie || 0) + (newFood.calorie || 0);
+        const updatedProtein = (existingFood.protein || 0) + (newFood.protein || 0);
+        const updatedCarb = (existingFood.carb || 0) + (newFood.carb || 0);
+        const updatedFat = (existingFood.fat || 0) + (newFood.fat || 0);
+        
+        // 更新记录
+        const updatedFood = {
+          ...existingFood,
+          quantity: updatedQuantity,
+          weight: updatedWeight,
+          calorie: updatedCalorie,
+          protein: updatedProtein,
+          carb: updatedCarb,
+          fat: updatedFat
+        };
+        
+        db.prepare(`
+          UPDATE diet_records 
+          SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, precipitation_id = COALESCE(precipitation_id, ?), updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `).run(JSON.stringify([updatedFood]), updatedCalorie, updatedProtein, updatedCarb, updatedFat, precipitationId, recordId);
+        
+        console.log(`[累加] ${existingFood.name}: ${existingFood.quantity}${existingFood.unit} + ${newFood.quantity}${newFood.unit} = ${updatedQuantity}${existingFood.unit}`);
+      }
+      
+      // 处理全新的食物（如果有）
+      if (duplicateCheck.newFoodsToAdd && duplicateCheck.newFoodsToAdd.length > 0) {
+        const insertDiet = db.prepare(`
+          INSERT INTO diet_records (user_id, precipitation_id, record_date, meal_time, foods, total_calorie, total_protein, total_carb, total_fat, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        `);
+        
+        for (const food of duplicateCheck.newFoodsToAdd) {
+          const correctedFood = computeFoodNutrition(food);
+          const foodArray = [correctedFood];
+          insertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(foodArray), 
+            correctedFood.calorie || 0, correctedFood.protein || 0, correctedFood.carb || 0, correctedFood.fat || 0);
+        }
+      }
+      
+      return { skipped: false, updated: true, recordId: duplicateCheck.foodsToMerge[0]?.recordId };
+    }
+    
+    // 对于饮食记录的热量修正（更新而非累加）
+    if (type === 'diet_record' && duplicateCheck.hasUpdate && duplicateCheck.foodsToUpdate) {
+      for (const update of duplicateCheck.foodsToUpdate) {
+        const { newFood, recordId, existingFood } = update;
+        
+        // 修正热量：保留原有重量和数量，只更新热量和营养
+        const correctedFood = computeFoodNutrition({
+          ...existingFood,
+          calorie: newFood.calorie || existingFood.calorie,
+          protein: newFood.protein || existingFood.protein,
+          carb: newFood.carb || existingFood.carb,
+          fat: newFood.fat || existingFood.fat
+        });
+        
+        db.prepare(`
+          UPDATE diet_records 
+          SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, precipitation_id = COALESCE(precipitation_id, ?), updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `).run(JSON.stringify([correctedFood]), correctedFood.calorie, correctedFood.protein, correctedFood.carb, correctedFood.fat, precipitationId, recordId);
+        
+        console.log(`[热量修正] ${existingFood.name}: ${existingFood.calorie}千卡 → ${correctedFood.calorie}千卡`);
+      }
+      
+      // 处理全新的食物（如果有）
+      if (duplicateCheck.newFoodsToAdd && duplicateCheck.newFoodsToAdd.length > 0) {
+        const insertDiet = db.prepare(`
+          INSERT INTO diet_records (user_id, precipitation_id, record_date, meal_time, foods, total_calorie, total_protein, total_carb, total_fat, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        `);
+        
+        for (const food of duplicateCheck.newFoodsToAdd) {
+          const correctedFood = computeFoodNutrition(food);
+          const foodArray = [correctedFood];
+          insertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(foodArray), 
+            correctedFood.calorie || 0, correctedFood.protein || 0, correctedFood.carb || 0, correctedFood.fat || 0);
+        }
+      }
+      
+      return { skipped: false, updated: true, recordId: duplicateCheck.foodsToUpdate[0]?.recordId };
+    }
+    
+    // 身体数据有 precipitation_id 时，允许删除旧记录后重新插入（支持修改全部围度）
+    if (type === 'body_data' && precipitationId) {
+      db.prepare('DELETE FROM body_records WHERE user_id = ? AND precipitation_id = ?').run(userId, precipitationId);
+      console.log(`[身体数据] 有 precipitation_id=${precipitationId}，删除旧记录后重新插入`);
+    } else {
+      // 对于其他类型，直接返回（不重复插入）
+      return { skipped: true, reason: 'duplicate', recordId: duplicateCheck.recordId };
+    }
+  }
 
   switch (type) {
     case 'diet_record': {
-      const foods = data.foods || [];
-      const totalCalorie = data.total_calorie || foods.reduce((sum, f) => sum + (f.calorie || 0), 0);
-      const totalProtein = data.total_protein || foods.reduce((sum, f) => sum + (f.protein || 0), 0);
-      const totalCarb = data.total_carb || foods.reduce((sum, f) => sum + (f.carb || 0), 0);
-      const totalFat = data.total_fat || foods.reduce((sum, f) => sum + (f.fat || 0), 0);
-
-      const insertDiet = db.prepare(`
-        INSERT INTO diet_records
-        (user_id, precipitation_id, record_date, meal_time, foods, total_calorie, total_protein, total_carb, total_fat, tags, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      const dietId = insertDiet.run(
-        userId,
-        precipitationId,
-        today,
-        data.meal_time || 'snack',
-        JSON.stringify(foods),
-        totalCalorie,
-        totalProtein,
-        totalCarb,
-        totalFat,
-        result.tags ? JSON.stringify(result.tags) : null,
-        1
-      ).lastInsertRowid;
-
-      // 写入时间轴
-      insertTimeline(userId, 'diet', `饮食记录`, `记录了 ${foods.map(f => f.name).join('、')}`, dietId, 'diet_records', today);
-      break;
-    }
-
-    case 'exercise_record': {
-      const exercises = data.exercises || [];
-      const totalDuration = data.total_duration || exercises.reduce((sum, e) => sum + (e.duration || 0), 0);
-      const totalCalorie = data.total_calorie || exercises.reduce((sum, e) => sum + (e.calorie || 0), 0);
-
-      const insertExercise = db.prepare(`
-        INSERT INTO exercise_records
-        (user_id, precipitation_id, record_date, exercise_type, exercises, total_duration, total_calorie, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      const exerciseId = insertExercise.run(
-        userId,
-        precipitationId,
-        today,
-        data.exercise_type || 'aerobic',
-        JSON.stringify(exercises),
-        totalDuration,
-        totalCalorie,
-        1
-      ).lastInsertRowid;
-
-      insertTimeline(userId, 'exercise', `运动记录`, `运动了 ${totalDuration} 分钟`, exerciseId, 'exercise_records', today);
-      break;
-    }
-
-    case 'body_data': {
-      if (data.sub_type === 'weight' && data.value) {
-        const insertBody = db.prepare(`
-          INSERT INTO body_records
-          (user_id, precipitation_id, record_date, type, value, unit, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `);
-        const bodyId = insertBody.run(
-          userId,
-          precipitationId,
-          today,
-          'weight',
-          data.value,
-          data.unit || 'kg',
-          1
-        ).lastInsertRowid;
-
-        // 更新当前体重
-        db.prepare('UPDATE user_profiles SET current_weight = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
-          .run(data.value, userId);
-
-        insertTimeline(userId, 'weight', `体重 ${data.value}${data.unit || 'kg'}`, '记录了体重变化', bodyId, 'body_records', today);
+      const dietData = data || {};
+      const mealTime = normalizeMealTime(dietData.meal_time || subType, content);
+      const rawFoods = Array.isArray(dietData.foods) ? dietData.foods : [];
+      if (rawFoods.length === 0) {
+        console.log(`[饮食同步] 无食物，跳过: precipitation_id=${precipitationId}`);
+        return { skipped: true, reason: 'no foods' };
       }
+
+      // 同一消息内若出现同名食物，先合并数量/重量/营养素
+      let foods = mergeDuplicateFoodsInList(rawFoods.map(f => computeFoodNutrition(f)));
+
+      // 同一沉淀记录对应一条饮食记录：更新时合并旧的多条食物记录并删除多余行
+      if (precipitationId) {
+        const existingRows = db.prepare('SELECT id FROM diet_records WHERE user_id = ? AND precipitation_id = ? ORDER BY id ASC').all(userId, precipitationId);
+        if (existingRows.length > 0) {
+          const keepId = existingRows[0].id;
+          const totals = calculateFoodTotals(foods);
+          db.prepare(`
+            UPDATE diet_records
+            SET record_date = ?, meal_time = ?, foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, status = 1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(today, mealTime, JSON.stringify(foods), totals.calorie, totals.protein, totals.carb, totals.fat, keepId);
+
+          for (let i = 1; i < existingRows.length; i++) {
+            db.prepare('DELETE FROM diet_records WHERE id = ? AND user_id = ?').run(existingRows[i].id, userId);
+          }
+
+          console.log(`[饮食同步] 更新记录 id=${keepId}, meal_time=${mealTime}, foods=${foods.length}, precipitation_id=${precipitationId}`);
+          return { skipped: false, updated: true, recordId: keepId };
+        }
+      }
+
+      // 合并到同一餐别的已有记录：同名食物累加数量/重量/营养素，避免同一餐出现两个卤鸭腿
+      const existingMealRows = db.prepare(`
+        SELECT id, foods FROM diet_records
+        WHERE user_id = ? AND record_date = ? AND meal_time = ? AND status = 1
+        ORDER BY id ASC
+      `).all(userId, today, mealTime);
+
+      const unmergedFoods = [];
+      for (const newFood of foods) {
+        let merged = false;
+        for (const row of existingMealRows) {
+          const existingFoods = JSON.parse(row.foods || '[]');
+          const match = existingFoods.find(ef => ef && ef.name && foodNamesMatch(ef.name, newFood.name));
+          if (match) {
+            mergeFoodInto(match, newFood);
+            const totals = calculateFoodTotals(existingFoods);
+            db.prepare(`
+              UPDATE diet_records
+              SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ? AND user_id = ?
+            `).run(JSON.stringify(existingFoods), totals.calorie, totals.protein, totals.carb, totals.fat, row.id, userId);
+            console.log(`[饮食同步] 合并到现有记录 id=${row.id}: ${match.name} 数量 ${match.quantity}`);
+            merged = true;
+            break;
+          }
+        }
+        if (!merged) unmergedFoods.push(newFood);
+      }
+
+      if (unmergedFoods.length === 0) {
+        console.log(`[饮食同步] 所有食物已合并到现有记录，未新增`);
+        return { skipped: false, updated: true, recordId: existingMealRows[0]?.id };
+      }
+
+      const totals = calculateFoodTotals(unmergedFoods);
+      const insertDiet = db.prepare(`
+        INSERT INTO diet_records (user_id, precipitation_id, record_date, meal_time, foods, total_calorie, total_protein, total_carb, total_fat, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+      `);
+      const result = insertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(unmergedFoods), totals.calorie, totals.protein, totals.carb, totals.fat);
+      console.log(`[饮食同步] 新增记录 id=${result.lastInsertRowid}, meal_time=${mealTime}, foods=${unmergedFoods.length}, precipitation_id=${precipitationId}`);
+      return { skipped: false, recordId: result.lastInsertRowid };
+    }
+    case 'exercise_record': {
+      const exData = data || {};
+      let exercises = exData.exercises || [];
+
+      // 获取用户体重（默认60kg）
+      let userWeight = 60;
+      try {
+        const userProfile = db.prepare('SELECT current_weight FROM user_profiles WHERE user_id = ?').get(userId);
+        if (userProfile && userProfile.current_weight) {
+          userWeight = parseFloat(userProfile.current_weight);
+        }
+      } catch (e) {
+        // 使用默认体重
+      }
+
+      // 计算/校验每项运动的热量（优先按运动库/MET计算，不再使用LLM估算值，确保和搭子回复一致）
+      exercises = exercises.map(e => {
+        const duration = parseFloat(e.duration) || 0;
+        const intensity = e.intensity || 'moderate';
+        const calorie = calculateExerciseCalorie(e.name, duration, intensity, userWeight);
+        return {
+          name: e.name,
+          duration: duration,
+          intensity: intensity,
+          calorie: calorie
+        };
+      });
+
+      const totalDur = exercises.reduce((sum, e) => sum + (e.duration || 0), 0);
+      const totalCal = exercises.reduce((sum, e) => sum + (e.calorie || 0), 0);
+      // 从第一个运动项目获取类型，默认为 'other'
+      const exerciseType = exercises.length > 0 ? (exercises[0].name || 'other') : 'other';
+
+      // 把计算后的热量同步写回沉淀记录，避免下次从聊天打开时热量仍是旧值
+      function syncExerciseExtractedData() {
+        if (!precipitationId) return;
+        const updatedExData = { ...exData, exercises, total_duration: totalDur, total_calorie: totalCal };
+        db.prepare('UPDATE precipitation_records SET extracted_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .run(JSON.stringify(updatedExData), precipitationId);
+      }
+
+      // 同一沉淀记录对应一条运动记录：有 precipitation_id 时更新而非插入，避免修改后产生重复
+      if (precipitationId) {
+        const existingRows = db.prepare('SELECT id FROM exercise_records WHERE user_id = ? AND precipitation_id = ? ORDER BY id ASC').all(userId, precipitationId);
+        if (existingRows.length > 0) {
+          const keepId = existingRows[0].id;
+          db.prepare(`
+            UPDATE exercise_records
+            SET record_date = ?, exercise_type = ?, exercises = ?, total_duration = ?, total_calorie = ?, status = 1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(today, exerciseType, JSON.stringify(exercises), totalDur, totalCal, keepId);
+
+          for (let i = 1; i < existingRows.length; i++) {
+            db.prepare('DELETE FROM exercise_records WHERE id = ? AND user_id = ?').run(existingRows[i].id, userId);
+          }
+
+          syncExerciseExtractedData();
+          console.log(`[运动同步] 更新记录 id=${keepId}, exercises=${exercises.length}, precipitation_id=${precipitationId}`);
+          return { skipped: false, updated: true, recordId: keepId };
+        }
+      }
+
+      // 无 precipitation_id 时按名称+时长去重
+      const dupCheck = hasDuplicateRecord(userId, type, data, recordDate);
+      if (dupCheck.isDuplicate) {
+        console.log(`[运动同步] 用户${userId}今天已有相同运动记录，跳过插入`);
+        return { skipped: true, reason: 'duplicate', recordId: dupCheck.recordId };
+      }
+
+      const insertEx = db.prepare(`
+        INSERT INTO exercise_records (user_id, precipitation_id, record_date, exercise_type, exercises, total_duration, total_calorie, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      `);
+      const exResult = insertEx.run(userId, precipitationId, today, exerciseType, JSON.stringify(exercises), totalDur, totalCal);
+      syncExerciseExtractedData();
+      console.log(`[运动同步] 新增记录 id=${exResult.lastInsertRowid}, exercises=${exercises.length}, precipitation_id=${precipitationId}`);
       break;
     }
+    case 'body_data': {
+      const bodyData = data || {};
+      // 兼容：sub_type 可能在 extracted_data 中，也可能在 precipitation_records.sub_type 中
+      const mainSubType = bodyData.sub_type || subType || 'weight';
+      const insertBody = db.prepare(`
+        INSERT INTO body_records (user_id, precipitation_id, record_date, type, value, unit, status)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
+      `);
 
+      const items = [];
+      const addBodyItem = (subType, value, unit) => {
+        if (value === undefined || value === null || value === '') return;
+        let v = parseFloat(value) || 0;
+        let u = unit || 'kg';
+        if (u === '斤') { v = parseFloat((v / 2).toFixed(1)); u = 'kg'; }
+        const type = normalizeBodySubType(subType);
+        if (items.some(i => i.type === type)) return;
+        items.push({ type, value: v, unit: u });
+      };
+
+      addBodyItem(mainSubType, bodyData.value, bodyData.unit);
+      if (bodyData.body_items && Array.isArray(bodyData.body_items)) {
+        for (const item of bodyData.body_items) {
+          addBodyItem(item.sub_type, item.value, item.unit);
+        }
+      }
+
+      if (items.length === 0) break;
+
+      // 同一沉淀记录更新时先删除旧身体数据，避免修改后产生重复
+      if (precipitationId) {
+        db.prepare('DELETE FROM body_records WHERE user_id = ? AND precipitation_id = ?').run(userId, precipitationId);
+      }
+
+      for (const item of items) {
+        insertBody.run(userId, precipitationId, today, item.type, item.value, item.unit);
+      }
+
+      // 如果有体重，同步更新当前体重
+      const weightItem = items.find(i => i.type === 'weight');
+      if (weightItem) {
+        db.prepare('UPDATE user_profiles SET current_weight = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
+          .run(weightItem.value, userId);
+      }
+
+      break;
+    }
+    case 'habit': {
+      const habitData = data || {};
+      const insertHabit = db.prepare(`
+        INSERT INTO habit_records (user_id, precipitation_id, record_date, type, value, status)
+        VALUES (?, ?, ?, ?, ?, 1)
+      `);
+      insertHabit.run(userId, precipitationId, today, habitData.sub_type || 'water', habitData.value || 0);
+      break;
+    }
     case 'quote':
     case 'insight':
     case 'recipe':
     case 'method':
     case 'pitfall': {
       const insertMuseum = db.prepare(`
-        INSERT INTO museum_items
-        (user_id, type, content, extracted_data, author, emotion, tags, status)
+        INSERT INTO museum_items (user_id, type, content, extracted_data, author, emotion, tags, status)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
-      const museumId = insertMuseum.run(
-        userId,
-        type,
-        data.content || content,
-        JSON.stringify(data),
-        data.author || 'user',
-        data.emotion || null,
-        result.tags ? JSON.stringify(result.tags) : null,
-        1
+      // 感悟/金句/踩坑/方法等个人资产，作者固定为用户自己
+      const museumAuthor = (type === 'quote' || type === 'insight') ? 'user' : (data?.author || 'user');
+      const museumId = insertMuseum.run(userId, type, content,
+        data ? JSON.stringify(data) : null, museumAuthor,
+        data?.emotion || null, null, 1
       ).lastInsertRowid;
 
-      const titleMap = {
-        quote: '金句',
-        insight: '感悟',
-        recipe: '食谱',
-        method: '方法',
-        pitfall: '踩坑'
-      };
-      insertTimeline(userId, type, titleMap[type] || type, data.content || content, museumId, 'museum_items', today);
-      break;
-    }
-
-    case 'milestone_weight':
-    case 'milestone_duration':
-    case 'milestone_behavior': {
-      const insertMilestone = db.prepare(`
-        INSERT INTO milestones
-        (user_id, type, title, description, value, unit, achieved_at)
+      const titleMap = { quote: '金句', insight: '感悟', recipe: '食谱', method: '方法', pitfall: '踩坑' };
+      db.prepare(`
+        INSERT INTO timelines (user_id, event_type, title, content, related_id, related_type, event_date)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `);
-      const milestoneId = insertMilestone.run(
-        userId,
-        type,
-        data.title || '里程碑',
-        data.description || content,
-        data.value || null,
-        data.unit || null,
-        new Date().toISOString()
-      ).lastInsertRowid;
-
-      insertTimeline(userId, 'milestone', data.title || '里程碑', data.description || content, milestoneId, 'milestones', today);
+      `).run(userId, type, titleMap[type] || type, content, museumId, 'museum_items', today);
       break;
     }
   }
 }
 
 /**
- * 写入时间轴
+ * 调用信息沉淀 Agent
  */
-function insertTimeline(userId, eventType, title, content, relatedId, relatedType, eventDate) {
-  const insert = db.prepare(`
-    INSERT INTO timelines
-    (user_id, event_type, title, content, related_id, related_type, event_date, is_important)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  insert.run(userId, eventType, title, content, relatedId, relatedType, eventDate, eventType === 'milestone' ? 1 : 0);
+async function callPrecipitationAgent(content, userId, chatId = null, recordDate = null) {
+  if (!content || !content.trim()) {
+    return { extracted: false, reason: '内容为空' };
+  }
+  
+  // 本地过滤：不包含沉淀关键词的消息直接跳过
+  if (!shouldPrecipitate(content)) {
+    return { extracted: false, reason: '不包含沉淀内容' };
+  }
+
+  // 疑问句/咨询句，且不含用户自身记录标记，直接跳过
+  // 避免把"黄瓜...可以吗？"这类问题错误沉淀为 recipe/method
+  if (isQuestionContent(content) && !hasSelfReportMarker(content)) {
+    return { extracted: false, reason: '疑问句不沉淀' };
+  }
+
+  // 否定/犹豫/未发生意图：如"不想吃了/不吃了/没吃/不要吃/吃不下/懒得动"，不沉淀行为记录
+  if (hasNegativeRecordIntent(content) && !hasSelfReportMarker(content)) {
+    return { extracted: false, reason: '否定或犹豫意图不沉淀' };
+  }
+
+  const today = recordDate || new Date().toISOString().split('T')[0];
+  const systemPrompt = promptService.getPrompt('precipitation_agent', {
+    current_time: new Date().toISOString()
+  });
+
+  try {
+    const response = await callWithPrompt(
+      'precipitation_agent',
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: content }
+      ],
+      { temperature: 0.1, max_tokens: 1200, response_format: { type: 'json_object' } }
+    );
+
+    const resultText = response.choices[0].message.content || '{}';
+    let items = [];
+    let rawItems = [];
+
+    try {
+      const parsed = JSON.parse(resultText);
+      // 支持数组格式（多个记录）和单个对象格式
+      if (Array.isArray(parsed)) {
+        rawItems = parsed.filter(item => item && item.extracted);
+      } else if (parsed && parsed.extracted) {
+        rawItems.push(parsed);
+      }
+    } catch (e) {
+      // 尝试提取所有JSON对象
+      const objects = extractJsonObjects(resultText);
+      for (const objText of objects) {
+        try {
+          const obj = JSON.parse(objText);
+          if (Array.isArray(obj)) {
+            rawItems.push(...obj.filter(item => item && item.extracted));
+          } else if (obj && obj.extracted) {
+            rawItems.push(obj);
+          }
+        } catch (err) {}
+      }
+    }
+
+    // 兜底：显式写出"XX热量"但LLM漏提取的食物，强制补回；修正"半个"等分数；清理食物名；校验食物重量
+    for (const item of rawItems) {
+      if (item.type === 'diet_record' && item.extracted_data) {
+        item.extracted_data = recoverExplicitCalorieFoods(content, item.extracted_data);
+        item.extracted_data = normalizeHalfQuantities(content, item.extracted_data);
+        item.extracted_data = sanitizeFoodNames(content, item.extracted_data);
+        item.extracted_data = sanitizeFoodWeights(content, item.extracted_data);
+      }
+    }
+
+    // 兜底：LLM 漏提取的运动（如"然后哑铃臀腿40分钟"），按已知运动关键词补回
+    rawItems = recoverMissedExercises(content, rawItems);
+
+    items = rawItems.filter(item => isValidPrecipitationItem(item));
+
+    // 仅保留喝水习惯；睡眠、排便、心情等暂不生成沉淀记录（后续用于日记生成）
+    items = items.filter(item => {
+      if (item.type === 'habit') {
+        const subType = item.extracted_data?.sub_type || 'water';
+        return subType === 'water' || subType === '喝水';
+      }
+      if (item.type === 'emotion') return false;
+      return true;
+    });
+
+    if (items.length === 0) {
+      return { extracted: false, reason: '未提取到有效内容' };
+    }
+
+    // 疑问句额外守卫：个人资产类沉淀必须置信度高且有实质内容
+    if (isQuestionContent(content)) {
+      const before = items.length;
+      items = items.filter(item => {
+        if (!ASSET_TYPES.includes(item.type)) return true;
+        const confidence = parseFloat(item.confidence) || 0;
+        if (confidence < 0.85) {
+          console.log(`[沉淀过滤] 疑问句中 ${item.type} 置信度不足: ${confidence}`);
+          return false;
+        }
+        if (!hasAssetContent(item.extracted_data)) {
+          console.log(`[沉淀过滤] 疑问句中 ${item.type} 无实质内容`);
+          return false;
+        }
+        return true;
+      });
+      if (items.length < before) {
+        console.log(`[沉淀] 疑问句守卫过滤：${before} → ${items.length} 条`);
+      }
+    }
+
+    // 同一条消息内运动记录去重（防止 LLM 输出泛称+具体动作等重复项）
+    const originalCount = items.length;
+    items = deduplicateExercisesInBatch(items);
+    if (items.length < originalCount) {
+      console.log(`[沉淀] 同消息运动去重：${originalCount} → ${items.length} 条`);
+    }
+
+    console.log(`[沉淀] 提取到 ${items.length} 条记录`);
+
+    let processed = null;
+    let processedCount = 0;
+    for (const item of items) {
+      const result = processSinglePrecipitation(userId, chatId, content, item, recordDate);
+      if (result) {
+        processed = result;
+        processedCount++;
+        if (result.status === 1) {
+          const syncResult = syncToBusinessTable(userId, result.type, content, result.extracted_data, recordDate, result.sub_type, result.precipitation_id);
+          if (syncResult && syncResult.skipped) {
+            // 记录被去重跳过
+            console.log(`[去重] 沉淀ID ${result.precipitation_id} 被跳过，原因: ${syncResult.reason}`);
+          } else if (syncResult && syncResult.updated) {
+            // 记录被更新（如喝水累加）
+            console.log(`[更新] 沉淀ID ${result.precipitation_id} 更新了现有记录 ${syncResult.recordId}`);
+          }
+        }
+      }
+    }
+
+    console.log(`[沉淀] 成功处理 ${processedCount}/${items.length} 条记录`);
+    return processed || { extracted: false, reason: '处理失败' };
+  } catch (error) {
+    console.error('沉淀 Agent 调用失败:', error.message);
+    return { extracted: false, reason: 'API调用失败' };
+  }
 }
 
-module.exports = {
-  callPrecipitationAgent,
-  syncToBusinessTable
-};
+module.exports = { callPrecipitationAgent, syncToBusinessTable };

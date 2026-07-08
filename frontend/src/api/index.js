@@ -2,14 +2,20 @@ import { get, post, put, del } from '../utils/request';
 
 // 认证
 export const authApi = {
-  wechatLogin: (code) => post('/auth/wechat-login', { code })
+  wechatLogin: (code) => post('/auth/wechat-login', { code }),
+  login: (data) => post('/auth/login', data),
+  register: (data) => post('/auth/register', data),
+  wechatBindPhone: (data) => post('/auth/wechat-bind', data)
 };
 
 // 用户
 export const userApi = {
   getMe: () => get('/users/me'),
   updateMe: (data) => put('/users/me', data),
-  updateProfile: (data) => put('/users/profile', data)
+  updateProfile: (data) => put('/users/profile', data),
+  exportData: () => post('/users/export'),
+  clearData: () => del('/users/data'),
+  deleteAccount: () => del('/users/me')
 };
 
 // 搭子
@@ -22,9 +28,12 @@ export const partnerApi = {
 
 // 聊天
 export const chatApi = {
-  send: (content, contentType = 'text') => post('/chat/send', { content, content_type: contentType }),
+  send: (content, contentType = 'text', date) => post('/chat/send', { content, content_type: contentType, record_date: date }),
   getMessages: (params) => get('/chat/messages', params),
-  confirmPrecipitation: (data) => post('/chat/confirm-precipitation', data)
+  confirmPrecipitation: (data) => post('/chat/confirm-precipitation', data),
+  searchMessages: (params) => get('/chat/messages', params),
+  getChatStats: () => get('/chat/stats'),
+  sendWakeupMessage: () => post('/chat/wakeup')
 };
 
 // 记录
@@ -38,7 +47,11 @@ export const recordApi = {
   deleteExercise: (id) => del(`/records/exercise/${id}`),
   getBody: (params) => get('/records/body', params),
   saveBody: (data) => post('/records/body', data),
-  deleteBody: (id) => del(`/records/body/${id}`)
+  deleteBody: (id) => del(`/records/body/${id}`),
+  getHabits: (params) => get('/records/habit', params),
+  saveHabit: (data) => data.id ? put(`/records/habit/${data.id}`, data) : post('/records/habit', data),
+  getRecordDates: (params) => get('/records/dates', params),
+  getMilestoneData: () => get('/records/milestone-data')
 };
 
 // 博物馆
@@ -46,15 +59,83 @@ export const museumApi = {
   getOverview: () => get('/museum/overview'),
   getTimeline: (params) => get('/museum/timeline', params),
   getItems: (params) => get('/museum/items', params),
+  getItem: (id) => get(`/museum/items/${id}`),
   addItem: (data) => post('/museum/items', data),
   updateItem: (id, data) => put(`/museum/items/${id}`, data),
-  deleteItem: (id) => del(`/museum/items/${id}`)
+  deleteItem: (id) => del(`/museum/items/${id}`),
+  toggleFavorite: (id) => post(`/museum/items/${id}/favorite`)
+};
+
+// 沉淀记录
+export const precipitationApi = {
+  getList: (params) => get('/precipitations', params),
+  create: (data) => post('/precipitations', data),
+  update: (id, data) => put(`/precipitations/${id}`, data),
+  delete: (id) => del(`/precipitations/${id}`)
+};
+
+// AI P1 功能
+export const aiApi = {
+  generateDiary: (date, params = {}) => get('/ai/diary', { date, ...params }),
+  generateMonthlyDiary: (month) => get('/ai/diary/monthly', { month }),
+  checkMilestones: () => post('/ai/milestones/check'),
+  getMilestones: () => get('/ai/milestones'),
+  analyzePlateau: (days) => get('/ai/plateau', { days })
+};
+
+// 数据管理
+export const dataApi = {
+  export: () => userApi.exportData(),
+  clearAll: () => userApi.clearData()
+};
+
+// 应用全局配置（协议、隐私政策）
+export const configApi = {
+  getAppConfig: () => get('/app-config'),
+  updateAppConfig: (data) => put('/admin/app-config', data)
 };
 
 // 系统
 export const systemApi = {
   getFoods: (params) => get('/foods', params),
+  getFoodDetail: (id, source) => get(`/foods/${id}`, { source }),
+  toggleFavoriteFood: (id) => post(`/foods/${id}/favorite`),
+  addCustomFood: (data) => post('/foods/custom', data),
   getExercises: (params) => get('/exercises', params),
+  getExerciseDetail: (id, source) => get(`/exercises/${id}`, { source }),
+  toggleFavoriteExercise: (id) => post(`/exercises/${id}/favorite`),
+  addCustomExercise: (data) => post('/exercises/custom', data),
   getSettings: () => get('/settings'),
   updateSettings: (data) => put('/settings', data)
+};
+
+// 反馈
+export const feedbackApi = {
+  getList: (params) => get('/feedback', params),
+  submit: (data) => post('/feedback', data),
+  // 管理后台
+  getAdminList: (params) => get('/admin/feedbacks', params),
+  reply: (id, data) => post(`/admin/feedbacks/${id}/reply`, data),
+  updateStatus: (id, status) => put(`/admin/feedbacks/${id}/status`, { status })
+};
+
+// 弹窗广告
+export const popupApi = {
+  getConfigList: (params) => get('/app/popup/config/list', params),
+  report: (data) => post('/app/popup/report', data)
+};
+
+// 方法库
+export const methodApi = {
+  getList: (params) => get('/methods', params),
+  add: (data) => post('/methods', data),
+  update: (id, data) => put(`/methods/${id}`, data),
+  delete: (id) => del(`/methods/${id}`)
+};
+
+// 照片/对比墙
+export const photoApi = {
+  getList: (params) => get('/photos', params),
+  upload: (data) => post('/photos', data),
+  delete: (id) => del(`/photos/${id}`)
 };

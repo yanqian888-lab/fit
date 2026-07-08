@@ -3,7 +3,9 @@
  */
 const { db } = require('../db');
 const { success, error } = require('../utils/response');
+const { getUsedDays } = require('../utils/date');
 const helperAgent = require('../services/agents/helperAgent');
+const { computeFoodNutrition } = require('../services/nutritionService');
 
 /**
  * 获取今日概览
@@ -54,6 +56,15 @@ function getToday(req, res) {
   const carbRatio = totalMacro > 0 ? Math.round((nutrition.carb * 4 / totalMacro) * 100) : 0;
   const fatRatio = totalMacro > 0 ? Math.round((nutrition.fat * 9 / totalMacro) * 100) : 0;
 
+  // 推荐三大营养素（按热量目标：蛋白25%、碳水50%、脂肪25%）
+  const proteinTarget = target * 0.25 / 4;
+  const carbTarget = target * 0.50 / 4;
+  const fatTarget = target * 0.25 / 9;
+
+  // 计算减肥坚持天数（从注册日期到今天，至少1天）
+  const userInfo = db.prepare('SELECT created_at FROM users WHERE id = ?').get(userId);
+  const weightDays = getUsedDays(userInfo ? userInfo.created_at : null);
+
   return res.json(success({
     date: today,
     intake: Math.round(nutrition.intake),
@@ -62,12 +73,21 @@ function getToday(req, res) {
     target: Math.round(target),
     status,
     current_weight: todayWeight ? todayWeight.value : (profile ? profile.current_weight : null),
+    initial_weight: profile ? profile.initial_weight : null,
+    target_weight: profile ? profile.target_weight : null,
     weight_change: weightChange,
+    protein: Math.round(nutrition.protein),
+    protein_target: Math.round(proteinTarget),
+    carb: Math.round(nutrition.carb),
+    carb_target: Math.round(carbTarget),
+    fat: Math.round(nutrition.fat),
+    fat_target: Math.round(fatTarget),
     protein_ratio: proteinRatio,
     carb_ratio: carbRatio,
     fat_ratio: fatRatio,
     exercise_duration: nutrition.exercise_duration,
-    pending_count: pendingCount
+    pending_count: pendingCount,
+    weight_days: weightDays
   }));
 }
 
@@ -92,6 +112,7 @@ function getDiet(req, res) {
     meals[row.meal_time] = meals[row.meal_time] || [];
     meals[row.meal_time].push({
       id: row.id,
+      meal_time: row.meal_time,
       foods: JSON.parse(row.foods || '[]'),
       total_calorie: row.total_calorie,
       total_protein: row.total_protein,
@@ -117,23 +138,26 @@ function saveDiet(req, res) {
   const userId = req.userId;
   const { id, record_date, meal_time, foods, tags, remark } = req.body;
 
-  const totalCalorie = foods.reduce((sum, f) => sum + (f.calorie || 0), 0);
-  const totalProtein = foods.reduce((sum, f) => sum + (f.protein || 0), 0);
-  const totalCarb = foods.reduce((sum, f) => sum + (f.carb || 0), 0);
-  const totalFat = foods.reduce((sum, f) => sum + (f.fat || 0), 0);
+  // 由后端根据食物数据库直接计算每个食物的营养数据，不再依赖 Agent/前端传入的估算值
+  const computedFoods = (foods || []).map(f => computeFoodNutrition(f));
+
+  const totalCalorie = computedFoods.reduce((sum, f) => sum + (f.calorie || 0), 0);
+  const totalProtein = computedFoods.reduce((sum, f) => sum + (f.protein || 0), 0);
+  const totalCarb = computedFoods.reduce((sum, f) => sum + (f.carb || 0), 0);
+  const totalFat = computedFoods.reduce((sum, f) => sum + (f.fat || 0), 0);
 
   if (id) {
     db.prepare(`
       UPDATE diet_records
       SET record_date = ?, meal_time = ?, foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, tags = ?, remark = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
-    `).run(record_date, meal_time, JSON.stringify(foods), totalCalorie, totalProtein, totalCarb, totalFat, tags, remark, id, userId);
+    `).run(record_date, meal_time, JSON.stringify(computedFoods), totalCalorie, totalProtein, totalCarb, totalFat, tags, remark, id, userId);
     return res.json(success(null, '更新成功'));
   } else {
     const insertId = db.prepare(`
       INSERT INTO diet_records (user_id, record_date, meal_time, foods, total_calorie, total_protein, total_carb, total_fat, tags, remark, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(userId, record_date, meal_time, JSON.stringify(foods), totalCalorie, totalProtein, totalCarb, totalFat, tags, remark).lastInsertRowid;
+    `).run(userId, record_date, meal_time, JSON.stringify(computedFoods), totalCalorie, totalProtein, totalCarb, totalFat, tags, remark).lastInsertRowid;
     return res.json(success({ id: insertId }, '添加成功'));
   }
 }
@@ -233,12 +257,23 @@ function getBody(req, res) {
 
   const since = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
 
+  // 兼容处理：前端传weight，数据库可能是'体重'或'weight'
+  const typeFilter = type === 'weight' ? "(type = 'weight' OR type = '体重')" : "type = ?";
+  const params = type === 'weight' ? [userId, since] : [userId, type, since];
+
   const rows = db.prepare(`
     SELECT record_date, value, unit
     FROM body_records
-    WHERE user_id = ? AND type = ? AND record_date >= ? AND status = 1
+    WHERE user_id = ? AND ${typeFilter} AND record_date >= ? AND status = 1
+    AND created_at = (
+      SELECT MAX(created_at) 
+      FROM body_records AS b2 
+      WHERE b2.user_id = body_records.user_id 
+        AND b2.record_date = body_records.record_date 
+        AND b2.type = body_records.type
+    )
     ORDER BY record_date DESC
-  `).all(userId, type, since);
+  `).all(...params);
 
   const profile = db.prepare('SELECT target_weight FROM user_profiles WHERE user_id = ?').get(userId);
 
@@ -293,6 +328,260 @@ function deleteBody(req, res) {
   return res.json(success(null, '删除成功'));
 }
 
+/**
+ * 获取生活习惯记录
+ */
+function getHabits(req, res) {
+  const userId = req.userId;
+  const type = req.query.type || null;
+  const date = req.query.date || new Date().toISOString().split('T')[0];
+
+  let sql = `
+    SELECT id, type, value, unit, remark, created_at
+    FROM habit_records
+    WHERE user_id = ? AND record_date = ? AND status = 1
+  `;
+  const params = [userId, date];
+
+  if (type) {
+    sql += ' AND type = ?';
+    params.push(type);
+  }
+  sql += ' ORDER BY created_at DESC';
+
+  const list = db.prepare(sql).all(...params);
+  return res.json(success({ date, list }));
+}
+
+/**
+ * 添加/编辑生活习惯记录
+ */
+function saveHabit(req, res) {
+  const userId = req.userId;
+  const { id, record_date, type, value, unit, remark } = req.body;
+
+  if (id) {
+    db.prepare(`
+      UPDATE habit_records
+      SET record_date = ?, type = ?, value = ?, unit = ?, remark = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).run(record_date, type, value, unit, remark, id, userId);
+    return res.json(success(null, '更新成功'));
+  } else {
+    const insertId = db.prepare(`
+      INSERT INTO habit_records (user_id, record_date, type, value, unit, remark, status)
+      VALUES (?, ?, ?, ?, ?, ?, 1)
+    `).run(userId, record_date, type, value, unit || null, remark || null).lastInsertRowid;
+    return res.json(success({ id: insertId }, '添加成功'));
+  }
+}
+
+/**
+ * 删除生活习惯记录
+ */
+function deleteHabit(req, res) {
+  const userId = req.userId;
+  const { id } = req.params;
+  db.prepare('DELETE FROM habit_records WHERE id = ? AND user_id = ?').run(id, userId);
+  return res.json(success(null, '删除成功'));
+}
+
+/**
+ * 获取里程碑所需数据
+ */
+function getMilestoneData(req, res) {
+  const userId = req.userId;
+
+  // 用户资料
+  const profile = db.prepare('SELECT * FROM user_profiles WHERE user_id = ?').get(userId);
+
+  // 所有体测记录（按时间排序）
+  const bodyRecords = db.prepare(`
+    SELECT * FROM body_records
+    WHERE user_id = ? AND status = 1
+    ORDER BY record_date ASC, created_at ASC
+  `).all(userId);
+
+  // 习惯记录统计
+  const habitStats = db.prepare(`
+    SELECT 
+      COUNT(*) as total_days,
+      SUM(CASE WHEN water_ml >= 2000 THEN 1 ELSE 0 END) as water_days,
+      SUM(CASE WHEN has_diet_record = 1 THEN 1 ELSE 0 END) as diet_days,
+      SUM(CASE WHEN has_exercise = 1 THEN 1 ELSE 0 END) as exercise_days,
+      SUM(CASE WHEN rejected_food = 1 THEN 1 ELSE 0 END) as reject_count
+    FROM habit_records
+    WHERE user_id = ?
+  `).get(userId);
+
+  // 连续饮水天数
+  const waterRecords = db.prepare(`
+    SELECT record_date, water_ml FROM habit_records
+    WHERE user_id = ? ORDER BY record_date ASC
+  `).all(userId);
+
+  // 连续饮食打卡天数
+  const dietRecords = db.prepare(`
+    SELECT record_date, has_diet_record FROM habit_records
+    WHERE user_id = ? ORDER BY record_date ASC
+  `).all(userId);
+
+  // 连续运动天数
+  const exerciseRecords = db.prepare(`
+    SELECT record_date, has_exercise FROM habit_records
+    WHERE user_id = ? ORDER BY record_date ASC
+  `).all(userId);
+
+  // 计算最大连续天数（支持条件函数）
+  function maxStreak(records, checkFn) {
+    let max = 0, current = 0;
+    for (const r of records) {
+      if (checkFn(r)) {
+        current++;
+        max = Math.max(max, current);
+      } else {
+        current = 0;
+      }
+    }
+    return max;
+  }
+
+  // 周运动时长统计
+  const exerciseMinutes = db.prepare(`
+    SELECT 
+      strftime('%Y-%W', record_date) as week,
+      SUM(duration) as total_minutes
+    FROM exercise_records
+    WHERE user_id = ? AND status = 1
+    GROUP BY week
+    ORDER BY week ASC
+  `).all(userId);
+
+  // 不吃宵夜统计
+  const lateNightRecords = db.prepare(`
+    SELECT record_date, no_late_night FROM habit_records
+    WHERE user_id = ? ORDER BY record_date ASC
+  `).all(userId);
+
+  // 规律称重统计
+  const weighRecords = db.prepare(`
+    SELECT record_date FROM body_records
+    WHERE user_id = ? AND type = 'weight' AND status = 1
+    ORDER BY record_date ASC
+  `).all(userId);
+
+  // 计算保持目标体重天数
+  let maintainDays = 0;
+  if (profile && profile.target_weight && bodyRecords.length > 0) {
+    const target = profile.target_weight;
+    const reversed = [...bodyRecords].reverse();
+    for (const r of reversed) {
+      if (r.type === 'weight' && Math.abs(r.value - target) <= 1) {
+        maintainDays++;
+      } else if (r.type === 'weight') {
+        break;
+      }
+    }
+  }
+
+  // 检测平台期突破（连续14天体重变化<0.2kg后再次下降）
+  let hasPlateauBreak = false;
+  const weightRecords = bodyRecords.filter(r => r.type === 'weight');
+  if (weightRecords.length >= 15) {
+    for (let i = 14; i < weightRecords.length; i++) {
+      const prev14 = weightRecords[i - 14];
+      const prev7 = weightRecords[i - 7];
+      const curr = weightRecords[i];
+      if (Math.abs(curr.value - prev14.value) < 0.2 && curr.value < prev7.value) {
+        hasPlateauBreak = true;
+        break;
+      }
+    }
+  }
+
+  // 围度逆袭：体重不变但腰围减少3cm以上
+  let hasMeasureWin = false;
+  if (bodyRecords.length >= 2) {
+    const latest = bodyRecords[bodyRecords.length - 1];
+    const prev = bodyRecords[bodyRecords.length - 2];
+    if (latest.type === prev.type && latest.type === 'body' && 
+        latest.waist && prev.waist && latest.weight && prev.weight &&
+        Math.abs(latest.weight - prev.weight) < 0.5 && 
+        (prev.waist - latest.waist) >= 3) {
+      hasMeasureWin = true;
+    }
+  }
+
+  // 肌肉增长：体重不变但肌肉量提升1kg以上
+  let hasMuscleWin = false;
+  if (bodyRecords.length >= 2) {
+    const latest = bodyRecords[bodyRecords.length - 1];
+    const prev = bodyRecords[bodyRecords.length - 2];
+    if (latest.type === prev.type && latest.type === 'body' && 
+        latest.muscle_mass && prev.muscle_mass && latest.weight && prev.weight &&
+        Math.abs(latest.weight - prev.weight) < 0.5 && 
+        (latest.muscle_mass - prev.muscle_mass) >= 1) {
+      hasMuscleWin = true;
+    }
+  }
+
+  return res.json(success({
+    user: {
+      initial_weight: profile ? profile.initial_weight : null,
+      current_weight: profile ? profile.current_weight : null,
+      target_weight: profile ? profile.target_weight : null,
+      gender: profile ? profile.gender : 'female',
+    },
+    records: bodyRecords,
+    stats: {
+      water_days: habitStats.water_days || 0,
+      water_streak: maxStreak(waterRecords, r => r.water_ml >= 2000),
+      diet_days: habitStats.diet_days || 0,
+      diet_streak: maxStreak(dietRecords, r => r.has_diet_record === 1),
+      exercise_days: habitStats.exercise_days || 0,
+      exercise_streak: maxStreak(exerciseRecords, r => r.has_exercise === 1),
+      reject_count: habitStats.reject_count || 0,
+      exercise_week_minutes: exerciseMinutes.length > 0 ? exerciseMinutes[exerciseMinutes.length - 1].total_minutes : 0,
+      exercise_week_streak: 0, // 简化处理
+      no_late_night_week: 0,
+      no_late_night_streak: maxStreak(lateNightRecords, r => r.no_late_night === 1),
+      weigh_week: 0,
+      weigh_streak: 0,
+      maintain_target_days: maintainDays,
+      plateau_break: hasPlateauBreak,
+      measure_win: hasMeasureWin,
+      muscle_win: hasMuscleWin,
+    }
+  }));
+}
+
+/**
+ * 获取指定日期范围内有记录的日期列表
+ */
+function getRecordDates(req, res) {
+  const userId = req.userId;
+  const { type, start_date, end_date } = req.query;
+  const start = start_date || new Date().toISOString().split('T')[0];
+  const end = end_date || start;
+
+  const tableMap = {
+    diet: 'diet_records',
+    exercise: 'exercise_records',
+    body: 'body_records',
+    habit: 'habit_records'
+  };
+  const table = tableMap[type] || 'diet_records';
+
+  const rows = db.prepare(`
+    SELECT DISTINCT record_date as date
+    FROM ${table}
+    WHERE user_id = ? AND record_date BETWEEN ? AND ? AND status = 1
+    ORDER BY record_date ASC
+  `).all(userId, start, end);
+
+  return res.json(success({ dates: rows.map(r => r.date) }));
+}
+
 module.exports = {
   getToday,
   getDiet,
@@ -303,5 +592,10 @@ module.exports = {
   deleteExercise,
   getBody,
   saveBody,
-  deleteBody
+  deleteBody,
+  getHabits,
+  saveHabit,
+  deleteHabit,
+  getRecordDates,
+  getMilestoneData
 };

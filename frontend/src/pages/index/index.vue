@@ -1,69 +1,91 @@
 <template>
-  <view class="chat-page">
-    <!-- 自定义导航栏 -->
-    <view class="nav-bar">
-      <view class="partner-info">
-        <text class="partner-name">{{ partnerName }}</text>
-        <view class="partner-status">
-          <text class="status-dot" :class="partnerStatus"></text>
-          <text class="status-text">{{ partnerStatusText }}</text>
+  <view class="partner-page">
+    <!-- 系统状态栏占位 -->
+    <view class="status-bar"></view>
+
+    <!-- 顶部搭子信息 -->
+    <view class="header">
+      <view class="header-inner">
+        <view class="avatar-wrap">
+          <image class="avatar" :src="partnerAvatarUrl" mode="aspectFill" />
+          <view class="ai-badge">AI</view>
+        </view>
+        <view class="partner-info">
+          <text class="partner-name">{{ partnerName }}</text>
+          <view class="tags-wrap">
+            <view class="tags-inner">
+              <view class="tag status-tag">
+                <image class="status-dot" src="/static/image/icon/zhuangtai.png" />
+                <text>{{ partnerStatusText }}</text>
+              </view>
+              <view class="tag mood-tag">
+                <text>{{ partnerMoodEmoji }}{{ partnerMoodText }}</text>
+              </view>
+            </view>
+          </view>
         </view>
       </view>
-      <view class="mode-switch">
-        <text
-          v-for="mode in modes"
-          :key="mode.value"
-          class="mode-item"
-          :class="{ active: currentMode === mode.value }"
-          @click="switchMode(mode.value)"
-        >{{ mode.label }}</text>
-      </view>
     </view>
 
-    <!-- 今日进度悬浮卡 -->
-    <view class="progress-card" @click="goToRecord">
-      <view class="progress-item">
-        <text class="progress-label">摄入</text>
-        <text class="progress-value">{{ todayStats.intake }}</text>
-      </view>
-      <view class="progress-item">
-        <text class="progress-label">消耗</text>
-        <text class="progress-value">{{ todayStats.burned }}</text>
-      </view>
-      <view class="progress-item">
-        <text class="progress-label">剩余</text>
-        <text class="progress-value" :class="todayStats.status">{{ todayStats.remaining }}</text>
-      </view>
-    </view>
-
-    <!-- 聊天消息列表 -->
+    <!-- 消息列表 -->
     <scroll-view
       class="message-list"
       scroll-y
       :scroll-top="scrollTop"
+      :scroll-into-view="scrollIntoView"
+      scroll-with-animation
       @scrolltoupper="loadMore"
       :upper-threshold="50"
     >
+      <view class="date-wrap">
+        <view class="date-pill">
+          <text>{{ todayLabel }}</text>
+        </view>
+      </view>
+
       <view
         v-for="msg in messages"
         :key="msg.id"
-        class="message-item"
+        :id="'msg-' + msg.id"
+        class="message-row"
         :class="msg.role"
       >
-        <view class="avatar">
-          <text v-if="msg.role === 'user'">我</text>
-          <text v-else>瘦</text>
+        <view
+          v-if="msg.role === 'partner'"
+          class="bubble partner-bubble"
+          @touchstart="handleTouchStart($event, msg)"
+          @touchmove="handleTouchMove"
+          @touchend="handleTouchEnd"
+          @touchcancel="handleTouchEnd"
+        >
+          <text class="ai-generated-label">AI 生成</text>
+          <text class="bubble-text">{{ msg.displayContent !== undefined ? msg.displayContent : msg.content }}</text>
         </view>
-        <view class="message-content">
-          <view class="bubble" :class="msg.role">
-            <text class="message-text">{{ msg.content }}</text>
+
+        <view v-else class="user-column">
+          <view
+            class="bubble user-bubble"
+            @touchstart="handleTouchStart($event, msg)"
+            @touchmove="handleTouchMove"
+            @touchend="handleTouchEnd"
+            @touchcancel="handleTouchEnd"
+          >
+            <text class="bubble-text">{{ msg.content }}</text>
           </view>
-          <view v-if="msg.precipitation_status === 1" class="precipitation-tag confirmed">
-            <text class="tag-icon">✓</text>
-            <text>已记录</text>
+          <view
+            v-if="showRecordTag(msg)"
+            class="record-tag"
+            @click="onConfirmedTag(msg)"
+          >
+            <text class="record-tag-text">已记录</text>
+            <image class="record-tag-icon" src="/static/image/icon/xiugai.png" />
           </view>
-          <view v-else-if="msg.precipitation_status === 2" class="precipitation-tag pending">
-            <text>待确认</text>
+          <view
+            v-else-if="showPendingTag(msg)"
+            class="record-tag pending"
+            @click="onPendingTag(msg)"
+          >
+            <text class="record-tag-text">待确认 · 点我查看</text>
           </view>
         </view>
       </view>
@@ -71,49 +93,233 @@
       <view v-if="loading" class="loading-tip">
         <text>搭子正在输入...</text>
       </view>
+
+      <!-- 底部占位，配合 padding-bottom 保证最后一条消息能滚动到可视区 -->
+      <view id="msg-bottom-spacer" style="height: 20rpx;"></view>
     </scroll-view>
 
     <!-- 底部输入区 -->
     <view class="input-area">
-      <input
-        v-model="inputText"
-        class="chat-input"
-        type="text"
-        placeholder="和搭子聊聊今天吃了什么..."
-        confirm-type="send"
-        @confirm="sendMessage"
-      />
-      <button class="send-btn" :disabled="!inputText.trim() || loading" @click="sendMessage">
-        发送
-      </button>
+      <view class="input-bar">
+        <input
+          v-model="inputText"
+          class="chat-input"
+          type="text"
+          placeholder="和搭子聊聊今天吃了什么吧～"
+          confirm-type="send"
+          @confirm="sendMessage"
+        />
+        <image class="send-btn" src="/static/image/icon/send.png" @click="sendMessage" />
+      </view>
     </view>
 
-    <!-- 快速记录悬浮按钮 -->
-    <view class="quick-record-btn" @click="showQuickRecord = true">
-      <text class="plus">+</text>
+    <!-- 沉淀记录编辑/确认弹窗 -->
+    <view v-if="showEditModal" class="panel-overlay show" @click="closeEditModal"></view>
+    <view class="edit-panel" :class="{ show: showEditModal }">
+      <view class="panel-header">
+        <text class="panel-title">{{ editMode === 'confirm' ? '确认记录' : '修改记录' }}</text>
+        <text class="panel-close" @click="closeEditModal">✕</text>
+      </view>
+
+      <view class="panel-body">
+        <!-- 饮食记录编辑 -->
+        <template v-if="editRecordType === 'diet'">
+          <view class="form-item">
+            <text class="form-label">餐别</text>
+            <view class="meal-selector">
+              <view
+                v-for="opt in mealOptions"
+                :key="opt.value"
+                class="meal-option"
+                :class="{ active: editMealTime === opt.value }"
+                @click="editMealTime = opt.value"
+              >
+                <text>{{ opt.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="form-item">
+            <view class="form-label-row">
+              <text class="form-label">食物</text>
+            </view>
+            <view class="food-list">
+              <view v-for="(food, index) in editFoods" :key="index" class="food-row">
+                <input v-model="food.name" class="food-name-input" placeholder="食物名称" />
+                <text class="food-calorie-text">{{ computedFoodCalorie(food) }} 千卡</text>
+                <view class="food-meta-row">
+                  <view v-if="food.unit !== 'g' && food.unit !== '克'" class="food-quantity-wrap">
+                    <input v-model="food.quantity" class="food-weight-input" placeholder="数量" type="digit" />
+                    <text class="food-unit">{{ food.unit || '个' }}</text>
+                  </view>
+                  <view class="food-quantity-wrap">
+                    <input v-model="food.weight" class="food-weight-input" placeholder="克" type="digit" />
+                    <text class="food-unit">g</text>
+                  </view>
+                  <text class="food-remove" @click="removeFoodRow(index)">✕</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </template>
+
+        <!-- 身体数据 -->
+        <template v-if="editRecordType === 'body'">
+          <view v-for="(item, index) in editBodyData" :key="index" class="form-item">
+            <text class="form-label">{{ bodyTypeLabelMap[item.type] || item.type }}</text>
+            <view class="body-input-row">
+              <input v-model="item.value" class="body-value-input" placeholder="请输入数值" type="digit" />
+              <text class="body-unit">{{ item.unit }}</text>
+            </view>
+          </view>
+        </template>
+
+        <!-- 运动记录 -->
+        <template v-if="editRecordType === 'exercise'">
+          <view v-for="(ex, index) in editExercises" :key="index" class="form-item">
+            <text class="form-label">{{ ex.name }}</text>
+            <view class="exercise-row">
+              <view class="exercise-field">
+                <text class="exercise-field-label">时长</text>
+                <input v-model="ex.duration" class="exercise-field-input" placeholder="分钟" type="digit" @input="onExerciseDurationInput(index)" />
+                <text class="exercise-field-unit">分钟</text>
+              </view>
+              <view class="exercise-field">
+                <text class="exercise-field-label">消耗</text>
+                <input v-model="ex.calorie" class="exercise-field-input" placeholder="千卡" type="digit" @input="onExerciseCalorieInput(index)" />
+                <text class="exercise-field-unit">千卡</text>
+              </view>
+            </view>
+          </view>
+        </template>
+
+        <!-- 习惯记录 -->
+        <template v-if="editRecordType === 'habit'">
+          <view class="form-item">
+            <text class="form-label">记录类型</text>
+            <view class="habit-type-selector">
+              <view
+                v-for="opt in habitTypeOptions"
+                :key="opt.value"
+                class="habit-type-option"
+                :class="{ active: editHabitData.type === opt.value }"
+                @click="editHabitData.type = opt.value; editHabitData.unit = opt.unit"
+              >
+                <text>{{ opt.label }}</text>
+              </view>
+            </view>
+          </view>
+          <view class="form-item">
+            <text class="form-label">{{ habitTypeLabelMap[editHabitData.type] || editHabitData.type }}</text>
+            <view class="body-input-row">
+              <input v-model="editHabitData.value" class="body-value-input" :placeholder="'请输入' + (habitTypeLabelMap[editHabitData.type] || editHabitData.type)" type="digit" />
+              <text class="body-unit">{{ editHabitData.unit }}</text>
+            </view>
+          </view>
+        </template>
+
+        <!-- 个人资产类（食谱/方法/踩坑/感悟/金句） -->
+        <template v-if="editRecordType === 'asset'">
+          <view class="form-item">
+            <text class="form-label">类型</text>
+            <text class="asset-type-text">{{ assetTypeLabelMap[editAssetData.type] || editAssetData.type }}</text>
+          </view>
+          <view class="form-item">
+            <text class="form-label">标题</text>
+            <input v-model="editAssetData.title" class="body-value-input" placeholder="标题" />
+          </view>
+          <view class="form-item">
+            <text class="form-label">内容</text>
+            <textarea v-model="editAssetData.content" class="asset-content-input" placeholder="内容" :auto-height="true" />
+          </view>
+        </template>
+      </view>
+
+      <view class="panel-actions">
+        <button class="btn-cancel" @click="rejectEdit">{{ editMode === 'confirm' ? '忽略' : '取消' }}</button>
+        <button class="btn-save" @click="saveEdit">{{ editMode === 'confirm' ? '确认记录' : '保存' }}</button>
+      </view>
     </view>
 
-    <!-- 快速记录弹窗 -->
-    <view v-if="showQuickRecord" class="quick-record-mask" @click="showQuickRecord = false">
-      <view class="quick-record-panel" @click.stop>
-        <view class="quick-title">快速记录</view>
-        <view class="quick-grid">
-          <view class="quick-item" @click="quickRecord('diet')">
-            <text class="quick-icon">🍚</text>
-            <text>饮食</text>
+    <!-- 自定义底部 tabbar -->
+    <CustomTabBar />
+
+    <!-- 全屏食物选择弹层 -->
+    <view v-if="showFoodPicker" class="food-picker-overlay" @click="showFoodPicker = false"></view>
+    <view v-if="showFoodPicker" class="food-picker-modal" :class="{ show: showFoodPicker }">
+      <view class="food-picker-modal-header">
+        <text class="food-picker-back" @click="showFoodPicker = false">←</text>
+        <view class="food-picker-modal-title">
+          <text class="food-picker-meal-label">{{ mealOptions.find(m => m.value === editMealTime)?.label || '午餐' }}</text>
+        </view>
+        <view style="width: 60rpx;"></view>
+      </view>
+
+      <view class="food-picker-modal-search">
+        <text class="food-picker-modal-search-icon">🔍</text>
+        <input
+          v-model="foodKeyword"
+          class="food-picker-modal-search-input"
+          placeholder="请输入食物名称"
+          confirm-type="search"
+          @confirm="searchFoods"
+        />
+      </view>
+
+      <view class="food-picker-modal-body">
+        <scroll-view class="food-picker-modal-categories" scroll-y>
+          <view
+            v-for="cat in foodCategories"
+            :key="cat.key"
+            class="food-picker-modal-category"
+            :class="{ active: currentFoodCategory === cat.key }"
+            @click="switchFoodCategory(cat.key)"
+          >
+            <text>{{ cat.label }}</text>
           </view>
-          <view class="quick-item" @click="quickRecord('exercise')">
-            <text class="quick-icon">🏃</text>
-            <text>运动</text>
+        </scroll-view>
+
+        <scroll-view class="food-picker-modal-foods" scroll-y>
+          <view v-if="foodSearchResults.length > 0" class="food-picker-modal-food-list">
+            <view v-for="food in foodSearchResults" :key="food.id" class="food-picker-modal-food-item" @click="selectFoodFromPicker(food)">
+              <view class="food-picker-modal-food-image">
+                <text>{{ food.name.slice(0, 1) }}</text>
+              </view>
+              <view class="food-picker-modal-food-info">
+                <text class="food-picker-modal-food-name">{{ food.name }}</text>
+                <view class="food-picker-modal-food-calorie">
+                  <text class="calorie-num">{{ food.calorie_per_100g }}</text>
+                  <text class="calorie-unit"> 千卡/{{ food.unit || '100克' }}</text>
+                </view>
+              </view>
+              <view class="food-picker-modal-add-icon">
+                <text>+</text>
+              </view>
+            </view>
           </view>
-          <view class="quick-item" @click="quickRecord('weight')">
-            <text class="quick-icon">⚖️</text>
-            <text>体重</text>
+          <view v-else class="food-picker-modal-empty">
+            <text>搜索或选择分类查看食物</text>
           </view>
-          <view class="quick-item" @click="quickRecord('water')">
-            <text class="quick-icon">💧</text>
-            <text>喝水</text>
-          </view>
+        </scroll-view>
+      </view>
+    </view>
+
+    <!-- 授权引导弹窗 -->
+    <AuthPopup ref="authPopupRef" />
+
+    <!-- 长按消息操作菜单 -->
+    <view v-if="showMsgActions" class="msg-action-overlay" @click="closeMsgActionMenu">
+      <view
+        class="msg-action-menu"
+        :style="{ left: actionMenuX + 'px', top: actionMenuY + 'px' }"
+        @click.stop
+      >
+        <view class="msg-action-item" @click="onMenuCopy">
+          <text class="msg-action-text">复制</text>
+        </view>
+        <view class="msg-action-divider"></view>
+        <view class="msg-action-item" @click="onMenuReport">
+          <text class="msg-action-text">举报</text>
         </view>
       </view>
     </view>
@@ -122,8 +328,13 @@
 
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
 import { useUserStore } from '../../store';
-import { chatApi, partnerApi, recordApi } from '../../api';
+import { chatApi, partnerApi, recordApi, precipitationApi, systemApi } from '../../api';
+import { formatDate } from '../../utils/date';
+import { checkPermission, reportCount } from '../../utils/trial.js';
+import AuthPopup from '../../components/AuthPopup.vue';
+import CustomTabBar from '../../custom-tab-bar/index.vue';
 
 const userStore = useUserStore();
 
@@ -131,26 +342,373 @@ const messages = ref([]);
 const inputText = ref('');
 const loading = ref(false);
 const scrollTop = ref(0);
+const scrollIntoView = ref('');
 const page = ref(1);
+
+// 长按复制手势状态
+const longPressTimer = ref(null);
+const longPressMsg = ref(null);
+let longPressStartX = 0;
+let longPressStartY = 0;
+const LONG_PRESS_DELAY = 600;
+const MOVE_THRESHOLD = 10;
+
+// 长按消息操作菜单
+const showMsgActions = ref(false);
+const actionMsg = ref(null);
+const actionMenuX = ref(0);
+const actionMenuY = ref(0);
 const hasMore = ref(true);
-const showQuickRecord = ref(false);
 const todayStats = ref({ intake: 0, burned: 0, remaining: 0, status: 'green' });
+const authPopupRef = ref(null);
+
+// 编辑弹窗状态
+const showEditModal = ref(false);
+const editRecord = ref(null);
+const editMealTime = ref('lunch');
+const editFoods = ref([]);
+const editMode = ref('edit'); // 'edit' | 'confirm'
+const editTargetMsg = ref(null);
+const showFoodPicker = ref(false);
+const foodKeyword = ref('');
+const foodSearchResults = ref([]);
+const currentFoodCategory = ref('all');
+const foodCategories = [
+  { key: 'all', label: '全部' },
+  { key: 'staple', label: '主食' },
+  { key: 'vegetable', label: '蔬果' },
+  { key: 'meat', label: '肉蛋奶' },
+  { key: 'bean', label: '豆类坚果' },
+  { key: 'snack', label: '零食饮料' },
+  { key: 'dish', label: '中式菜肴' }
+];
+
+// 记录类型相关
+const editRecordType = ref('diet'); // diet | body | exercise | habit | asset
+const editBodyData = ref([]);
+const editExercises = ref([]);
+const editHabitData = ref({ type: 'water', value: '' });
+const editAssetData = ref({ type: '', title: '', content: '' });
+
+const ASSET_TYPES = ['recipe', 'method', 'pitfall', 'insight', 'quote'];
+const RECORD_TYPES = ['diet_record', 'exercise_record', 'body_data', 'habit'];
+const assetTypeLabelMap = {
+  recipe: '食谱',
+  method: '方法',
+  pitfall: '踩坑',
+  insight: '感悟',
+  quote: '金句'
+};
+
+const mealOptions = [
+  { value: 'breakfast', label: '早餐' },
+  { value: 'lunch', label: '午餐' },
+  { value: 'dinner', label: '晚餐' },
+  { value: 'snack', label: '加餐' }
+];
+
+// 标签映射
+const bodyTypeLabelMap = {
+  weight: '体重',
+  body_fat: '体脂',
+  waist: '腰围',
+  hip: '臀围',
+  chest: '胸围',
+  arm: '手臂围',
+  thigh: '大腿围',
+  calf: '小腿围'
+};
+
+const bodyTypeCodeMap = Object.fromEntries(
+  Object.entries(bodyTypeLabelMap).map(([code, label]) => [label, code])
+);
+
+function normalizeBodyType(type) {
+  return bodyTypeCodeMap[type] || type || 'weight';
+}
+
+const habitTypeLabelMap = {
+  water: '饮水量'
+};
+
+const habitTypeOptions = [
+  { label: '饮水', value: 'water', unit: 'ml' }
+];
 
 const modes = [
   { label: '温柔', value: 'gentle' },
   { label: '严格', value: 'strict' },
-  { label: '损友', value: 'tease' }
+  { label: '毒舌', value: 'tease' }
 ];
 
 const partnerName = computed(() => userStore.userInfo?.partner?.name || '瘦瘦');
 const currentMode = computed(() => userStore.userInfo?.partner?.mode || 'gentle');
+const partnerAvatarUrl = computed(() => {
+  const map = {
+    gentle: '/static/image/icon/rou.png',
+    strict: '/static/image/icon/zhuan.png',
+    tease: '/static/image/icon/sun.png'
+  };
+  return map[currentMode.value] || '/static/image/icon/rou.png';
+});
 const partnerStatus = computed(() => userStore.userInfo?.partner?.status || 'awake');
 const partnerStatusText = computed(() => userStore.userInfo?.partner?.status_text || '刚刚起床');
 
+const todayLabel = computed(() => formatDate(new Date(), 'YYYY年M月D日'));
+
+function isAssetType(type) {
+  return ASSET_TYPES.includes(type);
+}
+
+function isRecordType(type) {
+  return RECORD_TYPES.includes(type);
+}
+
+function showRecordTag(msg) {
+  // 只给真正的业务记录（饮食/运动/身体/习惯）显示"已记录"
+  // 且必须有 precipitation_id，否则点击后无法编辑
+  return Number(msg.precipitation_status) === 1 && isRecordType(msg.precipitation_type) && !!msg.precipitation_id;
+}
+
+function showPendingTag(msg) {
+  return Number(msg.precipitation_status) === 2 && isRecordType(msg.precipitation_type);
+}
+
+function getMessageText(msg) {
+  if (!msg) return '';
+  return msg.displayContent !== undefined ? msg.displayContent : msg.content;
+}
+
+function copyMessage(msg) {
+  const text = getMessageText(msg);
+  if (!text) return;
+  uni.setClipboardData({
+    data: text,
+    success: () => {
+      uni.showToast({ title: '复制成功', icon: 'none' });
+    },
+    fail: () => {
+      uni.showToast({ title: '复制失败', icon: 'none' });
+    }
+  });
+}
+
+function gotoReportMessage(msg) {
+  const text = getMessageText(msg);
+  const url = `/pages/user/feedback?tab=report&content=${encodeURIComponent(text)}`;
+  uni.navigateTo({ url });
+}
+
+function openMsgActionMenu(msg) {
+  actionMsg.value = msg;
+  showMsgActions.value = true;
+}
+
+function closeMsgActionMenu() {
+  showMsgActions.value = false;
+  actionMsg.value = null;
+}
+
+function onMenuCopy() {
+  if (actionMsg.value) {
+    copyMessage(actionMsg.value);
+  }
+  closeMsgActionMenu();
+}
+
+function onMenuReport() {
+  if (actionMsg.value) {
+    gotoReportMessage(actionMsg.value);
+  }
+  closeMsgActionMenu();
+}
+
+function clearLongPressTimer() {
+  if (longPressTimer.value) {
+    clearTimeout(longPressTimer.value);
+    longPressTimer.value = null;
+  }
+  longPressMsg.value = null;
+}
+
+function handleTouchStart(e, msg) {
+  const touch = e.touches?.[0];
+  if (!touch) return;
+  longPressStartX = touch.clientX;
+  longPressStartY = touch.clientY;
+  longPressMsg.value = msg;
+  longPressTimer.value = setTimeout(() => {
+    longPressTimer.value = null;
+    if (longPressMsg.value) {
+      if (longPressMsg.value.role === 'partner') {
+        actionMenuX.value = longPressStartX;
+        actionMenuY.value = longPressStartY;
+        openMsgActionMenu(longPressMsg.value);
+      } else {
+        copyMessage(longPressMsg.value);
+      }
+      longPressMsg.value = null;
+    }
+  }, LONG_PRESS_DELAY);
+}
+
+function handleTouchMove(e) {
+  const touch = e.touches?.[0];
+  if (!touch || !longPressTimer.value) return;
+  const dx = Math.abs(touch.clientX - longPressStartX);
+  const dy = Math.abs(touch.clientY - longPressStartY);
+  if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
+    clearLongPressTimer();
+  }
+}
+
+function handleTouchEnd() {
+  clearLongPressTimer();
+}
+
+// 搭子心情池（按时间段分组，每次随机选取）
+const moodPool = {
+  morning: [    // 6-9点
+    { emoji: '😊', text: '元气满满' },
+    { emoji: '☀️', text: '阳光正好' },
+    { emoji: '🌅', text: '早起打卡' },
+    { emoji: '✨', text: '精神百倍' },
+    { emoji: '🥰', text: '心情不错' },
+    { emoji: '🌻', text: '充满能量' }
+  ],
+  forenoon: [   // 9-12点
+    { emoji: '💪', text: '干劲十足' },
+    { emoji: '🎯', text: '专注模式' },
+    { emoji: '☕', text: '咖啡续命中' },
+    { emoji: '🔥', text: '火力全开' },
+    { emoji: '🚀', text: '效率拉满' },
+    { emoji: '🤓', text: '认真工作' }
+  ],
+  noon: [       // 12-14点
+    { emoji: '😋', text: '干饭时间' },
+    { emoji: '🍱', text: '准备干饭' },
+    { emoji: '🥗', text: '健康饮食' },
+    { emoji: '🍜', text: '美食诱惑' },
+    { emoji: '🤤', text: '有点饿了' },
+    { emoji: '🍽️', text: '午餐时间' }
+  ],
+  afternoon: [  // 14-17点
+    { emoji: '😌', text: '佛系摸鱼' },
+    { emoji: '🍵', text: '下午茶时间' },
+    { emoji: '🥱', text: '微微犯困' },
+    { emoji: '🐟', text: '摸鱼中' },
+    { emoji: '🌤️', text: '悠闲时光' },
+    { emoji: '😎', text: '轻松一刻' }
+  ],
+  evening: [    // 17-19点
+    { emoji: '🎉', text: '下班快乐' },
+    { emoji: '🏠', text: '准备回家' },
+    { emoji: '🌇', text: '晚霞很美' },
+    { emoji: '🥳', text: '解放啦' },
+    { emoji: '✌️', text: '今日收工' },
+    { emoji: '🎶', text: '心情轻快' }
+  ],
+  night: [      // 19-21点
+    { emoji: '🏃', text: '运动时间' },
+    { emoji: '🧘', text: '放松身心' },
+    { emoji: '📺', text: '追剧模式' },
+    { emoji: '🛁', text: '准备洗漱' },
+    { emoji: '🌙', text: '夜晚宁静' },
+    { emoji: '💆', text: '享受当下' }
+  ],
+  lateNight: [  // 21-23点
+    { emoji: '😴', text: '有点困了' },
+    { emoji: '🛌', text: '准备睡觉' },
+    { emoji: '💤', text: '哈欠连天' },
+    { emoji: '🌃', text: '夜色温柔' },
+    { emoji: '📖', text: '睡前阅读' },
+    { emoji: '😪', text: '眼皮打架' }
+  ],
+  midnight: [   // 23-6点
+    { emoji: '😴', text: '睡觉中' },
+    { emoji: '💤', text: '梦乡里' },
+    { emoji: '🌌', text: '深夜静谧' },
+    { emoji: '⭐', text: '星星伴眠' },
+    { emoji: '🛌', text: '休息中' },
+    { emoji: '🌛', text: '月亮不睡' }
+  ]
+};
+
+function getRandomMood(hour) {
+  let pool;
+  if (hour >= 6 && hour < 9) pool = moodPool.morning;
+  else if (hour >= 9 && hour < 12) pool = moodPool.forenoon;
+  else if (hour >= 12 && hour < 14) pool = moodPool.noon;
+  else if (hour >= 14 && hour < 17) pool = moodPool.afternoon;
+  else if (hour >= 17 && hour < 19) pool = moodPool.evening;
+  else if (hour >= 19 && hour < 21) pool = moodPool.night;
+  else if (hour >= 21 && hour < 23) pool = moodPool.lateNight;
+  else pool = moodPool.midnight;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// 缓存当前小时的心情，避免频繁切换
+let cachedMood = null;
+let cachedHour = -1;
+
+const partnerMood = computed(() => {
+  const hour = new Date().getHours();
+  if (cachedHour !== hour || !cachedMood) {
+    cachedHour = hour;
+    cachedMood = getRandomMood(hour);
+  }
+  return cachedMood;
+});
+
+const partnerMoodEmoji = computed(() => partnerMood.value.emoji);
+const partnerMoodText = computed(() => partnerMood.value.text);
+
 onMounted(() => {
+  userStore.fetchUserInfo();
   loadMessages();
   loadTodayStats();
+  checkWakeupMessage();
+  uni.$emit('tabbar-select', 0);
+  uni.hideTabBar({ animation: false }).catch(() => {});
 });
+
+onShow(() => {
+  setTimeout(() => {
+    if (messages.value.length > 0) {
+      scrollToBottom();
+    }
+  }, 100);
+  uni.$emit('tabbar-select', 0);
+  uni.hideTabBar({ animation: false }).catch(() => {});
+});
+
+// 检查冷启动唤醒消息
+async function checkWakeupMessage() {
+  try {
+    const res = await chatApi.getChatStats();
+    if (res.code === 0 && res.data) {
+      const stats = res.data;
+      if (stats.consecutive_unread >= 5) {
+        const wakeupRes = await chatApi.sendWakeupMessage();
+        if (wakeupRes.code === 0 && wakeupRes.data) {
+          const msg = wakeupRes.data.message;
+          messages.value.push({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            content_type: msg.content_type,
+            created_at: msg.created_at,
+            precipitation_status: 0,
+            is_template: true
+          });
+          scrollToBottom();
+        }
+      }
+    }
+  } catch (err) {
+    console.error('检查唤醒消息失败:', err);
+  }
+}
 
 // 加载聊天记录
 async function loadMessages(reset = false) {
@@ -162,18 +720,46 @@ async function loadMessages(reset = false) {
 
   try {
     const res = await chatApi.getMessages({ page: page.value, size: 20 });
-    const list = res.data.list || [];
+    let list = res.data.list || [];
+
+    list = list.map(msg => ({
+      ...msg,
+      precipitation_status: Number(msg.precipitation_status) || 0,
+      precipitation_id: msg.precipitation_id || null,
+      precipitation_type: msg.precipitation_type || null
+    }));
+
     if (reset) {
       messages.value = list;
+      scrollToBottom();
     } else {
+      const oldHeight = await getScrollHeight();
       messages.value = [...list, ...messages.value];
+      nextTick(async () => {
+        const newHeight = await getScrollHeight();
+        scrollTop.value = newHeight - oldHeight + 1;
+      });
     }
+
     hasMore.value = res.data.pagination.has_more;
     page.value++;
-    scrollToBottom();
   } catch (err) {
     console.error('加载消息失败:', err);
   }
+}
+
+// 获取 scroll-view 滚动高度
+function getScrollHeight() {
+  return new Promise((resolve) => {
+    nextTick(() => {
+      const scrollView = document.querySelector('.message-list');
+      if (scrollView) {
+        resolve(scrollView.scrollHeight);
+      } else {
+        resolve(0);
+      }
+    });
+  });
 }
 
 function loadMore() {
@@ -193,14 +779,23 @@ async function loadTodayStats() {
 // 发送消息
 async function sendMessage() {
   const content = inputText.value.trim();
-  if (!content || loading.value) return;
+  if (!content) return;
 
-  loading.value = true;
+  // 试用权限校验
+  const perm = await checkPermission('ai_chat');
+  if (!perm.allow_use) {
+    if (perm.show_popup && authPopupRef.value) {
+      authPopupRef.value.show(perm.popup_config);
+    }
+    return;
+  }
+
   inputText.value = '';
+  loading.value = true;
 
-  // 先显示用户消息
+  const tempId = Date.now();
   messages.value.push({
-    id: Date.now(),
+    id: tempId,
     role: 'user',
     content,
     precipitation_status: 0,
@@ -211,18 +806,93 @@ async function sendMessage() {
   try {
     const res = await chatApi.send(content);
     const data = res.data;
+    console.log('[sendMessage] 后端返回:', data.user_message.id, '沉淀状态:', data.user_message.precipitation_status);
 
-    // 更新用户消息状态
-    const userMsgIndex = messages.value.findIndex(m => m.id === Date.now());
+    const userMsgIndex = messages.value.findIndex(m => m.id === tempId);
     if (userMsgIndex > -1) {
-      messages.value[userMsgIndex] = data.user_message;
+      const userMsg = {
+        ...data.user_message,
+        precipitation_status: Number(data.user_message.precipitation_status) || 0,
+        precipitation_id: data.user_message.precipitation_id || null,
+        precipitation_type: data.user_message.precipitation_type || null
+      };
+      messages.value[userMsgIndex] = userMsg;
+      console.log('[sendMessage] 已替换用户消息，新ID:', userMsg.id, '沉淀状态:', userMsg.precipitation_status);
     }
 
-    // 添加搭子回复
     messages.value.push(data.partner_message);
+    if (data.partner_message?.role === 'partner' && data.partner_message?.content?.length > 60) {
+      startTypeWriter(data.partner_message);
+    }
 
-    // 刷新今日概览
+    if (data.async_helper) {
+      console.log('[sendMessage] 异步 helper 已启动，开始轮询');
+      loading.value = true;
+
+      let pollCount = 0;
+      const maxPolls = 120;
+      const pollInterval = setInterval(async () => {
+        pollCount++;
+        try {
+          const res = await chatApi.getMessages({ page: 1, size: 20 });
+          const list = res.data.list || [];
+          console.log('[轮询] 获取消息数:', list.length, '最后一条ID:', list[list.length - 1]?.id);
+
+          const newMessages = list.filter(m =>
+            m.role === 'partner' &&
+            m.id > data.partner_message.id &&
+            !messages.value.some(existing => existing.id === m.id)
+          );
+
+          console.log('[轮询] 新消息数:', newMessages.length, '已有消息IDs:', messages.value.map(m => m.id).slice(-5));
+
+          if (newMessages.length > 0) {
+            newMessages.forEach(msg => {
+              messages.value.push(msg);
+              if (msg.role === 'partner' && msg.content && msg.content.length > 60) {
+                startTypeWriter(msg);
+              }
+            });
+            console.log('[sendMessage] 异步 helper 结果已获取，添加消息数:', newMessages.length, '消息IDs:', newMessages.map(m => m.id));
+            loading.value = false;
+            clearInterval(pollInterval);
+            nextTick(() => {
+              setTimeout(() => scrollToBottom(), 100);
+            });
+          }
+
+          const userMsgIndex = messages.value.findIndex(m => m.id === data.user_message.id);
+          if (userMsgIndex > -1) {
+            const latestUserMsg = list.find(m => m.id === data.user_message.id);
+            if (latestUserMsg && latestUserMsg.precipitation_status > 0) {
+              messages.value[userMsgIndex].precipitation_status = latestUserMsg.precipitation_status;
+              messages.value[userMsgIndex].precipitation_id = latestUserMsg.precipitation_id;
+              messages.value[userMsgIndex].precipitation_type = latestUserMsg.precipitation_type;
+              console.log('[sendMessage] 沉淀状态已更新:', latestUserMsg.precipitation_status);
+            }
+          }
+
+          if (pollCount >= maxPolls) {
+            console.log('[sendMessage] 异步 helper 轮询超时');
+            loading.value = false;
+            clearInterval(pollInterval);
+          }
+        } catch (e) {
+          console.error('[sendMessage] 轮询失败:', e);
+        }
+      }, 1000);
+    } else {
+      loading.value = false;
+    }
+
     loadTodayStats();
+
+    // 成功后上报 AI 对话使用次数
+    reportCount('ai_chat');
+
+    setTimeout(() => {
+      refreshMessages();
+    }, 3000);
   } catch (err) {
     messages.value.push({
       id: Date.now() + 1,
@@ -230,345 +900,1319 @@ async function sendMessage() {
       content: '哎呀，我这边网络有点卡，你再说一遍好不？',
       created_at: new Date().toISOString()
     });
-  } finally {
     loading.value = false;
+  } finally {
     scrollToBottom();
   }
 }
 
-// 切换模式
-async function switchMode(mode) {
+// 打字机效果：长回复逐字显示，避免内容一下子全部弹出
+function startTypeWriter(msg, speed) {
+  if (!msg || !msg.content) return;
+  const full = msg.content;
+  // 根据长度动态调整速度，长文更快、短文更自然
+  const step = full.length > 500 ? 3 : full.length > 200 ? 2 : 1;
+  const interval = speed ?? (full.length > 400 ? 10 : full.length > 150 ? 15 : 20);
+  msg.displayContent = '';
+  let i = 0;
+  const timer = setInterval(() => {
+    if (i < full.length) {
+      i = Math.min(full.length, i + step);
+      msg.displayContent = full.slice(0, i);
+      scrollToBottom();
+    } else {
+      clearInterval(timer);
+      msg.displayContent = full;
+    }
+  }, interval);
+}
+
+// 刷新消息列表（获取沉淀状态更新）
+async function refreshMessages() {
   try {
-    await partnerApi.switchMode(mode);
-    userStore.setPartnerMode(mode);
-    uni.showToast({ title: '切换成功', icon: 'none' });
+    console.log('[refreshMessages] 开始刷新...');
+    const res = await chatApi.getMessages({ page: 1, size: 20 });
+    const list = res.data.list || [];
+    console.log('[refreshMessages] 获取到消息数:', list.length);
+
+    const statusMap = new Map();
+    for (const msg of list) {
+      if (msg.precipitation_status > 0) {
+        statusMap.set(msg.id, {
+          precipitation_status: msg.precipitation_status,
+          precipitation_id: msg.precipitation_id,
+          precipitation_type: msg.precipitation_type
+        });
+        console.log('[refreshMessages] 沉淀状态:', msg.id, msg.precipitation_status, msg.precipitation_id, msg.precipitation_type);
+      }
+    }
+    console.log('[refreshMessages] statusMap大小:', statusMap.size);
+
+    let hasUpdate = false;
+    for (let i = 0; i < messages.value.length; i++) {
+      const msg = messages.value[i];
+      if (msg.role === 'user' && statusMap.has(msg.id)) {
+        const newStatus = statusMap.get(msg.id);
+        const currentStatus = Number(msg.precipitation_status) || 0;
+        const targetStatus = Number(newStatus.precipitation_status) || 0;
+        console.log('[refreshMessages] 匹配消息:', msg.id, '当前状态:', currentStatus, '新状态:', targetStatus);
+        if (currentStatus !== targetStatus) {
+          messages.value[i] = {
+            ...msg,
+            precipitation_status: targetStatus,
+            precipitation_id: newStatus.precipitation_id,
+            precipitation_type: newStatus.precipitation_type || msg.precipitation_type
+          };
+          hasUpdate = true;
+          console.log('[refreshMessages] 已更新消息:', msg.id, '新状态:', targetStatus);
+        }
+      }
+    }
+
+    if (hasUpdate) {
+      messages.value = [...messages.value];
+      console.log('[refreshMessages] 强制刷新完成');
+    } else {
+      console.log('[refreshMessages] 无需更新');
+    }
   } catch (err) {
-    console.error('切换模式失败:', err);
+    console.error('刷新消息失败:', err);
   }
 }
 
-// 快速记录
-function quickRecord(type) {
-  showQuickRecord.value = false;
-  const placeholders = {
-    diet: '我今天吃了',
-    exercise: '我今天运动了',
-    weight: '今天体重',
-    water: '今天喝了'
+// 跳转到记录页面
+function goToRecord(type) {
+  const urls = {
+    diet: '/pages/record/diet-detail',
+    exercise: '/pages/record/exercise-detail',
+    weight: '/pages/record/body-data',
+    water: '/pages/record/habit'
   };
-  inputText.value = placeholders[type] || '';
-}
-
-// 跳转到记录中心
-function goToRecord() {
-  uni.switchTab({ url: '/pages/record/index' });
+  uni.navigateTo({ url: urls[type] || '/pages/record/index' });
 }
 
 // 滚动到底部
 function scrollToBottom() {
   nextTick(() => {
-    scrollTop.value = messages.value.length * 1000 + Date.now();
+    scrollIntoView.value = 'msg-bottom-spacer';
+    nextTick(() => {
+      const scrollView = document.querySelector('.message-list');
+      if (scrollView) {
+        scrollTop.value = scrollView.scrollHeight + 9999;
+      }
+    });
+    setTimeout(() => {
+      scrollIntoView.value = '';
+    }, 300);
   });
 }
-</script>
 
-<style lang="scss" scoped>
-.chat-page {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #f5f6fa;
+// 打开编辑弹窗
+function openEditModal(record, mode = 'edit', targetMsg = null) {
+  editRecord.value = record;
+  editMode.value = mode;
+  editTargetMsg.value = targetMsg;
+  const data = record.extracted_data || {};
+  const recordType = record.type || 'diet_record';
+
+  switch (recordType) {
+    case 'diet_record': {
+      const validMeals = ['breakfast', 'lunch', 'dinner', 'snack'];
+      editMealTime.value = validMeals.includes(data.meal_time) ? data.meal_time : 'lunch';
+      editFoods.value = (data.foods || []).map(f => {
+        const weight = parseFloat(f.weight) || 0;
+        const calorie = parseFloat(f.calorie) || 0;
+        return {
+          name: f.name || '',
+          weight: f.weight || '',
+          quantity: f.quantity || '',
+          unit: f.unit || '个',
+          calorie,
+          calorie_per_100g: weight > 0 ? (calorie / weight) * 100 : calorie || 0,
+          protein: f.protein || 0,
+          carb: f.carb || 0,
+          fat: f.fat || 0
+        };
+      });
+      if (editFoods.value.length === 0) {
+        editFoods.value.push({ name: '', weight: '', quantity: '', unit: '个', calorie: 0, calorie_per_100g: 0, protein: 0, carb: 0, fat: 0 });
+      }
+      editRecordType.value = 'diet';
+      break;
+    }
+    case 'body_data': {
+      // 支持的所有身体数据类型
+      const allBodyTypes = [
+        { type: 'weight', unit: 'kg' },
+        { type: 'body_fat', unit: '%' },
+        { type: 'waist', unit: 'cm' },
+        { type: 'hip', unit: 'cm' },
+        { type: 'chest', unit: 'cm' },
+        { type: 'arm', unit: 'cm' },
+        { type: 'thigh', unit: 'cm' },
+        { type: 'calf', unit: 'cm' }
+      ];
+
+      // 汇总已有数据
+      const existingMap = {};
+      const mainSubType = normalizeBodyType(data.sub_type || record.sub_type);
+      if (mainSubType && data.value !== undefined && data.value !== null && data.value !== '') {
+        existingMap[mainSubType] = String(data.value);
+      }
+      if (data.body_items && Array.isArray(data.body_items)) {
+        for (const item of data.body_items) {
+          if (item.value !== undefined && item.value !== null && item.value !== '') {
+            existingMap[normalizeBodyType(item.sub_type)] = String(item.value);
+          }
+        }
+      }
+
+      editBodyData.value = allBodyTypes.map(t => ({
+        type: t.type,
+        value: existingMap[t.type] || '',
+        unit: t.unit
+      }));
+      editRecordType.value = 'body';
+      break;
+    }
+    case 'exercise_record': {
+      editExercises.value = (data.exercises || []).map(e => ({
+        name: e.name || '',
+        duration: String(e.duration || ''),
+        intensity: e.intensity || 'moderate',
+        calorie: String(e.calorie || '')
+      }));
+      if (editExercises.value.length === 0) {
+        editExercises.value.push({ name: '', duration: '', intensity: 'moderate', calorie: '' });
+      }
+      initExerciseCalorieRates();
+      editRecordType.value = 'exercise';
+      break;
+    }
+    case 'habit': {
+      const habitValue = data.value || '';
+      const numericValue = String(habitValue).replace(/[^0-9.]/g, '');
+      editHabitData.value = {
+        type: 'water',
+        value: numericValue,
+        unit: data.unit || 'ml'
+      };
+      editRecordType.value = 'habit';
+      break;
+    }
+    default: {
+      if (isAssetType(recordType)) {
+        editAssetData.value = {
+          type: recordType,
+          title: data.title || data.name || assetTypeLabelMap[recordType] || recordType,
+          content: data.content || record.content || ''
+        };
+        editRecordType.value = 'asset';
+      } else {
+        editRecordType.value = 'diet';
+      }
+      break;
+    }
+  }
+
+  showEditModal.value = true;
 }
 
-.nav-bar {
-  padding: 80rpx 24rpx 20rpx;
-  background: #fff;
+// 关闭编辑弹窗
+function closeEditModal() {
+  showEditModal.value = false;
+  editRecord.value = null;
+  editMode.value = 'edit';
+  editTargetMsg.value = null;
+  editRecordType.value = 'diet';
+  editAssetData.value = { type: '', title: '', content: '' };
+}
+
+// 忽略/取消编辑弹窗
+async function rejectEdit() {
+  if (editMode.value === 'confirm' && editRecord.value) {
+    try {
+      await chatApi.confirmPrecipitation({ precipitation_id: editRecord.value.id, confirmed: false });
+      if (editTargetMsg.value) {
+        editTargetMsg.value.precipitation_status = 3;
+      }
+      uni.showToast({ title: '已忽略', icon: 'none' });
+    } catch (err) {
+      console.error(err);
+      uni.showToast({ title: '操作失败', icon: 'none' });
+    }
+  }
+  closeEditModal();
+}
+
+// 计算弹窗内某个食物的实时热量
+function computedFoodCalorie(food) {
+  const weight = parseFloat(food.weight) || 0;
+  if (weight <= 0) return 0;
+  const per100g = parseFloat(food.calorie_per_100g) || 0;
+  if (per100g > 0) return Math.round(per100g * weight / 100);
+  return Math.round(parseFloat(food.calorie) || 0);
+}
+
+// 添加食物行
+function addFoodRow() {
+  editFoods.value.push({ name: '', weight: '', quantity: '', unit: '个', calorie: 0, calorie_per_100g: 0, protein: 0, carb: 0, fat: 0 });
+}
+
+// 打开食物选择面板
+async function openFoodPicker() {
+  showFoodPicker.value = true;
+  foodKeyword.value = '';
+  await searchFoods();
+}
+
+// 搜索食物
+async function searchFoods() {
+  try {
+    const params = { page: 1, size: 50 };
+    if (foodKeyword.value.trim()) params.keyword = foodKeyword.value;
+    if (currentFoodCategory.value !== 'all') params.category = currentFoodCategory.value;
+    const res = await systemApi.getFoods(params);
+    foodSearchResults.value = res.data?.list || [];
+  } catch (err) {
+    console.error('搜索食物失败:', err);
+    foodSearchResults.value = [];
+  }
+}
+
+// 切换食物分类
+async function switchFoodCategory(key) {
+  currentFoodCategory.value = key;
+  await searchFoods();
+}
+
+// 从选择器添加食物
+function selectFoodFromPicker(food) {
+  const unitWeight = parseFloat(food.unit_weight) || 100;
+  const unit = food.unit || 'g';
+  const per100g = parseFloat(food.calorie_per_100g) || 0;
+  editFoods.value.push({
+    name: food.name,
+    quantity: 1,
+    unit: unit,
+    weight: unitWeight,
+    calorie: Math.round(per100g * unitWeight / 100),
+    calorie_per_100g: per100g,
+    protein: parseFloat(food.protein_per_100g) || 0,
+    carb: parseFloat(food.carb_per_100g) || 0,
+    fat: parseFloat(food.fat_per_100g) || 0
+  });
+  showFoodPicker.value = false;
+  uni.showToast({ title: '已添加', icon: 'success' });
+}
+
+// 删除食物行
+function removeFoodRow(index) {
+  editFoods.value.splice(index, 1);
+  if (editFoods.value.length === 0) {
+    editFoods.value.push({ name: '', weight: '', quantity: '', unit: '个', calorie: 0, calorie_per_100g: 0, protein: 0, carb: 0, fat: 0 });
+  }
+}
+
+// 初始化每项运动的“每分钟热量”并同步一次热量显示
+function initExerciseCalorieRates() {
+  editExercises.value.forEach(ex => {
+    const duration = parseFloat(ex.duration) || 0;
+    const calorie = parseFloat(ex.calorie) || 0;
+    ex._caloriePerMinute = duration > 0 ? calorie / duration : 0;
+    if (duration > 0 && ex._caloriePerMinute) {
+      ex.calorie = String(Math.round(duration * ex._caloriePerMinute));
+    }
+  });
+}
+
+// 时长变化时按分钟热量同步更新消耗
+function onExerciseDurationInput(index) {
+  const ex = editExercises.value[index];
+  const duration = parseFloat(ex.duration) || 0;
+  if (duration > 0 && ex._caloriePerMinute) {
+    ex.calorie = String(Math.round(duration * ex._caloriePerMinute));
+  }
+}
+
+// 用户手动修改热量时更新“每分钟热量”比例
+function onExerciseCalorieInput(index) {
+  const ex = editExercises.value[index];
+  const duration = parseFloat(ex.duration) || 0;
+  const calorie = parseFloat(ex.calorie) || 0;
+  if (duration > 0) {
+    ex._caloriePerMinute = calorie / duration;
+  }
+}
+
+// 删除运动行
+function removeExerciseRow(index) {
+  editExercises.value.splice(index, 1);
+  if (editExercises.value.length === 0) {
+    editExercises.value.push({ name: '', duration: '', intensity: 'moderate', calorie: 0 });
+  }
+}
+
+// 添加运动行
+function addExerciseRow() {
+  editExercises.value.push({ name: '', duration: '', intensity: 'moderate', calorie: 0 });
+}
+
+// 保存编辑
+async function saveEdit() {
+  if (!editRecord.value) return;
+
+  const recordType = editRecord.value.type || 'diet_record';
+  let extractedData = {};
+  let updateType = recordType;
+  let updateSubType = '';
+
+  try {
+    switch (recordType) {
+      case 'diet_record': {
+        const validFoods = editFoods.value.filter(f => f.name.trim());
+        if (validFoods.length === 0) {
+          uni.showToast({ title: '请至少填写一种食物', icon: 'none' });
+          return;
+        }
+        const totalCalorie = validFoods.reduce((sum, f) => sum + (parseFloat(f.calorie) || 0), 0);
+        const totalProtein = validFoods.reduce((sum, f) => sum + (parseFloat(f.protein) || 0), 0);
+        const totalCarb = validFoods.reduce((sum, f) => sum + (parseFloat(f.carb) || 0), 0);
+        const totalFat = validFoods.reduce((sum, f) => sum + (parseFloat(f.fat) || 0), 0);
+        extractedData = {
+          meal_time: editMealTime.value,
+          foods: validFoods.map(f => ({
+            name: f.name.trim(),
+            weight: parseFloat(f.weight) || 0,
+            quantity: parseFloat(f.quantity) || 1,
+            unit: f.unit || 'g',
+            calorie: parseFloat(f.calorie) || 0,
+            protein: parseFloat(f.protein) || 0,
+            carb: parseFloat(f.carb) || 0,
+            fat: parseFloat(f.fat) || 0
+          })),
+          total_calorie: totalCalorie,
+          total_protein: totalProtein,
+          total_carb: totalCarb,
+          total_fat: totalFat
+        };
+        updateSubType = editMealTime.value;
+        break;
+      }
+      case 'body_data': {
+        const validBodyItems = editBodyData.value.filter(item => item.value !== '' && item.value !== null && item.value !== undefined);
+        if (validBodyItems.length === 0) {
+          uni.showToast({ title: '请输入至少一项数值', icon: 'none' });
+          return;
+        }
+        const firstItem = validBodyItems[0];
+        extractedData = {
+          sub_type: firstItem.type,
+          value: parseFloat(firstItem.value) || 0,
+          unit: firstItem.unit,
+          body_items: validBodyItems.map(item => ({
+            sub_type: item.type,
+            value: parseFloat(item.value) || 0,
+            unit: item.unit
+          }))
+        };
+        updateSubType = firstItem.type;
+        break;
+      }
+      case 'exercise_record': {
+        const validExercises = editExercises.value.filter(e => e.name.trim());
+        if (validExercises.length === 0) {
+          uni.showToast({ title: '请至少填写一项运动', icon: 'none' });
+          return;
+        }
+        // 保存前再按当前比例校准一次热量，避免只改时长未触发联动
+        validExercises.forEach(e => {
+          const duration = parseFloat(e.duration) || 0;
+          if (duration > 0 && e._caloriePerMinute) {
+            e.calorie = String(Math.round(duration * e._caloriePerMinute));
+          }
+        });
+        extractedData = {
+          exercises: validExercises.map(e => ({
+            name: e.name.trim(),
+            duration: parseFloat(e.duration) || 0,
+            intensity: e.intensity || 'moderate',
+            calorie: parseFloat(e.calorie) || 0
+          }))
+        };
+        updateSubType = 'exercise';
+        break;
+      }
+      case 'habit': {
+        if (!editHabitData.value.value) {
+          uni.showToast({ title: '请输入数值', icon: 'none' });
+          return;
+        }
+        extractedData = {
+          sub_type: '喝水',
+          value: parseFloat(editHabitData.value.value) || 0,
+          unit: editHabitData.value.unit || 'ml'
+        };
+        updateSubType = '喝水';
+        break;
+      }
+      case 'recipe':
+      case 'method':
+      case 'pitfall':
+      case 'insight':
+      case 'quote': {
+        extractedData = {
+          title: editAssetData.value.title || assetTypeLabelMap[recordType] || recordType,
+          content: editAssetData.value.content || ''
+        };
+        updateSubType = recordType;
+        break;
+      }
+    }
+
+    if (editMode.value === 'confirm') {
+      await precipitationApi.update(editRecord.value.id, {
+        type: updateType,
+        sub_type: updateSubType,
+        extracted_data: extractedData,
+        status: 1
+      });
+      if (editTargetMsg.value) {
+        editTargetMsg.value.precipitation_status = 1;
+      }
+      uni.showToast({ title: '已确认记录', icon: 'success' });
+    } else {
+      await precipitationApi.update(editRecord.value.id, {
+        type: updateType,
+        sub_type: updateSubType,
+        extracted_data: extractedData
+      });
+      uni.showToast({ title: '修改成功', icon: 'success' });
+    }
+    closeEditModal();
+    loadTodayStats();
+    refreshMessages();
+  } catch (err) {
+    console.error(err);
+    uni.showToast({ title: '保存失败', icon: 'none' });
+  }
+}
+
+// 已记录标签点击
+async function onConfirmedTag(msg) {
+  if (!msg.precipitation_id) {
+    uni.showModal({
+      title: '已自动记录',
+      content: '这条消息已帮你记入今日记录，可以在「今日记录」中查看或修改哦～',
+      showCancel: false,
+      confirmText: '知道了'
+    });
+    return;
+  }
+
+  try {
+    const res = await precipitationApi.getList({ page: 1, size: 50 });
+    const list = res.data.list || [];
+    const record = list.find(r => r.id === msg.precipitation_id);
+    if (!record) {
+      uni.showToast({ title: '记录未找到', icon: 'none' });
+      return;
+    }
+    openEditModal(record, 'edit', msg);
+  } catch (err) {
+    console.error(err);
+    uni.showToast({ title: '加载失败', icon: 'none' });
+  }
+}
+
+// 待确认标签点击
+async function onPendingTag(msg) {
+  try {
+    let record = null;
+    if (!msg.precipitation_id) {
+      //  preliminary 标签还没有沉淀记录，先创建一条待确认记录
+      const createRes = await precipitationApi.create({
+        chat_id: msg.id,
+        content: msg.content,
+        type: msg.precipitation_type
+      });
+      record = createRes.data;
+      msg.precipitation_id = record.id;
+    } else {
+      const res = await precipitationApi.getList({ page: 1, size: 50 });
+      const list = res.data.list || [];
+      record = list.find(r => r.id === msg.precipitation_id);
+    }
+    if (!record) {
+      uni.showToast({ title: '记录未找到', icon: 'none' });
+      return;
+    }
+    openEditModal(record, 'confirm', msg);
+  } catch (err) {
+    console.error(err);
+    uni.showToast({ title: '加载失败', icon: 'none' });
+  }
+}
+</script>
+<style lang="scss" scoped>
+.partner-page {
+  height: 100vh;
+  height: 100dvh;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  background: #F7FbF4;
+  overflow: hidden;
+}
+
+.status-bar {
+  height: var(--status-bar-height);
+  flex-shrink: 0;
+}
+
+/* 顶部搭子信息 */
+.header {
+  flex-shrink: 0;
+  background: #FFFFFF;
+  padding: 20rpx 32rpx 24rpx;
+}
+
+.header-inner {
+  display: flex;
   align-items: center;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+.avatar-wrap {
+  position: relative;
+  width: 96rpx;
+  height: 96rpx;
+  margin-right: 24rpx;
+  flex-shrink: 0;
+}
+
+.avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #CFE9BF;
+}
+
+.ai-badge {
+  position: absolute;
+  right: -4rpx;
+  bottom: -4rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 6rpx;
+  background: #8DBB77;
+  color: #fff;
+  font-size: 18rpx;
+  font-weight: 600;
+  line-height: 28rpx;
+  text-align: center;
+  border-radius: 16rpx;
+  border: 2rpx solid #fff;
+  box-sizing: border-box;
 }
 
 .partner-info {
+  flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
 }
 
 .partner-name {
-  font-size: 36rpx;
-  font-weight: 600;
-  color: #333;
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #1F2937;
+  line-height: 1.2;
+  margin-right: 16rpx;
+  flex: 1;
+  min-width: 0;
 }
 
-.partner-status {
+.tags-wrap {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.tags-inner {
   display: flex;
   align-items: center;
-  margin-top: 6rpx;
+  background: #E8F4FC;
+  border-radius: 28rpx;
+  padding: 4rpx 6rpx;
+}
+
+.tag {
+  display: flex;
+  align-items: center;
+  font-size: 24rpx;
+  color: #6B7280;
+  line-height: 1;
+}
+
+.status-tag {
+  padding: 4rpx 10rpx;
 }
 
 .status-dot {
-  width: 12rpx;
-  height: 12rpx;
-  border-radius: 50%;
+  width: 18rpx;
+  height: 18rpx;
   margin-right: 8rpx;
-  background: #999;
 }
 
-.status-dot.awake { background: #FFC107; }
-.status-dot.eating { background: #4CAF50; }
-.status-dot.exercising { background: #2196F3; }
-.status-dot.sleeping { background: #9E9E9E; }
-
-.status-text {
-  font-size: 22rpx;
-  color: #999;
+.mood-tag {
+  background: #FFFFFF;
+  border-radius: 18rpx;
+  padding: 4rpx 10rpx;
+  margin-left: 6rpx;
 }
 
-.mode-switch {
-  display: flex;
-  background: #f5f6fa;
-  border-radius: 32rpx;
-  padding: 4rpx;
-}
-
-.mode-item {
-  padding: 10rpx 24rpx;
-  font-size: 24rpx;
-  color: #666;
-  border-radius: 28rpx;
-}
-
-.mode-item.active {
-  background: #4CAF50;
-  color: #fff;
-}
-
-.progress-card {
-  margin: 20rpx 24rpx;
-  background: #fff;
-  border-radius: 16rpx;
-  padding: 24rpx;
-  display: flex;
-  justify-content: space-around;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
-}
-
-.progress-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.progress-label {
-  font-size: 24rpx;
-  color: #999;
-  margin-bottom: 8rpx;
-}
-
-.progress-value {
-  font-size: 40rpx;
-  font-weight: 600;
-  color: #333;
-}
-
-.progress-value.green { color: #4CAF50; }
-.progress-value.yellow { color: #FFC107; }
-.progress-value.red { color: #F44336; }
-
+/* 消息列表 */
 .message-list {
   flex: 1;
-  padding: 0 24rpx;
+  min-height: 0;
+  padding: 32rpx;
+  padding-bottom: calc(284rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-.message-item {
+.date-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 40rpx;
+}
+
+.date-pill {
+  display: inline-flex;
+  background: #FFFFFF;
+  border-radius: 28rpx;
+  padding: 10rpx 28rpx;
+  font-size: 24rpx;
+  color: #9CA3AF;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.03);
+}
+
+.message-row {
   display: flex;
   margin-bottom: 32rpx;
 }
 
-.message-item.user {
-  flex-direction: row-reverse;
+.message-row.partner {
+  justify-content: flex-start;
 }
 
-.avatar {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  background: #4CAF50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 28rpx;
-  flex-shrink: 0;
-}
-
-.message-item.user .avatar {
-  background: #2196F3;
-}
-
-.message-content {
-  max-width: 70%;
-  margin: 0 20rpx;
+.message-row.user {
+  justify-content: flex-end;
 }
 
 .bubble {
-  padding: 20rpx 24rpx;
-  border-radius: 24rpx;
-  background: #fff;
-  word-break: break-all;
+  max-width: 72%;
+  border-radius: 32rpx;
+  padding: 24rpx;
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
-.bubble.partner {
-  background: #fff;
-  border-top-left-radius: 6rpx;
+.partner-bubble {
+  background: #FFFFFF;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.03);
 }
 
-.bubble.user {
-  background: #95EC69;
-  border-top-right-radius: 6rpx;
+.user-bubble {
+  background: #BFE8B0;
 }
 
-.message-text {
-  font-size: 30rpx;
-  color: #333;
-  line-height: 1.5;
+.ai-generated-label {
+  font-size: 20rpx;
+  color: #8DBB77;
+  margin-bottom: 8rpx;
+  display: block;
+  line-height: 1;
 }
 
-.precipitation-tag {
+.bubble-text {
+  font-size: 28rpx;
+  color: #1F2937;
+}
+
+.user-column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: calc(72% + 100rpx);
+}
+
+.user-column .bubble {
+  max-width: 100%;
+}
+
+.record-tag {
   display: inline-flex;
   align-items: center;
-  margin-top: 8rpx;
-  padding: 4rpx 12rpx;
-  border-radius: 12rpx;
-  font-size: 20rpx;
+  background: rgba(254, 243, 199, 0.85);
+  border-radius: 24rpx;
+  padding: 8rpx 18rpx;
+  margin-top: 12rpx;
 }
 
-.precipitation-tag.confirmed {
-  color: #4CAF50;
-  background: #E8F5E9;
+.record-tag.pending {
+  background: rgba(229, 231, 235, 0.85);
 }
 
-.precipitation-tag.pending {
-  color: #FF9800;
-  background: #FFF3E0;
+.record-tag-text {
+  font-size: 22rpx;
+  color: #6B7280;
 }
 
-.tag-icon {
-  margin-right: 4rpx;
+.record-tag-icon {
+  width: 22rpx;
+  height: 22rpx;
+  margin-left: 8rpx;
 }
 
 .loading-tip {
   text-align: center;
-  padding: 20rpx;
   font-size: 24rpx;
-  color: #999;
+  color: #9CA3AF;
+  padding: 20rpx 0;
 }
 
+/* 底部输入区 */
 .input-area {
-  padding: 20rpx 24rpx;
-  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
-  background: #fff;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(144rpx + env(safe-area-inset-bottom));
+  padding: 16rpx 32rpx 20rpx;
+  background: #F7FAF5;
+  z-index: 10;
+}
+
+.input-bar {
   display: flex;
   align-items: center;
-  border-top: 1rpx solid #eee;
+  background: #FFFFFF;
+  border-radius: 48rpx;
+  padding: 12rpx 12rpx 12rpx 28rpx;
+  box-shadow: 0 4rpx 24rpx rgba(0, 0, 0, 0.05);
 }
 
 .chat-input {
   flex: 1;
-  height: 72rpx;
-  background: #f5f6fa;
-  border-radius: 36rpx;
-  padding: 0 24rpx;
+  height: 56rpx;
   font-size: 28rpx;
-  margin-right: 16rpx;
+  color: #1F2937;
 }
 
 .send-btn {
-  width: 120rpx;
-  height: 72rpx;
-  line-height: 72rpx;
-  background: #4CAF50;
-  color: #fff;
-  border-radius: 36rpx;
-  font-size: 28rpx;
-  padding: 0;
+  width: 80rpx;
+  height: 80rpx;
+  margin-left: 12rpx;
+  flex-shrink: 0;
 }
 
-.send-btn[disabled] {
-  background: #ccc;
-}
-
-.quick-record-btn {
+/* 编辑弹窗 */
+.panel-overlay {
   position: fixed;
-  right: 30rpx;
-  bottom: 180rpx;
-  width: 88rpx;
-  height: 88rpx;
-  border-radius: 50%;
-  background: #4CAF50;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+  z-index: 1000;
+}
+
+.panel-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.edit-panel {
+  position: fixed;
+  top: 50%;
+  left: 32rpx;
+  right: 32rpx;
+  max-height: 80vh;
+  background: #FFFFFF;
+  border-radius: 32rpx;
+  padding: 32rpx;
+  transform: translateY(-50%) scale(0.95);
+  transition: opacity 0.3s, transform 0.3s;
+  z-index: 1001;
+  overflow-y: auto;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.edit-panel.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) scale(1);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.panel-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+
+.panel-close {
+  font-size: 36rpx;
+  color: #9CA3AF;
+  padding: 8rpx;
+}
+
+.form-item {
+  margin-bottom: 24rpx;
+}
+
+.form-label {
+  display: block;
+  font-size: 28rpx;
+  color: #374151;
+  margin-bottom: 12rpx;
+}
+
+.meal-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.meal-option {
+  padding: 12rpx 24rpx;
+  border-radius: 28rpx;
+  background: #F3F4F6;
+  font-size: 26rpx;
+  color: #6B7280;
+}
+
+.meal-option.active {
+  background: #BFE8B0;
+  color: #1F2937;
+}
+
+.habit-type-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.habit-type-option {
+  padding: 12rpx 24rpx;
+  border-radius: 28rpx;
+  background: #F3F4F6;
+  font-size: 26rpx;
+  color: #6B7280;
+}
+
+.habit-type-option.active {
+  background: #BFE8B0;
+  color: #1F2937;
+}
+
+.food-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.food-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16rpx;
+  padding: 20rpx;
+  background: #F9FAFB;
+  border-radius: 16rpx;
+}
+
+.food-name-input {
+  width: 100%;
+  background: #F3F4F6;
+  border-radius: 12rpx;
+  padding: 18rpx 16rpx;
+  font-size: 30rpx;
+  line-height: 1.5;
+  color: #1F2937;
+  min-height: 72rpx;
+}
+
+.food-calorie-text {
+  font-size: 26rpx;
+  color: #8DBB77;
+  font-weight: 600;
+  margin-top: -8rpx;
+}
+
+.food-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.food-quantity-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  background: #F3F4F6;
+  border-radius: 12rpx;
+  padding: 0 16rpx;
+  min-height: 72rpx;
+}
+
+.food-weight-input {
+  flex: 1;
+  min-width: 80rpx;
+  background: transparent;
+  padding: 18rpx 0;
+  font-size: 28rpx;
+  line-height: 1.5;
+  text-align: left;
+  color: #1F2937;
+  min-height: 72rpx;
+}
+
+.food-unit {
+  font-size: 26rpx;
+  color: #6B7280;
+  margin-left: 8rpx;
+  flex-shrink: 0;
+}
+
+.food-remove {
+  color: #9CA3AF;
+  font-size: 34rpx;
+  padding: 12rpx;
+  flex-shrink: 0;
+}
+
+.body-input-row {
+  display: flex;
+  align-items: center;
+  background: #FFFFFF;
+  border: 2rpx solid #E5E7EB;
+  border-radius: 16rpx;
+  padding: 16rpx 24rpx;
+  min-height: 96rpx;
+}
+
+.body-value-input {
+  flex: 1;
+  padding: 12rpx 0;
+  font-size: 34rpx;
+  line-height: 1.5;
+  color: #1F2937;
+  background: transparent;
+  min-height: 60rpx;
+}
+
+.body-unit {
+  font-size: 30rpx;
+  color: #6B7280;
+  margin-left: 16rpx;
+  white-space: nowrap;
+}
+
+.exercise-row {
+  display: flex;
+  gap: 20rpx;
+}
+
+.exercise-field {
+  flex: 1;
+  background: #F3F4F6;
+  border-radius: 12rpx;
+  padding: 16rpx;
+}
+
+.exercise-field-label {
+  display: block;
+  font-size: 24rpx;
+  color: #9CA3AF;
+  margin-bottom: 8rpx;
+}
+
+.exercise-field-input {
+  width: 100%;
+  font-size: 28rpx;
+  color: #1F2937;
+  background: transparent;
+  padding: 4rpx 0;
+}
+
+.exercise-field-unit {
+  font-size: 24rpx;
+  color: #6B7280;
+}
+
+.asset-type-text {
+  font-size: 28rpx;
+  color: #1F2937;
+  font-weight: 500;
+}
+
+.asset-content-input {
+  width: 100%;
+  min-height: 120rpx;
+  background: #F3F4F6;
+  border-radius: 12rpx;
+  padding: 16rpx 20rpx;
+  font-size: 28rpx;
+  color: #1F2937;
+  line-height: 1.6;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 32rpx;
+}
+
+.btn-cancel,
+.btn-save {
+  flex: 1;
+  padding: 20rpx 0;
+  border-radius: 999rpx;
+  font-size: 28rpx;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  line-height: 1.5;
+}
+
+.btn-cancel::after,
+.btn-save::after {
+  border: none;
+}
+
+.btn-cancel {
+  background: #F3F4F6;
+  color: #6B7280;
+}
+
+.btn-save {
+  background: #8DBB77;
+  color: #FFFFFF;
+}
+
+/* 食物选择器 */
+.food-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 200;
+}
+
+.food-picker-modal {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 20vh;
+  background: #FFFFFF;
+  border-radius: 40rpx 40rpx 0 0;
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.3s;
+}
+
+.food-picker-modal.show {
+  transform: translateY(0);
+}
+
+.food-picker-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 32rpx;
+}
+
+.food-picker-back {
+  font-size: 36rpx;
+  color: #1F2937;
+  width: 60rpx;
+}
+
+.food-picker-modal-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1F2937;
+  text-align: center;
+  flex: 1;
+}
+
+.food-picker-meal-label {
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.food-picker-modal-search {
+  display: flex;
+  align-items: center;
+  background: #F3F4F6;
+  margin: 0 32rpx 20rpx;
+  border-radius: 32rpx;
+  padding: 16rpx 24rpx;
+}
+
+.food-picker-modal-search-input {
+  flex: 1;
+  margin-left: 12rpx;
+  font-size: 28rpx;
+  color: #1F2937;
+  background: transparent;
+}
+
+.food-picker-modal-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.food-picker-modal-categories {
+  width: 180rpx;
+  height: 100%;
+  background: #F7FAF5;
+}
+
+.food-picker-modal-category {
+  padding: 28rpx 20rpx;
+  font-size: 26rpx;
+  color: #6B7280;
+  text-align: center;
+}
+
+.food-picker-modal-category.active {
+  background: #FFFFFF;
+  color: #1F2937;
+  font-weight: 600;
+}
+
+.food-picker-modal-foods {
+  flex: 1;
+  height: 100%;
+  padding: 20rpx;
+}
+
+.food-picker-modal-food-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.food-picker-modal-food-item {
+  display: flex;
+  align-items: center;
+  padding: 20rpx;
+  background: #F9FAFB;
+  border-radius: 16rpx;
+}
+
+.food-picker-modal-food-image {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 16rpx;
+  background: #E8F4FC;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 16rpx rgba(76, 175, 80, 0.3);
+  margin-right: 20rpx;
+  font-size: 28rpx;
+  color: #1F2937;
 }
 
-.plus {
-  color: #fff;
-  font-size: 48rpx;
-  font-weight: 300;
+.food-picker-modal-food-info {
+  flex: 1;
 }
 
-.quick-record-mask {
+.food-picker-modal-food-name {
+  font-size: 28rpx;
+  color: #1F2937;
+  margin-bottom: 6rpx;
+}
+
+.food-picker-modal-food-calorie {
+  font-size: 24rpx;
+  color: #9CA3AF;
+}
+
+.calorie-num {
+  color: #6B7280;
+}
+
+.food-picker-modal-add-icon {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: #BFE8B0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1F2937;
+  font-size: 32rpx;
+}
+
+.food-picker-modal-empty {
+  text-align: center;
+  padding: 80rpx 0;
+  font-size: 26rpx;
+  color: #9CA3AF;
+}
+
+/* 长按消息操作菜单 */
+.msg-action-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  z-index: 100;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.35);
 }
 
-.quick-record-panel {
-  width: 100%;
-  background: #fff;
-  border-radius: 32rpx 32rpx 0 0;
-  padding: 40rpx 32rpx;
-  padding-bottom: calc(40rpx + env(safe-area-inset-bottom));
-}
-
-.quick-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  text-align: center;
-  margin-bottom: 32rpx;
-}
-
-.quick-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24rpx;
-}
-
-.quick-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 24rpx 0;
-  background: #f5f6fa;
+.msg-action-menu {
+  position: absolute;
+  transform: translate(-50%, -120%);
+  min-width: 180rpx;
+  background: rgba(50, 50, 50, 0.95);
   border-radius: 16rpx;
+  overflow: hidden;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.25);
 }
 
-.quick-icon {
-  font-size: 48rpx;
-  margin-bottom: 12rpx;
+.msg-action-item {
+  padding: 24rpx 40rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.quick-item text:last-child {
-  font-size: 24rpx;
-  color: #666;
+.msg-action-text {
+  font-size: 30rpx;
+  color: #FFFFFF;
+  line-height: 1;
+}
+
+.msg-action-divider {
+  height: 1rpx;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 0 20rpx;
 }
 </style>

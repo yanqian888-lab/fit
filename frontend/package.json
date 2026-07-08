@@ -8,11 +8,16 @@
     "dev:app": "uni -p app",
     "dev:app-android": "uni -p app-android",
     "dev:app-ios": "uni -p app-ios",
-    "build:h5": "uni build",
-    "build:mp-weixin": "uni build -p mp-weixin",
-    "build:app": "uni build -p app",
-    "build:app-android": "uni build -p app-android",
-    "build:app-ios": "uni build -p app-ios"
+    "build:h5:test": "uni build --mode test -p h5",
+    "build:h5:prod": "uni build --mode production -p h5",
+    "build:mp-weixin:test": "uni build --mode test -p mp-weixin",
+    "build:mp-weixin:prod": "uni build --mode production -p mp-weixin",
+    "build:app:test": "uni build --mode test -p app",
+    "build:app:prod": "uni build --mode production -p app",
+    "build:app-android:test": "uni build --mode test -p app-android",
+    "build:app-android:prod": "uni build --mode production -p app-android",
+    "build:app-ios:test": "uni build --mode test -p app-ios",
+    "build:app-ios:prod": "uni build --mode production -p app-ios"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-alpha-1000920260615733",
@@ -29,6 +34,7 @@
     "@dcloudio/uni-automator": "3.0.0-alpha-1000920260615733",
     "@dcloudio/uni-cli-shared": "3.0.0-alpha-1000920260615733",
     "@dcloudio/vite-plugin-uni": "3.0.0-alpha-1000920260615733",
+    "playwright-core": "^1.61.0",
     "sass": "^1.72.0",
     "sass-loader": "^14.1.1",
     "vite": "^7.3.3"

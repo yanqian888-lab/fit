@@ -1,64 +1,255 @@
 {
   "pages": [
     {
+      "path": "pages/splash/index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/onboarding/index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/onboarding/tasks",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/profile/setup",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/partner/select-mode",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/partner/settings",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/guide/feature",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/index/index",
-      "style": {
-        "navigationBarTitleText": "减肥搭子",
-        "navigationStyle": "custom"
-      }
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/chat/quick-record",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/chat/pending-list",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/chat/search",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/chat/settings",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/chat/precipitation",
+      "style": { "navigationStyle": "custom" }
     },
     {
       "path": "pages/record/index",
-      "style": {
-        "navigationBarTitleText": "记录中心"
-      }
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/record/diet-detail",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/record/add-food",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/record/create-food",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/record/food-detail",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/record/habit",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/record/exercise-detail",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/record/add-exercise",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/record/body-data",
+      "style": { "navigationStyle": "custom" }
     },
     {
       "path": "pages/museum/index",
-      "style": {
-        "navigationBarTitleText": "减肥博物馆"
-      }
+      "style": { "navigationStyle": "custom" }
     },
     {
-      "path": "pages/mine/index",
-      "style": {
-        "navigationBarTitleText": "我的"
-      }
+      "path": "pages/museum/diary",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/museum/diary-generate",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/museum/milestones",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/museum/timeline",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/museum/recipes",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/museum/insights",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/museum/item-edit",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/museum/event-detail",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/museum/compare",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/museum/photo-upload",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/museum/recipe-detail",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/museum/methods",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/login/index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/register/index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/profile",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/data-manage",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/achievement",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/notifications",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/about",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/privacy",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/agreement",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/help",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/help-detail",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/feedback",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/account-settings",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/delete-account-agreement",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/admin/feedback",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/admin/privacy",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/blank/index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/webview/index",
+      "style": { "navigationStyle": "custom", "navigationBarTitleText": "详情" }
     }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "减肥搭子",
-    "navigationBarBackgroundColor": "#FFFFFF",
-    "backgroundColor": "#F5F6FA"
+    "navigationBarBackgroundColor": "#F5F7FA",
+    "backgroundColor": "#F5F7FA"
   },
   "tabBar": {
-    "color": "#999999",
-    "selectedColor": "#4CAF50",
+    "color": "#9CA3AF",
+    "selectedColor": "#A8E6CF",
     "borderStyle": "white",
     "backgroundColor": "#FFFFFF",
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "搭子",
+        "text": "",
         "iconPath": "static/tabbar/chat.png",
         "selectedIconPath": "static/tabbar/chat-active.png"
       },
       {
         "pagePath": "pages/record/index",
-        "text": "记录",
+        "text": "",
         "iconPath": "static/tabbar/record.png",
         "selectedIconPath": "static/tabbar/record-active.png"
       },
       {
         "pagePath": "pages/museum/index",
-        "text": "博物馆",
+        "text": "",
         "iconPath": "static/tabbar/museum.png",
         "selectedIconPath": "static/tabbar/museum-active.png"
       },
       {
-        "pagePath": "pages/mine/index",
-        "text": "我的",
+        "pagePath": "pages/user/index",
+        "text": "",
         "iconPath": "static/tabbar/mine.png",
         "selectedIconPath": "static/tabbar/mine-active.png"
       }

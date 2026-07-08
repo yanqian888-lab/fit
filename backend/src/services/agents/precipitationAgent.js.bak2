@@ -1,0 +1,329 @@
+/**
+ * 信息沉淀 Agent（独立后台）
+ * 职责：聊天记录实时扫描、信息提取、置信度计算、数据同步
+ * 模型：豆包 doubao-lite-32k（备用：fit-Backup）
+ */
+const config = require('../../config');
+const { db } = require('../../db');
+const { callWithFallback } = require('../aiClient');
+
+// 精简版系统提示词（核心规则保留，冗长示例和锚点列表移除）
+const PRECIPITATION_PROMPT = `# 角色定义
+你是减肥搭子APP的聊天内容自动沉淀提取引擎。
+只提取用户消息中的减肥相关内容，不提取搭子消息。
+只输出JSON格式，不输出自然语言。
+
+# 可提取类型
+## 核心业务类（自动确认，置信度≥0.85）
+1. diet_record: 饮食记录（早餐/午餐/晚餐/加餐）
+   - 提取: foods[{name, weight, calorie, protein, carb, fat, quantity, unit}], total_calorie, total_protein, total_carb, total_fat, meal_time
+   - 食物字段说明:
+     * name: 食物名称
+     * weight: 总重量(克)，如果用户说了数量，按单位换算: 1个鸡蛋=50g/1片面包=30g/1杯牛奶=250g/1碗米饭=150g
+     * quantity: 数量(如2个鸡蛋则quantity=2)
+     * unit: 单位(个/片/杯/碗/根等)
+     * calorie: 该食物的总热量(千卡)，根据weight和每100g热量计算
+     * protein/carb/fat: 该食物的蛋白质/碳水/脂肪总含量(克)
+   - 示例: "两个鸡蛋" → {name:"鸡蛋", weight:100, quantity:2, unit:"个", calorie:278, protein:26.2, carb:4.8, fat:17.2}
+   - 餐别判断规则（按优先级）：
+     * 用户明确说"早餐/午饭/晚饭/加餐" → 直接使用
+     * 用户说"早上/中午/晚上/下午" → 对应早餐/午餐/晚餐/加餐
+     * 无明确时间词 → 根据当前时间推断(6-10:30早餐/10:30-14:30午餐/14:30-17:00加餐/17-21晚餐)
+   - meal_time字段必须是: breakfast/lunch/dinner/snack 之一
+   - 否定句、疑问句、未来时态不提取
+
+2. exercise_record: 运动记录
+   - 提取: exercises[{name, duration, intensity, calorie}], total_duration, total_calorie
+   - 强度: low/moderate/high
+   - 运动名称识别: 跑步/快走/骑行/骑车/游泳/跳绳/瑜伽/拉伸/深蹲/俯卧撑/平板支撑/HIIT/有氧/无氧/力量训练/走路/散步/爬山/爬楼梯/跳舞/打拳/拳击/动感单车/椭圆机/划船机
+   - 时长提取: 用户说"30分钟"则duration=30，"1小时"则duration=60
+   - 距离转换: 跑步/快走/骑行有距离时，按配速估算时长(跑步1km≈6min/快走1km≈10min/骑行1km≈3min)
+   - 示例: "骑车30分钟，6公里" → {name:"骑行", duration:30, intensity:"moderate", calorie:180}
+   - 示例: "跑了5公里" → {name:"跑步", duration:30, intensity:"moderate", calorie:300}
+
+3. body_data: 身体数据（体重/体脂/腰围等）
+   - 提取: sub_type, value, unit
+
+4. habit: 生活习惯（喝水/睡眠/排便）
+   - 提取: sub_type, value, unit
+   - sub_type: water(喝水)/sleep(睡眠)/defecation(排便)
+   - value: 数值，去掉单位
+   - unit: 喝水用"ml"，睡眠用"小时"，排便用"次"
+   - 示例: "喝了500ml水" → {sub_type:"water", value:500, unit:"ml"}
+   - 示例: "睡了8小时" → {sub_type:"sleep", value:8, unit:"小时"}
+
+## 个人资产类（待确认，置信度0.70-0.84）
+5. recipe: 减脂食谱（分享做法、推荐食材搭配）
+6. method: 减肥方法（亲测有效、经验分享、技巧建议）
+7. pitfall: 踩坑教训（千万不要、后悔、避坑）
+
+## 情感成长类（自动确认）
+8. quote: 励志金句（积极、坚定、鼓舞）
+9. insight: 心路感悟（反思、顿悟、成长）
+10. emotion: 情绪记录（开心/焦虑/愧疚/挫败）
+
+## 其他
+11. milestone_weight/duration/behavior: 里程碑（减重/坚持天数/打卡）
+12. plan_daily/weekly/cheat_meal: 计划目标
+
+# 核心规则
+1. 只提取用户消息，不提取搭子消息
+2. 否定句（"没吃""没运动"）不提取
+3. 疑问句（"吃什么好？"）不提取
+4. 未来时态（"明天吃""下周运动"）不提取
+5. 未明确分量时估算: 一碗米饭150g/一个鸡蛋50g/一杯牛奶250ml/一杯水200ml
+6. 热量参考: 米饭116/面条137/馒头223/鸡蛋139/鸡胸肉133千卡每100g
+7. 运动估算: 跑步1km≈6min/快走1km≈10min
+
+# 置信度标准
+- 0.95-1.00: 完全确定，自动沉淀
+- 0.85-0.94: 比较确定，自动沉淀
+- 0.70-0.84: 不确定，待确认
+- <0.70: 不沉淀
+
+# 输出格式
+必须严格输出JSON:
+{
+  "extracted": true/false,
+  "type": "类型",
+  "sub_type": "子类型",
+  "content": "原始内容",
+  "extracted_data": {具体提取数据},
+  "confidence": 0.00-1.00,
+  "tags": ["标签"],
+  "reason": "判断理由"
+}
+
+当前时间: {{current_time}}
+`;
+
+/**
+ * 快速判断消息是否值得沉淀（本地过滤，避免浪费API调用）
+ */
+function shouldPrecipitate(content) {
+  const contentLower = content.toLowerCase();
+  
+  if (content.trim().length < 5) return false;
+  
+  const keywords = [
+    '吃', '喝', '早餐', '午餐', '晚餐', '饭', '菜', '肉', '蛋', '奶', '水果', '零食',
+    '卡路里', '千卡', '热量', '碳水', '蛋白质', '脂肪', '糖', '油',
+    '运动', '健身', '跑步', '游泳', '跳绳', '瑜伽', '拉伸', '走路', '步',
+    '有氧', '无氧', '力量', '训练', 'HIIT', '深蹲', '俯卧撑', '平板支撑',
+    '体重', '体脂', 'BMI', '腰围', '腿围', '臀围', '胸围', '肌肉',
+    '斤', '公斤', '厘米', 'kg',
+    '喝水', '睡眠', '睡觉', '熬夜', '排便', '便秘', '心情', '情绪',
+    '方法', '技巧', '建议', '经验', '分享', '食谱', '做法', '教程',
+    '感悟', '心得', '体会', '总结', '反思',
+    '开心', '难过', '焦虑', '烦躁', '愧疚', '兴奋', '激动',
+    '坚持', '放弃', '成功', '失败', '平台期', '掉秤', '涨秤',
+    '目标', '计划', '今天', '明天'
+  ];
+  
+  return keywords.some(k => contentLower.includes(k));
+}
+
+/**
+ * 从文本中提取所有顶层 JSON 对象
+ */
+function extractJsonObjects(text) {
+  const objects = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        objects.push(text.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return objects;
+}
+
+/**
+ * 处理单个沉淀项
+ */
+function processSinglePrecipitation(userId, chatId, content, item, recordDate) {
+  const confidence = parseFloat(item.confidence) || 0;
+  if (confidence < 0.7) return null;
+  
+  const status = confidence >= 0.85 ? 1 : 0;
+
+  const insert = db.prepare(`
+    INSERT INTO precipitation_records
+    (user_id, chat_id, type, sub_type, content, extracted_data, confidence, status, source, tags, remark)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const precipitationId = insert.run(
+    userId, chatId, item.type, item.sub_type || null, content,
+    JSON.stringify(item.extracted_data || {}), confidence, status, 0,
+    item.tags ? JSON.stringify(item.tags) : null, null
+  ).lastInsertRowid;
+
+  return { precipitation_id: precipitationId, type: item.type, confidence, status, extracted_data: item.extracted_data };
+}
+
+/**
+ * 同步沉淀数据到业务表
+ */
+function syncToBusinessTable(userId, type, content, data, recordDate) {
+  const today = recordDate || new Date().toISOString().split('T')[0];
+
+  switch (type) {
+    case 'diet_record': {
+      const dietData = data || {};
+      const mealTime = dietData.meal_time || 'snack';
+      const insertDiet = db.prepare(`
+        INSERT INTO diet_records (user_id, record_date, meal_time, foods, total_calorie, total_protein, total_carb, total_fat, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+      `);
+      const foods = (dietData.foods || []).map(f => ({
+        name: f.name,
+        weight: f.weight || 0,
+        quantity: f.quantity || 1,
+        unit: f.unit || 'g',
+        calorie: f.calorie || 0,
+        protein: f.protein || 0,
+        carb: f.carb || 0,
+        fat: f.fat || 0
+      }));
+      const totalCal = foods.reduce((sum, f) => sum + (f.calorie || 0), 0);
+      const totalPro = foods.reduce((sum, f) => sum + (f.protein || 0), 0);
+      const totalCarb = foods.reduce((sum, f) => sum + (f.carb || 0), 0);
+      const totalFat = foods.reduce((sum, f) => sum + (f.fat || 0), 0);
+      insertDiet.run(userId, today, mealTime, JSON.stringify(foods), totalCal, totalPro, totalCarb, totalFat);
+      break;
+    }
+    case 'exercise_record': {
+      const exData = data || {};
+      const insertEx = db.prepare(`
+        INSERT INTO exercise_records (user_id, record_date, exercises, total_duration, total_calorie, status)
+        VALUES (?, ?, ?, ?, ?, 1)
+      `);
+      const exercises = exData.exercises || [];
+      const totalDur = exercises.reduce((sum, e) => sum + (e.duration || 0), 0);
+      const totalCal = exercises.reduce((sum, e) => sum + (e.calorie || 0), 0);
+      insertEx.run(userId, today, JSON.stringify(exercises), totalDur, totalCal);
+      break;
+    }
+    case 'body_data': {
+      const bodyData = data || {};
+      const insertBody = db.prepare(`
+        INSERT INTO body_records (user_id, record_date, type, value, unit, status)
+        VALUES (?, ?, ?, ?, ?, 1)
+      `);
+      let value = bodyData.value;
+      let unit = bodyData.unit || 'kg';
+      if (unit === '斤') { value = parseFloat((value / 2).toFixed(1)); unit = 'kg'; }
+      insertBody.run(userId, today, bodyData.sub_type || 'weight', value, unit);
+      break;
+    }
+    case 'habit': {
+      const habitData = data || {};
+      const insertHabit = db.prepare(`
+        INSERT INTO habit_records (user_id, record_date, type, value, status)
+        VALUES (?, ?, ?, ?, 1)
+      `);
+      insertHabit.run(userId, today, habitData.sub_type || 'water', habitData.value || 0);
+      break;
+    }
+    case 'quote':
+    case 'insight':
+    case 'recipe':
+    case 'method':
+    case 'pitfall': {
+      const insertMuseum = db.prepare(`
+        INSERT INTO museum_items (user_id, type, content, extracted_data, author, emotion, tags, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const museumId = insertMuseum.run(userId, type, content,
+        data ? JSON.stringify(data) : null, data?.author || 'user',
+        data?.emotion || null, null, 1
+      ).lastInsertRowid;
+
+      const titleMap = { quote: '金句', insight: '感悟', recipe: '食谱', method: '方法', pitfall: '踩坑' };
+      db.prepare(`
+        INSERT INTO timelines (user_id, event_type, title, content, related_id, related_type, event_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(userId, type, titleMap[type] || type, content, museumId, 'museum_items', today);
+      break;
+    }
+  }
+}
+
+/**
+ * 调用信息沉淀 Agent
+ */
+async function callPrecipitationAgent(content, userId, chatId = null, recordDate = null) {
+  if (!content || !content.trim()) {
+    return { extracted: false, reason: '内容为空' };
+  }
+  
+  // 本地过滤：不包含沉淀关键词的消息直接跳过
+  if (!shouldPrecipitate(content)) {
+    return { extracted: false, reason: '不包含沉淀内容' };
+  }
+
+  const today = recordDate || new Date().toISOString().split('T')[0];
+  const systemPrompt = PRECIPITATION_PROMPT.replace('{{current_time}}', new Date().toISOString());
+
+  try {
+    const response = await callWithFallback(
+      config.doubao.endpoints.precipitation.id,
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: content }
+      ],
+      { temperature: 0.1, max_tokens: 1200, response_format: { type: 'json_object' } }
+    );
+
+    const resultText = response.choices[0].message.content || '{}';
+    let parsed = null;
+    let items = [];
+
+    try {
+      parsed = JSON.parse(resultText);
+    } catch (e) {
+      const objects = extractJsonObjects(resultText);
+      for (const objText of objects) {
+        try {
+          const obj = JSON.parse(objText);
+          if (obj.extracted) items.push(obj);
+        } catch (err) {}
+      }
+    }
+
+    if (parsed && parsed.extracted) {
+      items.push(parsed);
+    }
+
+    if (items.length === 0) {
+      return { extracted: false, reason: '未提取到有效内容' };
+    }
+
+    let processed = null;
+    for (const item of items) {
+      const result = processSinglePrecipitation(userId, chatId, content, item, recordDate);
+      if (result) {
+        processed = result;
+        if (result.status === 1) {
+          syncToBusinessTable(userId, result.type, content, result.extracted_data, recordDate);
+        }
+      }
+    }
+
+    return processed || { extracted: false, reason: '处理失败' };
+  } catch (error) {
+    console.error('沉淀 Agent 调用失败:', error.message);
+    return { extracted: false, reason: 'API调用失败' };
+  }
+}
+
+module.exports = { callPrecipitationAgent };

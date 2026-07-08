@@ -17,30 +17,30 @@
     <view class="menu-list">
       <view class="menu-group">
         <view class="menu-item" @click="goToPage('/pages/record/index')">
-          <text class="menu-icon">📊</text>
-          <text class="menu-text">记录中心</text>
+          <view class="menu-icon-wrap"><text class="menu-icon">📊</text></view>
+          <text class="menu-text">今日记录</text>
           <text class="menu-arrow">></text>
         </view>
         <view class="menu-item" @click="goToPage('/pages/museum/index')">
-          <text class="menu-icon">🏛️</text>
-          <text class="menu-text">减肥博物馆</text>
+          <view class="menu-icon-wrap"><text class="menu-icon">🏛️</text></view>
+          <text class="menu-text">博物馆</text>
           <text class="menu-arrow">></text>
         </view>
       </view>
 
       <view class="menu-group">
         <view class="menu-item">
-          <text class="menu-icon">👤</text>
+          <view class="menu-icon-wrap"><text class="menu-icon">👤</text></view>
           <text class="menu-text">个人资料</text>
           <text class="menu-arrow">></text>
         </view>
         <view class="menu-item">
-          <text class="menu-icon">🤖</text>
+          <view class="menu-icon-wrap"><text class="menu-icon">🤖</text></view>
           <text class="menu-text">搭子管理</text>
           <text class="menu-arrow">></text>
         </view>
         <view class="menu-item">
-          <text class="menu-icon">⚙️</text>
+          <view class="menu-icon-wrap"><text class="menu-icon">⚙️</text></view>
           <text class="menu-text">系统设置</text>
           <text class="menu-arrow">></text>
         </view>
@@ -48,17 +48,17 @@
 
       <view class="menu-group">
         <view class="menu-item">
-          <text class="menu-icon">🔒</text>
+          <view class="menu-icon-wrap"><text class="menu-icon">🔒</text></view>
           <text class="menu-text">隐私政策</text>
           <text class="menu-arrow">></text>
         </view>
         <view class="menu-item">
-          <text class="menu-icon">📄</text>
+          <view class="menu-icon-wrap"><text class="menu-icon">📄</text></view>
           <text class="menu-text">用户协议</text>
           <text class="menu-arrow">></text>
         </view>
         <view class="menu-item">
-          <text class="menu-icon">❓</text>
+          <view class="menu-icon-wrap"><text class="menu-icon">❓</text></view>
           <text class="menu-text">帮助与反馈</text>
           <text class="menu-arrow">></text>
         </view>
@@ -66,7 +66,7 @@
 
       <view class="menu-group">
         <view class="menu-item danger">
-          <text class="menu-icon">🗑️</text>
+          <view class="menu-icon-wrap" style="background: #FFF0F0;"><text class="menu-icon">🗑️</text></view>
           <text class="menu-text">清空所有数据</text>
           <text class="menu-arrow">></text>
         </view>
@@ -97,31 +97,37 @@ function goToPage(url) {
 <style lang="scss" scoped>
 .mine-page {
   min-height: 100vh;
-  background: #f5f6fa;
-  padding: 20rpx;
-  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, $mint-light 0%, $bg-page 25%, $bg-page 100%);
+  padding: $spacing-md;
+  padding-top: 100rpx;
+  padding-bottom: calc($spacing-md + env(safe-area-inset-bottom));
 }
 
 .user-card {
-  background: #fff;
-  border-radius: 16rpx;
-  padding: 32rpx;
+  background: $mint;
+  border-radius: $radius-xl;
+  padding: $spacing-lg;
   display: flex;
   align-items: center;
-  margin-bottom: 20rpx;
+  margin-bottom: $spacing-md;
+  box-shadow: $shadow-soft;
+  color: $white;
 }
 
 .avatar {
   width: 120rpx;
   height: 120rpx;
   border-radius: 50%;
-  background: #4CAF50;
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(8rpx);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 48rpx;
-  margin-right: 24rpx;
+  color: $white;
+  font-size: 52rpx;
+  font-weight: $font-semibold;
+  margin-right: $spacing-md;
+  border: 4rpx solid rgba(255, 255, 255, 0.4);
 }
 
 .user-info {
@@ -130,33 +136,35 @@ function goToPage(url) {
 }
 
 .nickname {
-  font-size: 36rpx;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 8rpx;
+  font-size: $text-xl;
+  font-weight: $font-bold;
+  margin-bottom: 10rpx;
 }
 
 .target {
-  font-size: 26rpx;
-  color: #999;
+  font-size: $text-sm;
+  opacity: 0.9;
+  font-weight: $font-light;
 }
 
 .menu-list {
-  margin-bottom: 40rpx;
+  margin-bottom: $spacing-lg;
 }
 
 .menu-group {
-  background: #fff;
-  border-radius: 16rpx;
-  margin-bottom: 20rpx;
+  background: $white;
+  border-radius: $radius-xl;
+  margin-bottom: $spacing-sm;
+  padding: 0 $spacing-md;
+  box-shadow: $shadow-card;
   overflow: hidden;
 }
 
 .menu-item {
   display: flex;
   align-items: center;
-  padding: 28rpx 24rpx;
-  border-bottom: 1rpx solid #f5f6fa;
+  padding: $spacing-md 0;
+  border-bottom: 1rpx solid $gray-50;
 }
 
 .menu-item:last-child {
@@ -164,29 +172,44 @@ function goToPage(url) {
 }
 
 .menu-item.danger .menu-text {
-  color: #F44336;
+  color: #E57373;
 }
+
+.menu-icon-wrap {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: $spacing-sm;
+}
+
+.menu-item:nth-child(1) .menu-icon-wrap { background: $mint-light; }
+.menu-item:nth-child(2) .menu-icon-wrap { background: $sky-light; }
+.menu-item:nth-child(3) .menu-icon-wrap { background: $cream-light; }
 
 .menu-icon {
   font-size: 36rpx;
-  margin-right: 20rpx;
 }
 
 .menu-text {
   flex: 1;
-  font-size: 30rpx;
-  color: #333;
+  font-size: $text-base;
+  color: $text-primary;
+  font-weight: $font-medium;
 }
 
 .menu-arrow {
-  font-size: 28rpx;
-  color: #ccc;
+  font-size: $text-base;
+  color: $gray-300;
 }
 
 .version {
   text-align: center;
-  font-size: 24rpx;
-  color: #999;
-  padding: 20rpx 0;
+  font-size: $text-sm;
+  color: $text-tertiary;
+  padding: $spacing-sm 0;
+  font-weight: $font-light;
 }
 </style>

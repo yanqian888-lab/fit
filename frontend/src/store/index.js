@@ -6,24 +6,27 @@ export const useUserStore = defineStore('user', () => {
   const token = ref(uni.getStorageSync('token') || '');
   const userInfo = ref(null);
   const isLoggedIn = computed(() => !!token.value);
+  const isAdmin = computed(() => userInfo.value?.role === 'admin');
 
-  // 初始化：自动登录
+  // 初始化
   async function init() {
-    if (!token.value) {
-      await mockLogin();
+    if (token.value) {
+      await fetchUserInfo();
     }
-    await fetchUserInfo();
   }
 
-  // 模拟登录（MVP 阶段用固定 code）
-  async function mockLogin() {
-    try {
-      const res = await authApi.wechatLogin('mock_code_' + Date.now());
-      token.value = res.data.token;
-      uni.setStorageSync('token', res.data.token);
-    } catch (err) {
-      console.error('登录失败:', err);
-    }
+  // 登录成功
+  function login(newToken, user) {
+    token.value = newToken;
+    userInfo.value = user;
+    uni.setStorageSync('token', newToken);
+  }
+
+  // 退出登录
+  function logout() {
+    token.value = '';
+    userInfo.value = null;
+    uni.removeStorageSync('token');
   }
 
   // 获取用户信息
@@ -33,6 +36,9 @@ export const useUserStore = defineStore('user', () => {
       userInfo.value = res.data;
     } catch (err) {
       console.error('获取用户信息失败:', err);
+      if (err.status === 401) {
+        logout();
+      }
     }
   }
 
@@ -47,8 +53,10 @@ export const useUserStore = defineStore('user', () => {
     token,
     userInfo,
     isLoggedIn,
+    isAdmin,
     init,
-    mockLogin,
+    login,
+    logout,
     fetchUserInfo,
     setPartnerMode
   };
