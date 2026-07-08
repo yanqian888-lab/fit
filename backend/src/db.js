@@ -826,6 +826,38 @@ function migrateTables() {
     console.error('已注销用户日志表迁移失败:', err.message);
   }
 
+  // 兼容旧库：补充 CMS 控制器依赖的字段
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN username VARCHAR(16) UNIQUE DEFAULT NULL;`);
+  } catch (err) {}
+
+  try {
+    db.exec(`ALTER TABLE food_db ADD COLUMN food_id INTEGER UNIQUE DEFAULT NULL;`);
+    db.exec(`ALTER TABLE food_db ADD COLUMN food_name VARCHAR(128) DEFAULT NULL;`);
+    db.exec(`ALTER TABLE food_db ADD COLUMN sub_category VARCHAR(32) DEFAULT '';`);
+    db.exec(`ALTER TABLE food_db ADD COLUMN calories_per_100g DECIMAL(8,2) DEFAULT 0;`);
+    db.exec(`ALTER TABLE food_db ADD COLUMN common_unit VARCHAR(128) DEFAULT '';`);
+    db.exec(`ALTER TABLE food_db ADD COLUMN edible_rate DECIMAL(3,2) DEFAULT 1.0;`);
+    db.exec(`ALTER TABLE food_db ADD COLUMN remark TEXT DEFAULT '';`);
+    db.exec(`UPDATE food_db SET food_name = name WHERE food_name IS NULL OR food_name = '';`);
+    db.exec(`UPDATE food_db SET calories_per_100g = calorie_per_100g WHERE calories_per_100g = 0;`);
+    db.exec(`UPDATE food_db SET food_id = id WHERE food_id IS NULL;`);
+  } catch (err) {
+    console.error('food_db 字段迁移失败:', err.message);
+  }
+
+  try {
+    db.exec(`ALTER TABLE exercise_db ADD COLUMN exercise_name VARCHAR(64) DEFAULT NULL;`);
+    db.exec(`ALTER TABLE exercise_db ADD COLUMN sub_category VARCHAR(32) DEFAULT '';`);
+    db.exec(`ALTER TABLE exercise_db ADD COLUMN intensity_desc VARCHAR(64) DEFAULT '';`);
+    db.exec(`ALTER TABLE exercise_db ADD COLUMN met_value DECIMAL(5,2) DEFAULT 0;`);
+    db.exec(`ALTER TABLE exercise_db ADD COLUMN calorie_per_hour DECIMAL(8,2) DEFAULT 0;`);
+    db.exec(`ALTER TABLE exercise_db ADD COLUMN remark VARCHAR(255) DEFAULT '';`);
+    db.exec(`UPDATE exercise_db SET exercise_name = name WHERE exercise_name IS NULL OR exercise_name = '';`);
+  } catch (err) {
+    console.error('exercise_db 字段迁移失败:', err.message);
+  }
+
   // 新增弹窗广告系统相关表（兼容旧库）
   try {
     db.exec(`
