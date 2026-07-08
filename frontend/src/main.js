@@ -1,4 +1,4 @@
-import { createSSRApp, createApp } from 'vue';
+import { createSSRApp, createApp as createVueApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 import AppPopup from './components/AppPopup.vue';
@@ -44,7 +44,7 @@ export function createApp() {
       const container = document.createElement('div');
       container.id = 'app-popup-container';
       document.body.appendChild(container);
-      const popupApp = createApp(AppPopup);
+      const popupApp = createVueApp(AppPopup);
       popupApp.mount(container);
     }
   } catch (e) {
