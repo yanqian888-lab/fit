@@ -16,8 +16,6 @@
 
           <AppInput v-model="form.calorie_per_100g" label="热量（每100g）*" type="digit" placeholder="请输入热量" suffix="千卡" />
 
-          <AppInput v-model="form.unit" label="数量单位 *" placeholder="如：1个、1碗、1根" suffix="/100g" />
-
           <view class="form-row">
             <view class="form-item">
               <AppInput v-model="form.protein_per_100g" label="蛋白质" type="digit" placeholder="0" suffix="g" />
@@ -33,7 +31,6 @@
           <view class="form-item switch-item">
             <view class="switch-label">
               <text class="input-label">是否公开到食谱库</text>
-              <text class="switch-desc">公开后需后台审核，通过则所有用户可见</text>
             </view>
             <switch :checked="form.is_public" color="#7BC8A0" @change="form.is_public = $event.detail.value" />
           </view>
@@ -74,7 +71,6 @@ const form = ref({
   name: '',
   category: '',
   calorie_per_100g: '',
-  unit: '',
   protein_per_100g: '',
   carb_per_100g: '',
   fat_per_100g: '',
@@ -117,14 +113,19 @@ async function submit() {
       name: form.value.name.trim(),
       category: form.value.category,
       calorie_per_100g: parseFloat(form.value.calorie_per_100g),
-      unit: form.value.unit.trim() || '100g',
+      unit: '100g',
       protein_per_100g: parseFloat(form.value.protein_per_100g) || 0,
       carb_per_100g: parseFloat(form.value.carb_per_100g) || 0,
       fat_per_100g: parseFloat(form.value.fat_per_100g) || 0,
       is_public: form.value.is_public
     });
-    uni.showToast({ title: form.value.is_public ? '已提交审核' : '保存成功', icon: 'success' });
-    setTimeout(() => uni.navigateBack(), 800);
+    uni.showToast({ title: '保存成功', icon: 'success' });
+    setTimeout(() => {
+      uni.navigateBack({
+        delta: 1,
+        fail: () => uni.redirectTo({ url: '/pages/record/index' })
+      });
+    }, 800);
   } catch (err) {
     console.error(err);
     uni.showToast({ title: '保存失败', icon: 'none' });
