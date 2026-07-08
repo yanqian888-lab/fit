@@ -34,7 +34,7 @@ request.interceptors.response.use(
       ElMessage.error('登录已过期，请重新登录')
       const auth = useAuthStore()
       auth.logout()
-      window.location.href = '/login'
+      window.location.href = import.meta.env.BASE_URL + 'login'
     } else {
       ElMessage.error(error.response?.data?.message || '网络错误')
     }
