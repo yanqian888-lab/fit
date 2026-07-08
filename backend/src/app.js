@@ -17,6 +17,9 @@ const { seedCms } = require('./utils/seedCms');
 
 const app = express();
 
+// 服务运行在 Nginx 反向代理之后，信任 X-Forwarded-* 头
+app.set('trust proxy', 1);
+
 // 兜底：捕获未处理异常，避免单个错误直接拉垮整个进程
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] 未捕获的异常:', err);
