@@ -112,16 +112,14 @@ function touchEnd(e) {
 }
 
 onMounted(() => {
-  uni.$on('popup:show', show);
-  uni.$on('popup:hide', hide);
+  popupManager.registerCallbacks(show, hide);
   // 组件就绪后主动检查一次，防止 init 阶段事件已发出但监听未注册
   popupManager.checkShow({ trigger: 'immediate' });
   popupManager.checkShow({ trigger: 'duration' });
 });
 
 onUnmounted(() => {
-  uni.$off('popup:show', show);
-  uni.$off('popup:hide', hide);
+  popupManager.registerCallbacks(null, null);
 })
 
 console.log('[AppPopup] mounted');;

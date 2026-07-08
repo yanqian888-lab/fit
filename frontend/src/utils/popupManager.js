@@ -18,6 +18,8 @@ let flushTimer = null;
 let currentVisible = false;
 let closeCurrentFn = null;
 let initPromise = null;
+let showCallback = null;
+let hideCallback = null;
 
 function getNow() {
   return new Date().toISOString();
@@ -251,7 +253,11 @@ async function findShowablePopup(route, trigger) {
 function emitShow(popup, page, trigger) {
   currentVisible = true;
   console.log('[popup] emitShow', popup.id, popup.name, page, trigger);
-  uni.$emit('popup:show', { popup, page, trigger });
+  if (showCallback) {
+    showCallback({ popup, page, trigger });
+  } else {
+    uni.$emit('popup:show', { popup, page, trigger });
+  }
 }
 
 // 标记弹窗真正展示到 UI 上，才进行频次/日上限/启动防重计数
@@ -286,7 +292,11 @@ function markShown(popup, page, trigger) {
 
 function emitHide() {
   currentVisible = false;
-  uni.$emit('popup:hide');
+  if (hideCallback) {
+    hideCallback();
+  } else {
+    uni.$emit('popup:hide');
+  }
 }
 
 async function checkShow({ route, trigger = 'immediate' } = {}) {
@@ -320,6 +330,11 @@ async function checkShow({ route, trigger = 'immediate' } = {}) {
   doShow(popup, page, trigger);
 }
 
+function removePending(t) {
+  const idx = pendingTimers.indexOf(t);
+  if (idx >= 0) pendingTimers.splice(idx, 1);
+}
+
 function doShow(popup, page, trigger) {
   const key = `${popup.id}:${page}`;
   console.log('[popup] doShow', popup.id, popup.name, key, shownSet.has(key), currentVisible);
@@ -345,6 +360,11 @@ function doShow(popup, page, trigger) {
 function clearPending() {
   pendingTimers.forEach(t => clearTimeout(t));
   pendingTimers = [];
+}
+
+function registerCallbacks(show, hide) {
+  showCallback = show;
+  hideCallback = hide;
 }
 
 function onClose(way) {
@@ -452,5 +472,6 @@ export default {
   closeCurrent,
   getConfig,
   clearCache,
-  markShown
+  markShown,
+  registerCallbacks
 };
