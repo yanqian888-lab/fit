@@ -4,12 +4,16 @@
     <view v-if="popup.style === 'center'" class="popup-center-mask">
       <view class="popup-center-panel" @click.stop>
         <image
+          v-if="!imageError"
           class="popup-center-image"
           :src="popup.image_url"
           mode="aspectFit"
           @error="onImageError"
           @click="onContentClick"
         />
+        <view v-else class="popup-image-fallback" @click="onContentClick">
+          <text>图片加载失败</text>
+        </view>
         <view v-if="popup.show_close_button !== false" class="popup-close-btn" @click="onCloseClick">×</view>
       </view>
     </view>
@@ -23,11 +27,15 @@
       @touchend="touchEnd"
     >
       <image
+        v-if="!imageError"
         class="popup-top-image"
         :src="popup.image_url"
         mode="widthFix"
         @error="onImageError"
       />
+      <view v-else class="popup-image-fallback popup-top-fallback" @click="onContentClick">
+        <text>图片加载失败</text>
+      </view>
       <view v-if="popup.show_close_button !== false" class="popup-top-close" @click.stop="onCloseClick">×</view>
     </view>
   </view>
@@ -41,6 +49,7 @@ const visible = ref(false);
 const popup = ref({});
 const page = ref('');
 const trigger = ref('');
+const imageError = ref(false);
 
 let touchY = 0;
 
@@ -49,6 +58,7 @@ function show({ popup: p, page: pg, trigger: t }) {
   popup.value = p || {};
   page.value = pg || '';
   trigger.value = t || '';
+  imageError.value = false;
   visible.value = true;
   // 真正渲染到 UI 后再计数，防止 init 阶段事件丢失导致后续被启动防重拦截
   popupManager.markShown(popup.value, page.value, trigger.value);
@@ -62,8 +72,7 @@ function hide(reason = '') {
 
 function onImageError(e) {
   console.error('[AppPopup] image error', popup.value.image_url, e);
-  // 图片加载失败直接跳过，不报错
-  hide('image_error');
+  imageError.value = true;
 }
 
 function close(way) {
@@ -194,5 +203,18 @@ console.log('[AppPopup] mounted');;
   background: rgba(0, 0, 0, 0.3);
   color: #fff;
   font-size: 36rpx;
+}
+.popup-image-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+  color: #999;
+  font-size: 28rpx;
+  min-height: 200rpx;
+}
+.popup-top-fallback {
+  width: 100%;
+  min-height: 160rpx;
 }
 </style>
