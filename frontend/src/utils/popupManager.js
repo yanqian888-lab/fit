@@ -323,9 +323,6 @@ function doShow(popup, page, trigger) {
   const key = `${popup.id}:${page}`;
   if (shownSet.has(key)) return;
 
-  // 调试用：确认弹窗被触发
-  uni.showToast({ title: `[popup] 展示 ${popup.name}`, icon: 'none', duration: 1500 });
-
   // 记录关闭回调
   closeCurrentFn = (way) => {
     currentVisible = false;
