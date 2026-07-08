@@ -6,7 +6,6 @@ export const routes = [
     icon: 'Setting',
     perm: 'app_config:read',
     children: [
-      { path: '/app-config', title: '应用配置', icon: 'Setting', perm: 'app_config:read' },
       { path: '/app-config/protocol', title: '协议配置', icon: 'DocumentCopy', perm: 'app_config:read' },
       { path: '/app-config/popup', title: '弹窗广告管理', icon: 'Picture', perm: 'popup_config:read' },
       { path: '/template-config', title: '模板消息', icon: 'ChatLineRound', perm: 'template_config:read' },
