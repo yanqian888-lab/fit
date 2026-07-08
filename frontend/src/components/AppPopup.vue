@@ -45,6 +45,7 @@ const trigger = ref('');
 let touchY = 0;
 
 function show({ popup: p, page: pg, trigger: t }) {
+  console.log('[AppPopup] show', p?.id, p?.name, pg, t);
   popup.value = p || {};
   page.value = pg || '';
   trigger.value = t || '';
@@ -53,14 +54,16 @@ function show({ popup: p, page: pg, trigger: t }) {
   popupManager.markShown(popup.value, page.value, trigger.value);
 }
 
-function hide() {
+function hide(reason = '') {
+  console.log('[AppPopup] hide', reason);
   visible.value = false;
   popup.value = {};
 }
 
-function onImageError() {
+function onImageError(e) {
+  console.error('[AppPopup] image error', popup.value.image_url, e);
   // 图片加载失败直接跳过，不报错
-  hide();
+  hide('image_error');
 }
 
 function close(way) {
@@ -110,7 +113,9 @@ onMounted(() => {
 onUnmounted(() => {
   uni.$off('popup:show', show);
   uni.$off('popup:hide', hide);
-});
+})
+
+console.log('[AppPopup] mounted');;
 </script>
 
 <style scoped>

@@ -250,6 +250,7 @@ async function findShowablePopup(route, trigger) {
 
 function emitShow(popup, page, trigger) {
   currentVisible = true;
+  console.log('[popup] emitShow', popup.id, popup.name, page, trigger);
   uni.$emit('popup:show', { popup, page, trigger });
 }
 
@@ -321,6 +322,7 @@ async function checkShow({ route, trigger = 'immediate' } = {}) {
 
 function doShow(popup, page, trigger) {
   const key = `${popup.id}:${page}`;
+  console.log('[popup] doShow', popup.id, popup.name, key, shownSet.has(key), currentVisible);
   if (shownSet.has(key)) return;
 
   // 记录关闭回调
