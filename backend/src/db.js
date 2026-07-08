@@ -835,7 +835,8 @@ function migrateTables() {
   }
 
   try {
-    addColumnIfNotExists('users', 'username', "VARCHAR(16) UNIQUE DEFAULT NULL");
+    addColumnIfNotExists('users', 'username', "VARCHAR(16) DEFAULT NULL");
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);`);
   } catch (err) {}
 
   try {
@@ -856,12 +857,14 @@ function migrateTables() {
 
   try {
     addColumnIfNotExists('exercise_db', 'exercise_name', "VARCHAR(64) DEFAULT NULL");
+    addColumnIfNotExists('exercise_db', 'category', "VARCHAR(32) DEFAULT NULL");
     addColumnIfNotExists('exercise_db', 'sub_category', "VARCHAR(32) DEFAULT ''");
     addColumnIfNotExists('exercise_db', 'intensity_desc', "VARCHAR(64) DEFAULT ''");
     addColumnIfNotExists('exercise_db', 'met_value', 'DECIMAL(5,2) DEFAULT 0');
     addColumnIfNotExists('exercise_db', 'calorie_per_hour', 'DECIMAL(8,2) DEFAULT 0');
     addColumnIfNotExists('exercise_db', 'remark', "VARCHAR(255) DEFAULT ''");
     db.exec(`UPDATE exercise_db SET exercise_name = name WHERE exercise_name IS NULL OR exercise_name = '';`);
+    db.exec(`UPDATE exercise_db SET category = type WHERE category IS NULL OR category = '';`);
   } catch (err) {
     console.error('exercise_db 字段迁移失败:', err.message);
   }
