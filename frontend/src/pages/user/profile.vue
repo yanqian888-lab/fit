@@ -36,8 +36,8 @@
           <input v-model="form.height" type="digit" placeholder="165" />
         </view>
         <view class="form-item">
-          <text class="input-label">当前体重 (kg)</text>
-          <input v-model="form.current_weight" type="digit" placeholder="60" />
+          <text class="input-label">初始体重 (kg)</text>
+          <input v-model="form.initial_weight" type="digit" placeholder="60" />
         </view>
         <view class="form-item">
           <text class="input-label">目标体重 (kg)</text>
@@ -77,7 +77,7 @@ const form = ref({
   gender: null,
   birth_date: '',
   height: '',
-  current_weight: '',
+  initial_weight: '',
   target_weight: '',
   target_date: ''
 });
@@ -118,7 +118,7 @@ onMounted(async () => {
     form.value.gender = data.gender ?? null;
     form.value.birth_date = data.birth_date || '';
     form.value.height = data.height || profile.height || '';
-    form.value.current_weight = profile.current_weight || '';
+    form.value.initial_weight = profile.initial_weight || profile.current_weight || '';
     form.value.target_weight = profile.target_weight || '';
     form.value.target_date = profile.target_date || '';
   } catch (err) {
@@ -203,7 +203,7 @@ async function save() {
       height: parseFloat(form.value.height)
     });
     await userApi.updateProfile({
-      current_weight: parseFloat(form.value.current_weight) || null,
+      initial_weight: parseFloat(form.value.initial_weight) || null,
       target_weight: parseFloat(form.value.target_weight) || null,
       target_date: form.value.target_date
     });

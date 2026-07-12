@@ -164,7 +164,13 @@ function updatePrecipitation(req, res) {
     const subType = req.body.sub_type || null;
     
     if (type) {
-      syncToBusinessTable(userId, type, content, extracted_data, null, subType, parseInt(id) || null);
+      // 食谱在 museum_items 中按 chat_message_id 做 upsert，需要把 chat_id 传下去
+      let chatId = null;
+      if (type === 'recipe') {
+        const rec = db.prepare('SELECT chat_id FROM precipitation_records WHERE id = ? AND user_id = ?').get(id, userId);
+        chatId = rec?.chat_id || null;
+      }
+      syncToBusinessTable(userId, type, content, extracted_data, null, subType, parseInt(id) || null, chatId);
     }
   }
 

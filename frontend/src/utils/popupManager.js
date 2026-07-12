@@ -20,6 +20,8 @@ let closeCurrentFn = null;
 let initPromise = null;
 let showCallback = null;
 let hideCallback = null;
+let nativePopupEl = null;
+let nativeTouchY = 0;
 
 function getNow() {
   return new Date().toISOString();
@@ -250,13 +252,144 @@ async function findShowablePopup(route, trigger) {
   return candidates[0];
 }
 
+function removeNativePopup() {
+  if (nativePopupEl && nativePopupEl.parentNode) {
+    nativePopupEl.parentNode.removeChild(nativePopupEl);
+  }
+  nativePopupEl = null;
+}
+
+function createNativePopup({ popup, page, trigger }) {
+  if (typeof document === 'undefined') {
+    console.warn('[popup] 当前环境无 document，无法渲染原生兜底弹窗');
+    currentVisible = false;
+    return;
+  }
+  removeNativePopup();
+  const isTop = popup.style === 'top';
+  const root = document.createElement('div');
+  root.style.position = 'fixed';
+  root.style.zIndex = '99999';
+  root.style.left = '0';
+  root.style.top = '0';
+  if (!isTop) {
+    root.style.right = '0';
+    root.style.bottom = '0';
+    root.style.background = 'rgba(0,0,0,0.5)';
+    root.style.display = 'flex';
+    root.style.alignItems = 'center';
+    root.style.justifyContent = 'center';
+  } else {
+    root.style.right = '0';
+  }
+
+  const panel = document.createElement('div');
+  panel.style.position = 'relative';
+  panel.style.background = '#fff';
+  panel.style.boxShadow = '0 4px 20px rgba(0,0,0,0.15)';
+  if (isTop) {
+    panel.style.width = '100vw';
+    panel.style.borderRadius = '0 0 16px 16px';
+  } else {
+    panel.style.width = '78vw';
+    panel.style.maxWidth = '360px';
+    panel.style.borderRadius = '16px';
+  }
+  panel.style.overflow = 'hidden';
+
+  const img = document.createElement('img');
+  img.src = popup.image_url;
+  img.style.width = '100%';
+  img.style.display = 'block';
+  img.style.objectFit = 'contain';
+  if (!isTop) img.style.maxHeight = '70vh';
+  img.onerror = () => {
+    img.style.display = 'none';
+    const fallback = document.createElement('div');
+    fallback.textContent = '图片加载失败';
+    fallback.style.minHeight = isTop ? '120px' : '160px';
+    fallback.style.display = 'flex';
+    fallback.style.alignItems = 'center';
+    fallback.style.justifyContent = 'center';
+    fallback.style.background = '#f5f5f5';
+    fallback.style.color = '#999';
+    fallback.style.fontSize = '14px';
+    panel.appendChild(fallback);
+  };
+  panel.appendChild(img);
+
+  if (popup.show_close_button !== false) {
+    const closeBtn = document.createElement('div');
+    closeBtn.textContent = '×';
+    closeBtn.style.position = 'absolute';
+    closeBtn.style.top = '8px';
+    closeBtn.style.right = '8px';
+    closeBtn.style.width = '28px';
+    closeBtn.style.height = '28px';
+    closeBtn.style.lineHeight = '26px';
+    closeBtn.style.textAlign = 'center';
+    closeBtn.style.borderRadius = '50%';
+    closeBtn.style.background = 'rgba(0,0,0,0.3)';
+    closeBtn.style.color = '#fff';
+    closeBtn.style.fontSize = '20px';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      closeCurrent('close_btn');
+    };
+    panel.appendChild(closeBtn);
+  }
+
+  panel.onclick = (e) => {
+    e.stopPropagation();
+    if (popup.jump_type && popup.jump_type !== 'none') {
+      onClick(popup, page, trigger);
+      navigate(popup);
+      closeCurrent('click');
+    }
+  };
+
+  root.onclick = () => {
+    if (!isTop && popup.mask_closeable !== false) {
+      closeCurrent('mask');
+    }
+  };
+
+  root.appendChild(panel);
+  document.body.appendChild(root);
+  nativePopupEl = root;
+
+  // 顶部弹窗原生兜底支持上滑关闭
+  if (isTop) {
+    panel.addEventListener('touchstart', (e) => {
+      nativeTouchY = e.changedTouches[0]?.clientY || 0;
+    }, { passive: true });
+    panel.addEventListener('touchend', (e) => {
+      const y = e.changedTouches[0]?.clientY || 0;
+      if (nativeTouchY - y > 60) {
+        closeCurrent('swipe');
+      }
+    }, { passive: true });
+  }
+
+  console.log('[popup] 原生兜底弹窗已渲染', popup.id, popup.name, popup.style);
+  markShown(popup, page, trigger);
+}
+
 function emitShow(popup, page, trigger) {
   currentVisible = true;
   console.log('[popup] emitShow', popup.id, popup.name, page, trigger);
+  let handled = false;
   if (showCallback) {
-    showCallback({ popup, page, trigger });
-  } else {
-    uni.$emit('popup:show', { popup, page, trigger });
+    try {
+      showCallback({ popup, page, trigger });
+      handled = true;
+    } catch (e) {
+      console.error('[popup] showCallback 抛出异常，使用原生兜底', e);
+    }
+  }
+  if (!handled) {
+    createNativePopup({ popup, page, trigger });
   }
 }
 
@@ -292,6 +425,7 @@ function markShown(popup, page, trigger) {
 
 function emitHide() {
   currentVisible = false;
+  removeNativePopup();
   if (hideCallback) {
     hideCallback();
   } else {

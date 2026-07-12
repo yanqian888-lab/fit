@@ -1,0 +1,28 @@
+
+    location = /h5/index.html {
+        alias /var/www/fit-h5/index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        expires 0;
+    }
+
+    location = /test-h5/index.html {
+        alias /var/www/fit-h5-test/index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        expires 0;
+    }
+
+    location = /admin/index.html {
+        alias /var/www/fit-admin/index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        expires 0;
+    }
+
+    location = /test-admin/index.html {
+        alias /var/www/fit-admin-test/index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        expires 0;
+    }

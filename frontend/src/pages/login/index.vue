@@ -13,8 +13,8 @@
           v-model="accountForm.username"
           class="form-input"
           type="text"
-          placeholder="请输入6位字母+数字账号"
-          maxlength="6"
+          placeholder="请输入6-10位字母+数字账号"
+          maxlength="10"
         />
       </view>
       <view class="form-item">
@@ -93,14 +93,14 @@ function goToRegister() {
   uni.navigateTo({ url: '/pages/register/index?from=setup' });
 }
 
-const USERNAME_REGEX = /^[a-zA-Z0-9]{6}$/;
+const USERNAME_REGEX = /^[a-zA-Z0-9]{6,10}$/;
 
 // 账号密码登录
 async function accountLogin() {
   const { username, password } = accountForm.value;
   
   if (!USERNAME_REGEX.test(username || '')) {
-    uni.showToast({ title: '请输入6位字母+数字账号', icon: 'none' });
+    uni.showToast({ title: '请输入6-10位字母+数字账号', icon: 'none' });
     return;
   }
   if (!password || password.length !== 6) {

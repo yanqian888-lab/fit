@@ -44,7 +44,7 @@ const page = ref(1);
 const hasMore = ref(true);
 
 function typeName(type) {
-  const map = { diet: '饮食', exercise: '运动', weight: '体重', habit: '习惯', quote: '金句', insight: '感悟' };
+  const map = { diet: '饮食', diet_record: '饮食', exercise: '运动', exercise_record: '运动', weight: '体重', body_data: '身体', habit: '习惯', recipe: '食谱', quote: '金句', insight: '感悟' };
   return map[type] || type;
 }
 

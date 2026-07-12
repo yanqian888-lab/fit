@@ -216,6 +216,7 @@ function initTables() {
     CREATE TABLE IF NOT EXISTS museum_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
+      chat_message_id INTEGER DEFAULT NULL,
       type VARCHAR(32) NOT NULL,
       sub_type VARCHAR(32) DEFAULT NULL,
       content TEXT NOT NULL,
@@ -226,10 +227,11 @@ function initTables() {
       effectiveness TINYINT DEFAULT NULL,
       is_favorite TINYINT DEFAULT 0,
       tags VARCHAR(255) DEFAULT NULL,
-      status TINYINT DEFAULT 1,
+      status TINYINT DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (chat_message_id) REFERENCES chat_messages(id) ON DELETE SET NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_museum_user_type ON museum_items(user_id, type, created_at);
@@ -827,9 +829,13 @@ function migrateTables() {
   }
 
   // 兼容旧库：补充 CMS 控制器依赖的字段
+  function tableColumns(table) {
+    return db.pragma(`table_info(${table})`).map(col => col.name);
+  }
+
   function addColumnIfNotExists(table, column, def) {
-    const exists = db.prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`).get(table, column);
-    if (!exists) {
+    const columns = tableColumns(table);
+    if (!columns.includes(column)) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def};`);
     }
   }
@@ -848,8 +854,14 @@ function migrateTables() {
     addColumnIfNotExists('food_db', 'edible_rate', 'DECIMAL(3,2) DEFAULT 1.0');
     addColumnIfNotExists('food_db', 'remark', "TEXT DEFAULT ''");
     db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_food_db_food_id ON food_db(food_id);`);
-    db.exec(`UPDATE food_db SET food_name = name WHERE food_name IS NULL OR food_name = '';`);
-    db.exec(`UPDATE food_db SET calories_per_100g = calorie_per_100g WHERE calories_per_100g = 0 AND calorie_per_100g > 0;`);
+
+    const foodColumns = tableColumns('food_db');
+    if (foodColumns.includes('name')) {
+      db.exec(`UPDATE food_db SET food_name = name WHERE food_name IS NULL OR food_name = '';`);
+    }
+    if (foodColumns.includes('calorie_per_100g')) {
+      db.exec(`UPDATE food_db SET calories_per_100g = calorie_per_100g WHERE calories_per_100g = 0 AND calorie_per_100g > 0;`);
+    }
     db.exec(`UPDATE food_db SET food_id = id WHERE food_id IS NULL;`);
   } catch (err) {
     console.error('food_db 字段迁移失败:', err.message);
@@ -863,8 +875,14 @@ function migrateTables() {
     addColumnIfNotExists('exercise_db', 'met_value', 'DECIMAL(5,2) DEFAULT 0');
     addColumnIfNotExists('exercise_db', 'calorie_per_hour', 'DECIMAL(8,2) DEFAULT 0');
     addColumnIfNotExists('exercise_db', 'remark', "VARCHAR(255) DEFAULT ''");
-    db.exec(`UPDATE exercise_db SET exercise_name = name WHERE exercise_name IS NULL OR exercise_name = '';`);
-    db.exec(`UPDATE exercise_db SET category = type WHERE category IS NULL OR category = '';`);
+
+    const exerciseColumns = tableColumns('exercise_db');
+    if (exerciseColumns.includes('name')) {
+      db.exec(`UPDATE exercise_db SET exercise_name = name WHERE exercise_name IS NULL OR exercise_name = '';`);
+    }
+    if (exerciseColumns.includes('type')) {
+      db.exec(`UPDATE exercise_db SET category = type WHERE category IS NULL OR category = '';`);
+    }
   } catch (err) {
     console.error('exercise_db 字段迁移失败:', err.message);
   }
@@ -971,6 +989,16 @@ function migrateTables() {
     db.exec(`ALTER TABLE popups ADD COLUMN target_users TEXT DEFAULT '[]';`);
   } catch (err) {
     // 列已存在时忽略
+  }
+
+  // museum_items 支持聊天沉淀待确认（status: 0 pending / 1 confirmed / 2 discarded）
+  try {
+    addColumnIfNotExists('museum_items', 'chat_message_id', 'INTEGER DEFAULT NULL');
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_museum_chat_msg ON museum_items(chat_message_id);`);
+    // 注意：status 字段已存在，旧数据默认 status=1 视为已确认；
+    // 新产生的 pending 资产由业务代码显式写入 status=0。
+  } catch (err) {
+    console.error('museum_items 待确认字段迁移失败:', err.message);
   }
 
   // 新增试用权限相关表

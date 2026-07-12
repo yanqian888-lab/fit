@@ -43,7 +43,7 @@ echo "[4/5] 初始化/迁移数据库..."
 NODE_ENV=$ENV npm run init-db || NODE_ENV=$ENV node src/scripts/init-db.js
 
 echo "[5/5] 重启 PM2 服务..."
-pm run "pm2:restart:$ENV" || pm2 restart "$PM2_NAME"
+npm run "pm2:restart:$ENV" || pm2 restart "$PM2_NAME"
 pm2 save
 
 echo ""

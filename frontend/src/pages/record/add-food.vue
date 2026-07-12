@@ -87,7 +87,7 @@
           <view class="selected-info">
             <text class="selected-name">{{ food.name }}</text>
             <view class="selected-detail">
-              <text v-if="food.quantity && food.unit && food.unit !== 'g' && !isDescriptiveUnit(food.unit)" class="selected-quantity">{{ food.quantity }}{{ food.unit }}</text>
+              <text v-if="food.quantity && food.unit && !isWeightOnlyUnit(food.unit)" class="selected-quantity">{{ food.quantity }}{{ food.unit }}</text>
               <text class="selected-weight">{{ food.weight }}g</text>
               <text class="selected-calorie">{{ Math.round(food.calorie || 0) }}千卡</text>
             </view>
@@ -106,7 +106,7 @@
           <text class="panel-close" @click="closeFoodEditModal">✕</text>
         </view>
         <view class="food-edit-body">
-          <view class="edit-row">
+          <view v-if="showEditQuantity" class="edit-row">
             <text class="edit-label">数量</text>
             <input v-model="editQuantity" type="digit" class="edit-input" />
             <text class="edit-unit">{{ editingFood?.unit || 'g' }}</text>
@@ -171,6 +171,15 @@ const editCalorie = computed(() => {
   if (!editingFood.value) return 0;
   const ratio = parseFloat(editWeight.value) / 100;
   return Math.round((editingFood.value.calorie_per_100g || 0) * ratio * 10) / 10;
+});
+
+function isWeightOnlyUnit(unit) {
+  const u = String(unit || '').trim().toLowerCase();
+  return u === 'g' || u === '克' || u === '100g' || u === '100克' || isDescriptiveUnit(unit);
+}
+
+const showEditQuantity = computed(() => {
+  return !isWeightOnlyUnit(editingFood.value?.unit);
 });
 
 function openFoodEditModal(food) {

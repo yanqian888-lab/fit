@@ -71,6 +71,7 @@ router.get('/partners/status', authMiddleware, partnerController.getStatus);
 // 聊天
 router.post('/chat/send', authMiddleware, chatController.sendMessage);
 router.get('/chat/messages', authMiddleware, chatController.getMessages);
+router.get('/chat/pending-assets', authMiddleware, chatController.getPendingAssets);
 router.post('/chat/confirm-precipitation', authMiddleware, chatController.confirmPrecipitation);
 
 // 记录中心
@@ -100,6 +101,8 @@ router.get('/museum/items/:id', authMiddleware, museumController.getItem);
 router.post('/museum/items', authMiddleware, museumController.addItem);
 router.put('/museum/items/:id', authMiddleware, museumController.updateItem);
 router.delete('/museum/items/:id', authMiddleware, museumController.deleteItem);
+router.post('/museum/items/:id/confirm', authMiddleware, museumController.confirmItem);
+router.post('/museum/items/:id/discard', authMiddleware, museumController.discardItem);
 router.post('/museum/items/:id/favorite', authMiddleware, museumController.toggleFavorite);
 
 // 沉淀记录

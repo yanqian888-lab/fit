@@ -66,13 +66,11 @@ const ALIAS_MAP = {
   '白菜': ['白菜'],
   '菠菜': ['菠菜'],
   '胡萝卜': ['胡萝卜'],
-  '土豆': ['土豆', '马铃薯'],
-  '红薯': ['红薯', '地瓜', '甘薯'],
+  '土豆': ['蒸土豆', '土豆', '马铃薯'],
+  '红薯': ['蒸红薯', '红薯', '地瓜', '甘薯'],
   '玉米': ['煮糯玉米（粘玉米）', '玉米'],
   '糯玉米': ['煮糯玉米（粘玉米）', '糯玉米', '粘玉米'],
   '甜玉米': ['煮甜玉米（水果玉米）', '甜玉米', '水果玉米'],
-  '红薯': ['蒸红薯', '红薯', '地瓜', '甘薯'],
-  '土豆': ['蒸土豆', '土豆', '马铃薯'],
   '山药': ['蒸山药', '山药'],
   '紫薯': ['蒸紫薯', '紫薯'],
   '芋头': ['蒸芋头', '芋头'],
@@ -83,6 +81,7 @@ const ALIAS_MAP = {
   '饼干': ['饼干'],
   '蛋糕': ['蛋糕'],
   '面包': ['面包'],
+  '南瓜发糕': ['南瓜发糕', '发糕'],
   '汉堡': ['汉堡'],
   '披萨': ['披萨', '比萨'],
   '可乐': ['可乐', '碳酸饮料'],
@@ -246,10 +245,18 @@ function getFoodNutrition(foodName, preferredCategory = null) {
     const food = findBestFoodMatch(name);
     if (food) return food;
 
-    // 5. 关键词匹配
+    // 5. 关键词匹配（优先走别名映射，避免"土豆"命中"土豆炖牛肉"等菜品）
     const keywords = extractFoodKeywords(name);
     for (const kw of keywords) {
       if (kw.length < 2) continue;
+      // 关键词本身有明确别名时，先按别名目标匹配（如"土豆"→"蒸土豆"）
+      const kwAlias = ALIAS_MAP[kw];
+      if (kwAlias) {
+        for (const pattern of kwAlias) {
+          const aliasFood = findBestFoodMatch(pattern);
+          if (aliasFood) return aliasFood;
+        }
+      }
       const kwFood = findBestFoodMatch(kw);
       if (kwFood) return kwFood;
     }

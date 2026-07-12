@@ -107,7 +107,7 @@ function finish() {
 .dot.active {
   width: 40rpx;
   border-radius: $radius-pill;
-  background: $mint;
+  background: $green;
 }
 
 .actions {

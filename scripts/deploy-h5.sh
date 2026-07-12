@@ -49,6 +49,9 @@ mkdir -p "$WWW_DIR"
 rm -rf "${WWW_DIR:?}/"*
 cp -r dist/build/h5/* "$WWW_DIR/"
 
+# 注意：不同环境的静态资源已经隔离在各自的 WWW_DIR/static 下，
+# 不再同步到全局 /var/www/fit-static/，避免测试/正式环境互相覆盖。
+
 # 复制 Nginx 配置（如未配置）
 NGINX_AVAILABLE="/etc/nginx/sites-available/jianfeidazi-h5-$ENV"
 if [ ! -f "$NGINX_AVAILABLE" ]; then

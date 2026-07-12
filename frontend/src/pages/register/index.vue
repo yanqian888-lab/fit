@@ -12,8 +12,8 @@
           v-model="form.username"
           class="form-input"
           type="text"
-          placeholder="请设置6位字母+数字组合账号"
-          maxlength="6"
+          placeholder="请设置6-10位字母+数字组合账号"
+          maxlength="10"
         />
       </view>
       <view class="form-item">
@@ -83,7 +83,7 @@ function goToLogin() {
   uni.navigateTo({ url: '/pages/login/index?from=setup' });
 }
 
-const USERNAME_REGEX = /^[a-zA-Z0-9]{6}$/;
+const USERNAME_REGEX = /^[a-zA-Z0-9]{6,10}$/;
 function validateUsernameCombo(username) {
   return USERNAME_REGEX.test(username) && /[a-zA-Z]/.test(username) && /[0-9]/.test(username);
 }
@@ -92,7 +92,7 @@ async function register() {
   const { username, password, confirmPassword, phone } = form.value;
 
   if (!USERNAME_REGEX.test(username || '')) {
-    uni.showToast({ title: '请输入6位字母+数字账号', icon: 'none' });
+    uni.showToast({ title: '请输入6-10位字母+数字账号', icon: 'none' });
     return;
   }
   if (!validateUsernameCombo(username)) {

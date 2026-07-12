@@ -69,3 +69,9 @@ backend/public/avatars/*
 !backend/public/avatars/.gitkeep
 backend/public/uploads/*
 !backend/public/uploads/.gitkeep
+
+# Deploy SSH key
+.fit_deploy.pem
+
+# Local dev database at project root
+data/

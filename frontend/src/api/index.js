@@ -2,7 +2,7 @@ import { get, post, put, del } from '../utils/request';
 
 // 认证
 export const authApi = {
-  wechatLogin: (code) => post('/auth/wechat-login', { code }),
+  wechatLogin: (data) => post('/auth/wechat-login', data),
   login: (data) => post('/auth/login', data),
   register: (data) => post('/auth/register', data),
   wechatBindPhone: (data) => post('/auth/wechat-bind', data)
@@ -30,6 +30,7 @@ export const partnerApi = {
 export const chatApi = {
   send: (content, contentType = 'text', date) => post('/chat/send', { content, content_type: contentType, record_date: date }),
   getMessages: (params) => get('/chat/messages', params),
+  getPendingAssets: (messageIds) => get('/chat/pending-assets', { message_ids: messageIds.join(',') }),
   confirmPrecipitation: (data) => post('/chat/confirm-precipitation', data),
   searchMessages: (params) => get('/chat/messages', params),
   getChatStats: () => get('/chat/stats'),
@@ -63,6 +64,8 @@ export const museumApi = {
   addItem: (data) => post('/museum/items', data),
   updateItem: (id, data) => put(`/museum/items/${id}`, data),
   deleteItem: (id) => del(`/museum/items/${id}`),
+  confirmItem: (id, data) => post(`/museum/items/${id}/confirm`, data),
+  discardItem: (id) => post(`/museum/items/${id}/discard`),
   toggleFavorite: (id) => post(`/museum/items/${id}/favorite`)
 };
 

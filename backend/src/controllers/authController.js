@@ -8,8 +8,8 @@ const { db } = require('../db');
 const { success, error } = require('../utils/response');
 const trialService = require('../services/trialService');
 
-// 用户账号：6位字母+数字组合
-const USERNAME_REGEX = /^[a-zA-Z0-9]{6}$/;
+// 用户账号：6-10位字母+数字组合
+const USERNAME_REGEX = /^[a-zA-Z0-9]{6,10}$/;
 
 function validateUsername(username) {
   return USERNAME_REGEX.test(username);
@@ -55,6 +55,12 @@ function createUserWithInit(username, passwordHash, phone, nickname, source = 'a
   // 初始化设置
   db.prepare('INSERT INTO settings (user_id) VALUES (?)').run(userId);
 
+  // 新用户首次欢迎语
+  db.prepare(`
+    INSERT INTO chat_messages (user_id, role, content, content_type, mode)
+    VALUES (?, 'partner', ?, 'text', 'gentle')
+  `).run(userId, '你好呀，我是你的专属减肥搭子～\n从今天开始，我会陪你一起记录饮食、运动、体重，一起瘦下来！有什么想聊的，随时告诉我吧～');
+
   return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
 }
 
@@ -76,7 +82,7 @@ function login(req, res) {
   const { username, password, device_id } = req.body;
 
   if (!validateUsername(username)) {
-    return res.status(400).json(error('请输入6位字母+数字账号', 400));
+    return res.status(400).json(error('请输入6-10位字母+数字账号', 400));
   }
   if (!password || password.length !== 6) {
     return res.status(400).json(error('请输入6位密码', 400));
@@ -122,7 +128,7 @@ function register(req, res) {
   const { username, password, phone, device_id } = req.body;
 
   if (!validateUsername(username)) {
-    return res.status(400).json(error('请输入6位字母+数字账号', 400));
+    return res.status(400).json(error('请输入6-10位字母+数字账号', 400));
   }
   if (!validateUsernameCombo(username)) {
     return res.status(400).json(error('账号需同时包含字母和数字', 400));

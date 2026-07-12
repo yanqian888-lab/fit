@@ -8,6 +8,7 @@
           class="popup-center-image"
           :src="popup.image_url"
           mode="aspectFit"
+          @load="onImageLoad"
           @error="onImageError"
           @click="onContentClick"
         />
@@ -31,6 +32,7 @@
         class="popup-top-image"
         :src="popup.image_url"
         mode="widthFix"
+        @load="onImageLoad"
         @error="onImageError"
       />
       <view v-else class="popup-image-fallback popup-top-fallback" @click="onContentClick">
@@ -75,6 +77,15 @@ function onImageError(e) {
   imageError.value = true;
 }
 
+function onImageLoad(e) {
+  const detail = e?.detail || {};
+  const height = detail.height || e?.target?.naturalHeight || 0;
+  if (!height) {
+    console.warn('[AppPopup] image loaded but height=0, treat as error', popup.value.image_url);
+    imageError.value = true;
+  }
+}
+
 function close(way) {
   if (!visible.value) return;
   popupManager.onClose(way);
@@ -106,7 +117,8 @@ function touchStart(e) {
 
 function touchEnd(e) {
   const y = e.changedTouches[0]?.clientY || 0;
-  if (y - touchY > 60) {
+  // 顶部弹窗向上滑动关闭
+  if (touchY - y > 60) {
     close('swipe');
   }
 }

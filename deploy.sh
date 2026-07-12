@@ -2,21 +2,42 @@
 set -e
 
 # ============================================================
-# 减肥搭子 APP 服务端首次部署脚本
+# 减肥搭子 APP 服务端部署脚本
 # 用法：
-#   ./deploy.sh test [test-api.yourdomain.com]
-#   ./deploy.sh prod [api.yourdomain.com]
+#   ./deploy.sh test [test-api.yourdomain.com] [--force]
+#   ./deploy.sh prod [api.yourdomain.com] [--force]
+# 说明：
+#   默认情况下，如果 /opt/jianfeidazi 已存在且是 Git 仓库，会执行 git pull
+#   增量更新，不会删除数据库与环境变量文件。如需清空重装，请加上 --force。
 # ============================================================
 
-ENV=$1
-DOMAIN=$2
+ENV=""
+DOMAIN=""
+FORCE=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    test|prod)
+      ENV=$1
+      shift
+      ;;
+    --force)
+      FORCE=true
+      shift
+      ;;
+    *)
+      DOMAIN=$1
+      shift
+      ;;
+  esac
+done
 
 if [[ "$ENV" != "test" && "$ENV" != "prod" ]]; then
   echo ""
   echo "错误：请指定部署环境"
   echo "用法："
-  echo "  ./deploy.sh test [test-api.yourdomain.com]"
-  echo "  ./deploy.sh prod [api.yourdomain.com]"
+  echo "  ./deploy.sh test [test-api.yourdomain.com] [--force]"
+  echo "  ./deploy.sh prod [api.yourdomain.com] [--force]"
   echo ""
   exit 1
 fi
@@ -40,7 +61,7 @@ PROJECT_DIR="/opt/jianfeidazi"
 REPO_URL="https://github.com/yanqian888-lab/fit.git"
 
 echo "====================================="
-echo "  减肥搭子 APP 服务端首次部署"
+echo "  减肥搭子 APP 服务端部署"
 echo "  环境：$ENV"
 echo "  域名：$DOMAIN"
 echo "  端口：$PORT"
@@ -65,13 +86,26 @@ if ! command -v pm2 &> /dev/null; then
 fi
 pm2 -v
 
-echo "[4/10] 克隆代码..."
+echo "[4/10] 克隆/更新代码..."
 if [ -d "$PROJECT_DIR" ]; then
-  echo "目录 $PROJECT_DIR 已存在，将覆盖..."
-  rm -rf "$PROJECT_DIR"
+  if [ "$FORCE" == "true" ]; then
+    echo "⚠️  检测到 --force，将清空 $PROJECT_DIR 并重新克隆（数据库、.env 等也会被删除）..."
+    rm -rf "$PROJECT_DIR"
+  elif [ -d "$PROJECT_DIR/.git" ]; then
+    echo "目录 $PROJECT_DIR 已存在，执行 git pull 增量更新（如需清空重装请使用 --force）..."
+    cd "$PROJECT_DIR"
+    git pull origin $(git rev-parse --abbrev-ref HEAD)
+  else
+    echo "错误：$PROJECT_DIR 已存在且不是 Git 仓库。如需覆盖请使用 --force。"
+    exit 1
+  fi
 fi
-mkdir -p /opt
-git clone "$REPO_URL" "$PROJECT_DIR"
+
+if [ ! -d "$PROJECT_DIR" ]; then
+  mkdir -p /opt
+  git clone "$REPO_URL" "$PROJECT_DIR"
+fi
+
 cd "$PROJECT_DIR/backend"
 
 echo "[5/10] 安装后端依赖..."

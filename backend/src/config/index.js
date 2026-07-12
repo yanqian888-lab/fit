@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 const env = process.env.NODE_ENV || 'development';
-const projectRoot = path.resolve(__dirname, '../..');
+const projectRoot = path.resolve(__dirname, '..', '..');
 const defaultEnvFile = path.join(projectRoot, '.env');
 const envFile = path.join(projectRoot, `.env.${env}`);
 
@@ -63,12 +63,12 @@ module.exports = {
       }
     }
   },
-  // 备用大模型配置
+  // 备用大模型配置（所有密钥均从环境变量读取，禁止在源码中写死）
   backup: {
-    apiKey: process.env.BACKUP_API_KEY || 'ark-3733e008-3f0c-4023-b366-3b84b83dafb7-c708c',
+    apiKey: process.env.BACKUP_API_KEY,
     baseURL: process.env.BACKUP_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
     endpoint: {
-      id: process.env.BACKUP_ENDPOINT || 'ep-20260621155338-pbqkx'
+      id: process.env.BACKUP_ENDPOINT
     }
   },
   wechat: {

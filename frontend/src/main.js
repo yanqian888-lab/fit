@@ -1,7 +1,6 @@
-import { createSSRApp, createApp as createVueApp } from 'vue';
+import { createSSRApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
-import AppPopup from './components/AppPopup.vue';
 import popupManager from './utils/popupManager';
 
 export function createApp() {
@@ -20,9 +19,12 @@ export function createApp() {
     },
     onHide() {
       popupManager.clearPending();
+      // 页面切换/隐藏时自动收起当前弹窗，避免带入其他页面
+      popupManager.closeCurrent('page_switch');
     },
     onUnload() {
       popupManager.clearPending();
+      popupManager.closeCurrent('page_switch');
       // 页面返回时尝试触发 back 时机弹窗
       const pages = getCurrentPages();
       const route = pages[pages.length - 1]?.route || '';
@@ -36,20 +38,6 @@ export function createApp() {
       return false;
     }
   });
-
-  // H5 环境下把弹窗组件挂到 body，避免 App.vue 全局组件在 H5 下不渲染导致弹窗出不来
-  try {
-    const info = uni.getSystemInfoSync();
-    if (info.platform === 'web' && typeof document !== 'undefined') {
-      const container = document.createElement('div');
-      container.id = 'app-popup-container';
-      document.body.appendChild(container);
-      const popupApp = createVueApp(AppPopup);
-      popupApp.mount(container);
-    }
-  } catch (e) {
-    console.error('[popup] H5 挂载弹窗组件失败', e);
-  }
 
   return {
     app

@@ -11,7 +11,7 @@ const { deleteUserLocalFiles } = require('../utils/deleteUserFiles');
 const GENDER_MAP = { 0: '未知', 1: '男', 2: '女' };
 const MODE_MAP = { gentle: '温柔', strict: '严格', tease: '毒舌' };
 const SOURCE_MAP = { app: 'App注册', cms: '后台创建' };
-const USERNAME_REGEX = /^[a-zA-Z0-9]{6}$/;
+const USERNAME_REGEX = /^[a-zA-Z0-9]{6,10}$/;
 function validateUsernameCombo(username) {
   return USERNAME_REGEX.test(username) && /[a-zA-Z]/.test(username) && /[0-9]/.test(username);
 }
@@ -44,7 +44,7 @@ function list(req, res) {
 
   const list = db.prepare(`
     SELECT
-      u.id, u.user_id, u.openid, u.username, u.plain_password, u.nickname, u.avatar_url, u.phone,
+      u.id, u.user_id, u.openid, u.username, u.nickname, u.avatar_url, u.phone,
       u.gender, u.age, u.birth_date, u.height, u.role, u.status, u.source,
       u.created_at, u.last_login_at,
       p.initial_weight, p.current_weight, p.target_weight,
@@ -81,7 +81,7 @@ function create(req, res) {
   const { username, password, phone, nickname } = req.body || {};
 
   if (!USERNAME_REGEX.test(username || '')) {
-    return res.status(400).json(error('请输入6位字母+数字账号', 400));
+    return res.status(400).json(error('请输入6-10位字母+数字账号', 400));
   }
   if (!validateUsernameCombo(username)) {
     return res.status(400).json(error('账号需同时包含字母和数字', 400));

@@ -13,21 +13,24 @@ const chatState = require('../services/chatState');
 const tagMatcher = require('../services/tagMatcher');
 
 /**
- * 将搭子回复中的食谱自动保存到食谱库
+ * 将搭子回复中的食谱提取为沉淀记录，走和饮食/运动一致的「待确认 → 已记录」流程
+ * 确认后再写入 museum_items，避免聊天页同时出现待确认标签和 PendingAssetCard
  */
-async function savePartnerRecipes(userId, content) {
+async function savePartnerRecipes(userId, content, chatMessageId = null) {
   try {
     const recipes = await partnerAssetAgent.extractPartnerRecipes(content);
     if (!recipes || recipes.length === 0) return [];
 
-    const insert = db.prepare(`
-      INSERT INTO museum_items (user_id, type, sub_type, content, extracted_data, author, status)
-      VALUES (?, 'recipe', ?, ?, ?, 'partner', 1)
+    const insertPrecipitation = db.prepare(`
+      INSERT INTO precipitation_records
+      (user_id, chat_id, type, sub_type, content, extracted_data, confidence, status, source, tags, remark)
+      VALUES (?, ?, 'recipe', ?, ?, ?, ?, 0, 1, ?, ?)
     `);
-    const titleMap = { recipe: '食谱' };
-    const today = new Date().toISOString().split('T')[0];
 
-    for (const recipe of recipes) {
+    let linkedChatMsg = false;
+
+    for (let i = 0; i < recipes.length; i++) {
+      const recipe = recipes[i];
       const subType = recipe.title || '搭子推荐食谱';
       const contentText = recipe.content || subType;
       const extractedData = {
@@ -37,26 +40,62 @@ async function savePartnerRecipes(userId, content) {
         steps: recipe.steps || '',
         tip: recipe.tip || ''
       };
-      const museumId = insert.run(
+      const extractedJson = JSON.stringify(extractedData);
+
+      // 为每条食谱创建沉淀记录，让用户可以像饮食/运动一样走「待确认 → 已记录」流程
+      const precipitationId = insertPrecipitation.run(
         userId,
+        chatMessageId || null,
         subType,
         contentText,
-        JSON.stringify(extractedData)
+        extractedJson,
+        recipe.confidence || 0.9,
+        null,
+        null
       ).lastInsertRowid;
 
-      // 写入时间轴
-      db.prepare(`
-        INSERT INTO timelines (user_id, event_type, title, content, related_id, related_type, event_date)
-        VALUES (?, 'recipe', ?, ?, ?, 'museum_items', ?)
-      `).run(userId, titleMap.recipe, contentText, museumId, today);
+      // 聊天消息只关联第一条食谱的沉淀记录（消息只能有一个 precipitation_id）
+      if (chatMessageId && !linkedChatMsg) {
+        db.prepare(`
+          UPDATE chat_messages
+          SET precipitation_status = 2, precipitation_type = 'recipe', precipitation_id = ?
+          WHERE id = ? AND user_id = ?
+        `).run(precipitationId, chatMessageId, userId);
+        linkedChatMsg = true;
+      }
 
-      console.log('[搭子食谱] 已保存到食谱库:', subType);
+      console.log('[搭子食谱] 已提取待确认:', subType);
     }
 
     return recipes;
   } catch (err) {
-    console.error('[搭子食谱] 保存失败:', err.message);
+    console.error('[搭子食谱] 提取失败:', err.message);
     return [];
+  }
+}
+
+/**
+ * 将搭子/Helper 回复中的方法提取为待确认资产
+ */
+function savePartnerMethod(userId, method, chatMessageId = null) {
+  if (!method || !method.title) return null;
+  try {
+    const insert = db.prepare(`
+      INSERT INTO museum_items (user_id, chat_message_id, type, sub_type, content, extracted_data, author, effectiveness, status)
+      VALUES (?, ?, 'method', ?, ?, ?, 'partner', 1, 0)
+    `);
+    insert.run(
+      userId,
+      chatMessageId || null,
+      method.title,
+      method.content,
+      JSON.stringify({ title: method.title, content: method.content })
+    );
+    console.log('[搭子方法] 已提取待确认:', method.title);
+    return method;
+  } catch (err) {
+    console.error('[搭子方法] 提取失败:', err.message);
+    return null;
   }
 }
 
@@ -158,7 +197,9 @@ async function sendMessage(req, res) {
   try {
     // 获取用户信息和搭子信息
     const user = db.prepare(`
-      SELECT u.*, p.current_weight, p.target_weight, p.dietary_taboos, p.preferences
+      SELECT u.*, p.current_weight, p.target_weight, p.initial_weight,
+             p.bmr, p.tdee, p.daily_calorie_target, p.calorie_deficit,
+             p.dietary_taboos, p.preferences
       FROM users u
       LEFT JOIN user_profiles p ON u.id = p.user_id
       WHERE u.id = ?
@@ -233,17 +274,19 @@ async function sendMessage(req, res) {
             console.error('沉淀状态更新失败:', dbErr.message);
           }
         } else {
-          // 沉淀 Agent 未提取到有效内容时，把同步标签产生的「待确认」状态清空，避免误标
-          if (result && result.extracted === false) {
+          // 沉淀 Agent 未提取到有效内容时：
+          // - 如果同步标签已命中食物/运动库，保留「待确认」状态，让用户可手动确认，避免漏记
+          // - 只有同步标签也未命中时，才清空待确认状态，避免误标
+          if (result && result.extracted === false && !preliminaryTag) {
             try {
               const cleared = db.prepare('UPDATE chat_messages SET precipitation_status = 0 WHERE id = ? AND precipitation_status = 2')
                 .run(userMessageId);
-              console.log('沉淀未提取，清空待确认状态:', userMessageId, cleared.changes);
+              console.log('沉淀未提取且同步标签未命中，清空待确认状态:', userMessageId, cleared.changes);
             } catch (dbErr) {
               console.error('清空待确认状态失败:', dbErr.message);
             }
           } else {
-            console.log('沉淀未提取，不更新状态');
+            console.log('沉淀未提取，保留同步标签状态:', userMessageId, preliminaryTag?.type || '无');
           }
         }
         return result;
@@ -287,36 +330,27 @@ async function sendMessage(req, res) {
           console.log('[AsyncHelper] 沉淀等待完成，开始调用 helperAgent');
           const helperAnswer = await helperAgent.callHelperAgent(helperQuestion, user, partner);
           if (helperAnswer && helperAnswer !== '这个问题有点复杂，我慢慢算一下，你先忙别的～') {
-            const chunks = splitReplyIntoChunks(helperAnswer);
+            // 一次性保存完整 helper 回答，避免分片丢失后续内容
+            const insertHelperMsg = db.prepare(`
+              INSERT INTO chat_messages (user_id, role, content, content_type, mode)
+              VALUES (?, 'partner', ?, 'text', ?)
+            `);
+            const helperMessageId = insertHelperMsg.run(userId, helperAnswer, partner.mode).lastInsertRowid;
 
-            // 逐步输出 helper 内容，最后执行食谱/方法提取
-            saveStreamingPartnerMessages(userId, partner.mode, chunks, async () => {
-              try {
-                // 自动提取 helper 回答中的食谱
-                const recipes = await savePartnerRecipes(userId, helperAnswer);
-
-                // 自动沉淀到方法库（仅当回复中确实包含可执行方法，且不是食谱时）
-                if (recipes.length === 0 && isMethodContent(content)) {
-                  const method = await partnerAssetAgent.extractPartnerMethod(helperAnswer);
-                  if (method) {
-                    db.prepare(`
-                      INSERT INTO museum_items (user_id, type, sub_type, content, extracted_data, author, effectiveness, status)
-                      VALUES (?, 'method', ?, ?, ?, 'partner', 1, 1)
-                    `).run(
-                      userId,
-                      method.title,
-                      method.content,
-                      JSON.stringify({ title: method.title, content: method.content })
-                    );
-                    console.log('[搭子方法] 已保存到方法库:', method.title);
-                  }
+            try {
+              // 自动提取 helper 回答中的食谱/方法（待确认）
+              const recipes = await savePartnerRecipes(userId, helperAnswer, helperMessageId);
+              if (recipes.length === 0 && isMethodContent(content)) {
+                const method = await partnerAssetAgent.extractPartnerMethod(helperAnswer);
+                if (method) {
+                  savePartnerMethod(userId, method, helperMessageId);
                 }
-              } catch (e) {
-                console.error('[AsyncHelper] 食谱/方法提取失败:', e.message);
-              } finally {
-                chatState.setHelperPending(userId, false);
               }
-            });
+            } catch (e) {
+              console.error('[AsyncHelper] 食谱/方法提取失败:', e.message);
+            } finally {
+              chatState.setHelperPending(userId, false);
+            }
           } else {
             console.log('[AsyncHelper] helper 返回空或超时');
             chatState.setHelperPending(userId, false);
@@ -387,54 +421,38 @@ async function sendMessage(req, res) {
       }
     }
 
-    // 保存搭子回复；若来自 helper 的专业回答，按片段逐步输出
+    // 保存搭子回复；若来自 helper 的专业回答，完整保存避免分片丢失
     let partnerMessageId = null;
     const partnerReplyText = finalReply || '嗯嗯，我在听～';
     if (helperInfo && partnerReplyText) {
-      const chunks = splitReplyIntoChunks(partnerReplyText);
-      partnerMessageId = saveStreamingPartnerMessages(userId, partner.mode, chunks, async () => {
-        try {
-          const recipes = await savePartnerRecipes(userId, partnerReplyText);
-          if (recipes.length === 0 && isMethodContent(content)) {
-            const method = await partnerAssetAgent.extractPartnerMethod(helperInfo);
-            if (method) {
-              db.prepare(`
-                INSERT INTO museum_items (user_id, type, sub_type, content, extracted_data, author, effectiveness, status)
-                VALUES (?, 'method', ?, ?, ?, 'partner', 1, 1)
-              `).run(
-                userId,
-                method.title,
-                method.content,
-                JSON.stringify({ title: method.title, content: method.content })
-              );
-              console.log('[搭子方法] 已保存到方法库:', method.title);
-            }
+      const insertHelperMsg = db.prepare(`
+        INSERT INTO chat_messages (user_id, role, content, content_type, mode)
+        VALUES (?, 'partner', ?, 'text', ?)
+      `);
+      partnerMessageId = insertHelperMsg.run(userId, partnerReplyText, partner.mode).lastInsertRowid;
+      try {
+        const recipes = await savePartnerRecipes(userId, partnerReplyText, partnerMessageId);
+        if (recipes.length === 0 && isMethodContent(content)) {
+          const method = await partnerAssetAgent.extractPartnerMethod(helperInfo);
+          if (method) {
+            savePartnerMethod(userId, method, partnerMessageId);
           }
-        } catch (e) {
-          console.error('[Streaming] 食谱/方法提取失败:', e.message);
         }
-      });
+      } catch (e) {
+        console.error('[Streaming] 食谱/方法提取失败:', e.message);
+      }
     } else {
       const insertPartnerMsg = db.prepare(`
         INSERT INTO chat_messages (user_id, role, content, content_type, mode)
         VALUES (?, 'partner', ?, 'text', ?)
       `);
       partnerMessageId = insertPartnerMsg.run(userId, partnerReplyText, partner.mode).lastInsertRowid;
-      const recipes = await savePartnerRecipes(userId, partnerReplyText);
+      const recipes = await savePartnerRecipes(userId, partnerReplyText, partnerMessageId);
       if (recipes.length === 0 && helperInfo && isMethodContent(content)) {
         try {
           const method = await partnerAssetAgent.extractPartnerMethod(helperInfo);
           if (method) {
-            db.prepare(`
-              INSERT INTO museum_items (user_id, type, sub_type, content, extracted_data, author, effectiveness, status)
-              VALUES (?, 'method', ?, ?, ?, 'partner', 1, 1)
-            `).run(
-              userId,
-              method.title,
-              method.content,
-              JSON.stringify({ title: method.title, content: method.content })
-            );
-            console.log('[搭子方法] 已保存到方法库:', method.title);
+            savePartnerMethod(userId, method, partnerMessageId);
           }
         } catch (e) {
           console.error('自动沉淀方法失败:', e.message);
@@ -522,6 +540,44 @@ function getMessages(req, res) {
 }
 
 /**
+ * 批量查询聊天消息关联的待确认资产
+ */
+function getPendingAssets(req, res) {
+  const userId = req.userId;
+  const idsParam = req.query.message_ids || '';
+  if (!idsParam) {
+    return res.json(success({ list: [] }));
+  }
+  const messageIds = idsParam.split(',').map(id => parseInt(id, 10)).filter(Boolean);
+  if (messageIds.length === 0) {
+    return res.json(success({ list: [] }));
+  }
+
+  const placeholders = messageIds.map(() => '?').join(',');
+  const items = db.prepare(`
+    SELECT id, chat_message_id, type, sub_type, content, extracted_data, author, created_at
+    FROM museum_items
+    WHERE user_id = ? AND status = 0 AND chat_message_id IN (${placeholders})
+    ORDER BY chat_message_id, created_at ASC
+  `).all(userId, ...messageIds);
+
+  const parsedItems = items.map(item => ({
+    ...item,
+    extracted_data: safeParseJson(item.extracted_data)
+  }));
+
+  return res.json(success({ list: parsedItems }));
+}
+
+function safeParseJson(str) {
+  try {
+    return JSON.parse(str || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+/**
  * 确认待确认沉淀
  */
 function confirmPrecipitation(req, res) {
@@ -542,9 +598,16 @@ function confirmPrecipitation(req, res) {
     db.prepare('UPDATE precipitation_records SET status = 1, extracted_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .run(modified_data ? JSON.stringify(modified_data) : record.extracted_data, precipitation_id);
 
-    // 同步到业务表
-    const extractedData = modified_data || JSON.parse(record.extracted_data || '{}');
-    precipitationAgent.syncToBusinessTable(userId, record.type, record.content, extractedData, null, record.sub_type, precipitation_id);
+    // 食谱需要像饮食/运动一样，在确认时才同步到 museum_items；
+    // 其他个人资产类（方法/感悟/踩坑/金句）已经在沉淀时以 pending 状态写入 museum_items，避免重复入库。
+    if (record.type === 'recipe') {
+      const extractedData = modified_data || JSON.parse(record.extracted_data || '{}');
+      precipitationAgent.syncToBusinessTable(userId, 'recipe', record.content, extractedData, null, record.sub_type, precipitation_id, record.chat_id);
+    } else if (!['method', 'insight', 'pitfall'].includes(record.type)) {
+      // 同步到业务表
+      const extractedData = modified_data || JSON.parse(record.extracted_data || '{}');
+      precipitationAgent.syncToBusinessTable(userId, record.type, record.content, extractedData, null, record.sub_type, precipitation_id, record.chat_id);
+    }
 
     // 更新聊天消息状态
     if (record.chat_id) {
@@ -640,6 +703,7 @@ function sendWakeupMessage(req, res) {
 module.exports = {
   sendMessage,
   getMessages,
+  getPendingAssets,
   confirmPrecipitation,
   getChatStats,
   sendWakeupMessage

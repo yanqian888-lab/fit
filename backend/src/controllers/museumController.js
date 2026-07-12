@@ -281,6 +281,61 @@ function deleteItem(req, res) {
 }
 
 /**
+ * 确认保存待确认的沉淀资产
+ */
+function confirmItem(req, res) {
+  const userId = req.userId;
+  const { id } = req.params;
+  const { modified_data } = req.body;
+
+  const item = db.prepare('SELECT * FROM museum_items WHERE id = ? AND user_id = ? AND status = 0').get(id, userId);
+  if (!item) {
+    return res.status(404).json(error('待确认资产不存在或已处理', 404));
+  }
+
+  let extractedData = item.extracted_data;
+  let content = item.content;
+  let subType = item.sub_type;
+
+  if (modified_data) {
+    content = modified_data.content !== undefined ? modified_data.content : content;
+    subType = modified_data.sub_type !== undefined ? modified_data.sub_type : subType;
+    const parsed = item.extracted_data ? JSON.parse(item.extracted_data) : {};
+    const updatedData = { ...parsed, ...modified_data };
+    extractedData = JSON.stringify(updatedData);
+  }
+
+  db.prepare(`
+    UPDATE museum_items
+    SET content = ?, sub_type = ?, extracted_data = ?, status = 1, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND user_id = ?
+  `).run(content, subType, extractedData, id, userId);
+
+  // 写入时间轴
+  const titleMap = { quote: '金句', insight: '感悟', recipe: '食谱', method: '方法', pitfall: '踩坑' };
+  const today = new Date().toISOString().split('T')[0];
+  db.prepare(`
+    INSERT INTO timelines (user_id, event_type, title, content, related_id, related_type, event_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(userId, item.type, titleMap[item.type] || item.type, content, id, 'museum_items', today);
+
+  return res.json(success(null, '已保存'));
+}
+
+/**
+ * 舍弃待确认的沉淀资产
+ */
+function discardItem(req, res) {
+  const userId = req.userId;
+  const { id } = req.params;
+  const result = db.prepare('DELETE FROM museum_items WHERE id = ? AND user_id = ? AND status = 0').run(id, userId);
+  if (result.changes === 0) {
+    return res.status(404).json(error('待确认资产不存在或已处理', 404));
+  }
+  return res.json(success(null, '已舍弃'));
+}
+
+/**
  * 切换收藏状态
  */
 function toggleFavorite(req, res) {
@@ -331,5 +386,7 @@ module.exports = {
   addItem,
   updateItem,
   deleteItem,
+  confirmItem,
+  discardItem,
   toggleFavorite
 };

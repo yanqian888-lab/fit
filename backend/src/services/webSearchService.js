@@ -95,7 +95,7 @@ async function tryWebSearch(query, cfg) {
 - 无糖版/低糖版/纯版（如适用）
 请给出每100ml或每份的估算千卡数，标注数据来源，回答简洁、分点列出。`,
     tools: [
-      { type: 'web_search', max_keyword: 2 }
+      { type: 'web_search', max_keyword: 1 }
     ],
     max_output_tokens: 800,
     temperature: 0.3

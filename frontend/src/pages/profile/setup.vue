@@ -23,7 +23,7 @@
           </view>
         </view>
         <AppInput v-model="form.height" label="身高 *" type="digit" placeholder="请输入身高" suffix="cm" />
-        <AppInput v-model="form.initial_weight" label="当前体重 *" type="digit" placeholder="请输入体重" suffix="kg" />
+        <AppInput v-model="form.initial_weight" label="初始体重 *" type="digit" placeholder="请输入体重" suffix="kg" />
         <AppInput v-model="form.target_weight" label="目标体重 *" type="digit" placeholder="请输入体重" suffix="kg" />
         <view class="form-item">
           <text class="input-label">目标日期 *</text>
@@ -175,6 +175,7 @@ function skip() {
 
 <style lang="scss" scoped>
 .setup-page {
+  position: relative;
   padding-top: 100rpx;
 }
 
@@ -234,8 +235,10 @@ function skip() {
 }
 
 .skip-wrap {
-  text-align: center;
-  margin-top: $spacing-md;
+  position: absolute;
+  top: 100rpx;
+  right: 0;
+  z-index: 10;
 }
 
 .skip-btn {

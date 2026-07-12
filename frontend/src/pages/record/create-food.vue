@@ -113,7 +113,7 @@ async function submit() {
       name: form.value.name.trim(),
       category: form.value.category,
       calorie_per_100g: parseFloat(form.value.calorie_per_100g),
-      unit: '100g',
+      unit: 'g',
       protein_per_100g: parseFloat(form.value.protein_per_100g) || 0,
       carb_per_100g: parseFloat(form.value.carb_per_100g) || 0,
       fat_per_100g: parseFloat(form.value.fat_per_100g) || 0,

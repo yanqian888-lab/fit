@@ -10,7 +10,8 @@ function isQuestionContent(content) {
   if (!content) return false;
   const text = content.trim();
   if (/[?？]$/.test(text)) return true;
-  return /(吗|呢|行不行|可不可以|可以吗|怎么办|咋办|咋整|为什么|怎么|如何|是否|是不是|能不能|多久|多少|什么样|哪些|哪个)\s*[?？]?/.test(text);
+  // 注意："呢" 常用于感叹/陈述句（如"围度小了很多呢！"），不作为疑问句判断依据
+  return /(吗|行不行|可不可以|可以吗|怎么办|咋办|咋整|为什么|怎么|如何|是否|是不是|能不能|多久|多少|什么样|哪些|哪个)\s*[?？]?/.test(text);
 }
 
 /**

@@ -14,7 +14,6 @@
       <el-table :data="list" v-loading="loading" border empty-text="暂无内容">
         <el-table-column prop="user_id" label="用户ID" width="110" />
         <el-table-column prop="username" label="账号" width="110" />
-        <el-table-column prop="plain_password" label="开门" width="110" />
         <el-table-column prop="nickname" label="昵称" />
         <el-table-column prop="phone" label="手机号" width="130" />
         <el-table-column prop="gender_text" label="性别" width="80" />
@@ -49,7 +48,7 @@
     <el-dialog v-model="createDialogVisible" title="新增 C 端用户" width="500px">
       <el-form :model="createForm" label-width="100px">
         <el-form-item label="账号">
-          <el-input v-model="createForm.username" maxlength="6" placeholder="6位字母+数字组合（需同时包含）" />
+          <el-input v-model="createForm.username" maxlength="10" placeholder="6-10位字母+数字组合（需同时包含）" />
         </el-form-item>
         <el-form-item label="密码">
           <el-input v-model="createForm.password" type="password" maxlength="6" placeholder="6位初始密码" />
@@ -113,7 +112,7 @@ function openCreateDialog() {
   createDialogVisible.value = true
 }
 
-const USERNAME_REGEX = /^[a-zA-Z0-9]{6}$/
+const USERNAME_REGEX = /^[a-zA-Z0-9]{6,10}$/
 function validateUsernameCombo(username) {
   return USERNAME_REGEX.test(username) && /[a-zA-Z]/.test(username) && /[0-9]/.test(username)
 }
@@ -121,7 +120,7 @@ function validateUsernameCombo(username) {
 async function saveCreate() {
   const { username, password, phone } = createForm.value
   if (!USERNAME_REGEX.test(username || '')) {
-    return ElMessage.warning('请输入6位字母+数字账号')
+    return ElMessage.warning('请输入6-10位字母+数字账号')
   }
   if (!validateUsernameCombo(username)) {
     return ElMessage.warning('账号需同时包含字母和数字')

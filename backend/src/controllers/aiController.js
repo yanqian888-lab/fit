@@ -177,8 +177,8 @@ async function generateDiary(req, res) {
 
     // 保存到博物馆感悟集
     const insert = db.prepare(`
-      INSERT INTO museum_items (user_id, type, sub_type, content, author, emotion, tags)
-      VALUES (?, 'insight', 'daily_diary', ?, 'system', 'positive', ?)
+      INSERT INTO museum_items (user_id, type, sub_type, content, author, emotion, tags, status)
+      VALUES (?, 'insight', 'daily_diary', ?, 'system', 'positive', ?, 1)
     `);
     const itemId = insert.run(userId, diary, JSON.stringify(['日记', date])).lastInsertRowid;
 

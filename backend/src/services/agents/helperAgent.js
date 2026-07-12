@@ -13,23 +13,26 @@ const nutritionService = require('../nutritionService');
  * 调用全能助手 Agent
  */
 async function callHelperAgent(question, userInfo = {}, partnerInfo = {}) {
-  // 修正常见口误/笔误："热量控制在900克左右" 里的 "克" 实际指 "千卡"
-  const normalizedQuestion = question.replace(
-    /(\d+(?:\.\d+)?)\s*克(?=[^，,。；;\n]*?(?:热量|卡路里|千卡|大卡|摄入|控制))/g,
-    '$1千卡'
-  );
-
   // 数据库表使用内部自增 id 作为 user_id，优先用 id（而不是对外 6 位 user_id）
   const userId = userInfo.id || userInfo.user_id;
 
+  const genderMap = { 0: '未知', 1: '男', 2: '女' };
+  const ageVal = userInfo.age > 0 ? userInfo.age : null;
+  const activityFactor = userInfo.bmr && userInfo.tdee
+    ? Number((userInfo.tdee / userInfo.bmr).toFixed(2))
+    : null;
+
   const userInfoStr = JSON.stringify({
-    gender: userInfo.gender || '未知',
-    age: userInfo.age || '未知',
+    gender: genderMap[userInfo.gender] || '未知',
+    age: ageVal || '未知',
     height: userInfo.height || '未知',
     current_weight: userInfo.current_weight || '未知',
     target_weight: userInfo.target_weight || '未知',
     bmr: userInfo.bmr || '未知',
-    daily_calorie_target: userInfo.daily_calorie_target || '未知'
+    tdee: userInfo.tdee || '未知',
+    daily_calorie_target: userInfo.daily_calorie_target || '未知',
+    calorie_deficit: userInfo.calorie_deficit || '未知',
+    activity_factor: activityFactor || '未知（已按轻度活动1.375估算）'
   }, null, 2);
 
   // 获取/刷新用户今天的营养数据（在构建问题时实时查询，确保包含最新沉淀记录）
@@ -47,16 +50,16 @@ async function callHelperAgent(question, userInfo = {}, partnerInfo = {}) {
   }
 
   // 优先本地计算常见指标（需要先拿到今日运动记录，确保和记录一致）
-  const localAnswer = tryLocalCalculation(normalizedQuestion, userInfo, todayExercises);
+  const localAnswer = tryLocalCalculation(question, userInfo, todayExercises);
   if (localAnswer) {
     return localAnswer;
   }
 
   // 构建包含今日营养数据的问题（实时查询数据库）
-  let enhancedQuestion = normalizedQuestion;
-  const needsFoodData = /(吃|喝|食物|酸奶|饭|菜|肉|水果|饮料|晚餐|午餐|早餐|加餐|零食|热量|卡路里|千卡|摄入|吃了多少|总计|汇总|算|脂肪|蛋白质|碳水|营养)/.test(normalizedQuestion);
-  const needsExerciseData = /(运动|训练|健身|哑铃|杠铃|跑步|游泳|跳绳|骑车|骑行|瑜伽|帕梅拉|周六野|刘畊宏|肩背|胸|腿|臀|腹|有氧|无氧|HIIT|Tabata|拉伸|深蹲|俯卧撑|平板支撑|卷腹|开合跳|波比跳|快走|慢跑|爬楼|爬山|登山|动感单车|椭圆机|划船机|壶铃|TRX|战绳|拳击|打拳|搏击|尊巴|舞蹈|跳操|健身操|有氧操|力量训练|体能训练|功能性训练|核心训练|臀腿训练|背部训练|肩部训练|手臂训练|胸部训练|腹部训练|拉伸训练|热身|冷身|放松|按摩|泡沫轴|筋膜枪|运动康复|体能测试|体测|马拉松|半程马拉松|越野跑|接力跑|冲刺跑|折返跑|高抬腿|登山跑|俄罗斯转体|臀桥|桥式|死虫式|鸟狗式|侧平板|倒立|手倒立|单腿硬拉|箭步蹲|保加利亚蹲|靠墙静蹲|马步|引体向上|仰卧起坐|弹力带|阻力带|拉力带|8字拉力器|开肩美背|哑铃弯举|哑铃推举|哑铃飞鸟|哑铃划船|哑铃深蹲|哑铃硬拉|哑铃侧平举|哑铃前平举|杠铃深蹲|杠铃硬拉|杠铃卧推|杠铃划船|杠铃推举|杠铃弯举|杠铃臀推|相扑硬拉|罗马尼亚硬拉|器械训练|器械推胸|器械划船|器械夹胸|腿举|腿弯举|腿屈伸|坐姿划船|高位下拉|史密斯机|龙门架|蝴蝶机|推胸机|壶铃摇摆|壶铃抓举|壶铃深蹲|壶铃推举|土耳其起立|TRX划船|TRX深蹲|TRX俯卧撑|悬挂训练|甩绳|药球|沙袋|轮胎翻|农夫行走|雪橇推|攀岩|攀冰|溯溪|漂流|滑雪|滑冰|轮滑|滑板|羽毛球|乒乓球|网球|排球|篮球|足球|棒球|垒球|高尔夫球|保龄球|台球|门球|壁球|橄榄球|曲棍球|冰球|手球|水球|马球|藤球|毽球|射箭|射击|击剑|马术|赛马|赛艇|皮划艇|帆船|帆板|冲浪|潜水|浮潜|深潜|跳水|水球|花样游泳|体操|艺术体操|蹦床|技巧|健美操|啦啦操|体育舞蹈|街舞|霹雳舞|爵士舞|芭蕾舞|现代舞|民族舞|古典舞|拉丁舞|国标舞|交谊舞|摇摆舞|广场舞|健身舞|燃脂舞|减脂舞|太极|气功|普拉提|冥想|正念|呼吸训练|产后恢复|盆底肌训练|凯格尔运动|腹直肌修复|办公室运动|椅子瑜伽|坐姿运动|床上运动|睡前拉伸|晨间唤醒|午休运动|碎片化运动|微运动|办公室微运动)/i.test(normalizedQuestion);
-  const needsBodyContext = /(体重|掉秤|涨秤|没瘦|徘徊|不动|平台期|体脂|腰围|臀围|胸围|腿围|臂围|BMI|进度|最近.*体重|这个体重|体重下|体重上)/i.test(normalizedQuestion);
+  let enhancedQuestion = question;
+  const needsFoodData = /(吃|喝|食物|酸奶|饭|菜|肉|水果|饮料|晚餐|午餐|早餐|加餐|零食|热量|卡路里|千卡|摄入|吃了多少|总计|汇总|算|脂肪|蛋白质|碳水|营养)/.test(question);
+  const needsExerciseData = /(运动|训练|健身|哑铃|杠铃|跑步|游泳|跳绳|骑车|骑行|瑜伽|帕梅拉|周六野|刘畊宏|肩背|胸|腿|臀|腹|有氧|无氧|HIIT|Tabata|拉伸|深蹲|俯卧撑|平板支撑|卷腹|开合跳|波比跳|快走|慢跑|爬楼|爬山|登山|动感单车|椭圆机|划船机|壶铃|TRX|战绳|拳击|打拳|搏击|尊巴|舞蹈|跳操|健身操|有氧操|力量训练|体能训练|功能性训练|核心训练|臀腿训练|背部训练|肩部训练|手臂训练|胸部训练|腹部训练|拉伸训练|热身|冷身|放松|按摩|泡沫轴|筋膜枪|运动康复|体能测试|体测|马拉松|半程马拉松|越野跑|接力跑|冲刺跑|折返跑|高抬腿|登山跑|俄罗斯转体|臀桥|桥式|死虫式|鸟狗式|侧平板|倒立|手倒立|单腿硬拉|箭步蹲|保加利亚蹲|靠墙静蹲|马步|引体向上|仰卧起坐|弹力带|阻力带|拉力带|8字拉力器|开肩美背|哑铃弯举|哑铃推举|哑铃飞鸟|哑铃划船|哑铃深蹲|哑铃硬拉|哑铃侧平举|哑铃前平举|杠铃深蹲|杠铃硬拉|杠铃卧推|杠铃划船|杠铃推举|杠铃弯举|杠铃臀推|相扑硬拉|罗马尼亚硬拉|器械训练|器械推胸|器械划船|器械夹胸|腿举|腿弯举|腿屈伸|坐姿划船|高位下拉|史密斯机|龙门架|蝴蝶机|推胸机|壶铃摇摆|壶铃抓举|壶铃深蹲|壶铃推举|土耳其起立|TRX划船|TRX深蹲|TRX俯卧撑|悬挂训练|甩绳|药球|沙袋|轮胎翻|农夫行走|雪橇推|攀岩|攀冰|溯溪|漂流|滑雪|滑冰|轮滑|滑板|羽毛球|乒乓球|网球|排球|篮球|足球|棒球|垒球|高尔夫球|保龄球|台球|门球|壁球|橄榄球|曲棍球|冰球|手球|水球|马球|藤球|毽球|射箭|射击|击剑|马术|赛马|赛艇|皮划艇|帆船|帆板|冲浪|潜水|浮潜|深潜|跳水|水球|花样游泳|体操|艺术体操|蹦床|技巧|健美操|啦啦操|体育舞蹈|街舞|霹雳舞|爵士舞|芭蕾舞|现代舞|民族舞|古典舞|拉丁舞|国标舞|交谊舞|摇摆舞|广场舞|健身舞|燃脂舞|减脂舞|太极|气功|普拉提|冥想|正念|呼吸训练|产后恢复|盆底肌训练|凯格尔运动|腹直肌修复|办公室运动|椅子瑜伽|坐姿运动|床上运动|睡前拉伸|晨间唤醒|午休运动|碎片化运动|微运动|办公室微运动)/i.test(question);
+  const needsBodyContext = /(体重|掉秤|涨秤|没瘦|徘徊|不动|平台期|体脂|腰围|臀围|胸围|腿围|臂围|BMI|进度|最近.*体重|这个体重|体重下|体重上)/i.test(question);
 
   if (needsFoodData) {
     // 再次刷新，确保沉淀已完成
@@ -94,12 +97,13 @@ async function callHelperAgent(question, userInfo = {}, partnerInfo = {}) {
         : '【重要】今天已记录至少 2 个餐别，可以基于总摄入给出合理的饮食建议或热量提醒。';
 
       // 如果用户提到的饮品/食品不在今日记录和食物库中，且明显在询问热量/含糖情况，尝试联网检索热量（区分有糖/无糖）
+      // 注意：联网搜索仅作为兜底，优先使用本地食物库；只有疑似包装饮品/品牌食品/带容量单位时才触发
       let webSearchBlock = '';
-      const unknownFood = extractUnknownFoodQuery(normalizedQuestion, todayFoods);
-      const asksCalorieOrSugar = /(热量|卡路里|千卡|大卡|含糖|无糖|有糖|低糖|能喝|能吃|可以喝|可以吃|多少卡|胖不胖|减肥|减脂|热量高)/.test(normalizedQuestion);
-      if (unknownFood && asksCalorieOrSugar) {
+      const unknownFood = extractUnknownFoodQuery(question, todayFoods);
+      const asksCalorieOrSugar = /(热量|卡路里|千卡|大卡|含糖|无糖|有糖|低糖|能喝|能吃|可以喝|可以吃|多少卡|胖不胖|减肥|减脂|热量高)/.test(question);
+      if (unknownFood && asksCalorieOrSugar && shouldUseWebSearch(question, unknownFood)) {
         try {
-          const searchQuery = `${normalizedQuestion}（${unknownFood} 热量 含糖/无糖）`;
+          const searchQuery = `${question}（${unknownFood} 热量 含糖/无糖）`;
           const webResult = await webSearchService.searchNutrition(searchQuery);
           if (webResult) {
             webSearchBlock = `\n【网络检索参考】用户提到的“${unknownFood}”不在今日记录和食物库中，已从公开网络/营养资料检索到以下参考信息：\n${webResult}\n`;
@@ -109,7 +113,7 @@ async function callHelperAgent(question, userInfo = {}, partnerInfo = {}) {
         }
       }
 
-      enhancedQuestion = `${normalizedQuestion}
+      enhancedQuestion = `${question}
 
 【系统数据】用户今天已记录的饮食数据（实时）：
 - 总摄入热量：${Math.round(todayNutrition.intake)} kcal
@@ -153,7 +157,7 @@ ${exerciseList}
   if (needsBodyContext && userId) {
     try {
       const bodyContext = getRecentBodyContext(userId, 7);
-      enhancedQuestion = `${normalizedQuestion}\n\n${bodyContext}`;
+      enhancedQuestion = `${question}\n\n${bodyContext}`;
     } catch (e) {
       console.error('获取近期身体数据失败:', e.message);
     }
@@ -172,7 +176,7 @@ ${exerciseList}
   });
 
   try {
-    console.log(`[callHelperAgent] 开始调用，问题: ${normalizedQuestion.substring(0, 50)}...`);
+    console.log(`[callHelperAgent] 开始调用，问题: ${question.substring(0, 50)}...`);
     const response = await Promise.race([
       callWithPrompt(
         'helper_agent',
@@ -180,7 +184,7 @@ ${exerciseList}
           { role: 'system', content: systemPrompt },
           {
             role: 'system',
-            content: '补充规则：1）当用户询问的饮品/食品不在今日记录和食物库中时，你可以使用用户消息中附带的【网络检索参考】数据给出估算热量，并区分有糖/无糖版本；如果没有附带检索参考，仍禁止编造具体热量，只给出营养成分/减脂建议等专业结论。2）APP 目前没有睡眠、盐分摄入、水肿记录功能，回答中不要建议用户记录或分析睡眠、盐分、水肿相关内容。'
+            content: '补充规则：1）当用户询问的饮品/食品不在今日记录和食物库中时，你可以使用用户消息中附带的【网络检索参考】数据给出估算热量，并区分有糖/无糖版本；如果没有附带检索参考，仍禁止编造具体热量，只给出营养成分/减脂建议等专业结论。2）APP 目前没有睡眠、盐分摄入、水肿记录功能，回答中不要建议用户记录或分析睡眠、盐分、水肿相关内容。3）当前用户信息中已提供 BMR、TDEE、每日热量目标等数据时，请直接基于这些数据进行分析和建议，不要再要求用户补充性别、年龄、活动水平等基础信息。'
           },
           { role: 'user', content: enhancedQuestion }
         ],
@@ -203,8 +207,8 @@ ${exerciseList}
       }
     }
     if (todayNutrition) {
-      const explicitMealSum = extractExplicitCalories(normalizedQuestion);
-      const corrected = correctCalorieNumbers(reply, todayNutrition, normalizedQuestion, explicitMealSum, todayFoods);
+      const explicitMealSum = extractExplicitCalories(question);
+      const corrected = correctCalorieNumbers(reply, todayNutrition, question, explicitMealSum, todayFoods);
       if (corrected !== reply) {
         console.log('[callHelperAgent] 热量数值已修正:', reply.substring(0, 100), '→', corrected.substring(0, 100));
         reply = corrected;
@@ -389,6 +393,30 @@ function correctCalorieNumbers(reply, todayNutrition, question, explicitMealSum,
   }
 
   return corrected;
+}
+
+/**
+ * 判断是否应该触发联网搜索。
+ * 原则：本地食物库优先，只有明显是包装饮品/品牌食品/带容量单位时才使用 web_search 兜底。
+ */
+function shouldUseWebSearch(question, unknownFood) {
+  if (!unknownFood) return false;
+  const q = question || '';
+  const f = unknownFood || '';
+
+  // 1. 带容量/包装单位（ml/L/瓶/罐/杯/包/袋/盒）
+  const packagedUnitRe = /\d\s*(ml|mL|毫升|L|升|瓶|罐|杯|包|袋|盒)/;
+  if (packagedUnitRe.test(q)) return true;
+
+  // 2. 常见饮品/即饮食品关键词（汁/饮/茶/奶/酸奶/咖啡/酒/水/汽水/苏打/气泡/美式/拿铁/奶茶/可乐/雪碧等）
+  const drinkRe = /汁|饮|茶|奶|酸奶|咖啡|酒|水|汽水|苏打|气泡|美式|拿铁|摩卡|奶茶|可乐|雪碧|芬达|脉动|电解质|乌龙茶|柠檬水|红牛|东鹏|王老吉|加多宝|椰汁|旺仔|娃哈哈|AD钙|营养快线|椰树|红牛|脉动|宝矿力|佳得乐|气泡水|电解质水|NFC|鲜榨|浓缩|瓶装|罐装|盒装|袋装|杯装/;
+  if (drinkRe.test(f)) return true;
+
+  // 3. 常见连锁/品牌关键词（茶饮、咖啡、便利店、快餐品牌）
+  const brandRe = /喜茶|瑞幸|星巴克|霸王茶姬|蜜雪冰城|茶百道|奈雪|乐乐茶|沪上阿姨|书亦|古茗|茶颜悦色|益禾堂|CoCo|一点点|蜜雪|瑞幸|星巴克|肯德基|麦当劳|汉堡王|赛百味|便利店|罗森|全家|7-11|喜市多|美宜佳/;
+  if (brandRe.test(q)) return true;
+
+  return false;
 }
 
 /**

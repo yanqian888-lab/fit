@@ -7,7 +7,17 @@
     <view class="header">
       <view class="header-inner">
         <view class="avatar-wrap">
-          <image class="avatar" :src="partnerAvatarUrl" mode="aspectFill" />
+          <image
+            class="avatar"
+            :class="{ 'avatar-visible': avatarLoaded }"
+            :src="partnerAvatarUrl"
+            mode="aspectFill"
+            @load="onAvatarLoad"
+            @error="onAvatarError"
+          />
+          <view v-if="!avatarLoaded" class="avatar-placeholder">
+            <text class="avatar-placeholder-text">搭</text>
+          </view>
           <view class="ai-badge">AI</view>
         </view>
         <view class="partner-info">
@@ -44,7 +54,7 @@
       </view>
 
       <view
-        v-for="msg in messages"
+        v-for="msg in displayMessages"
         :key="msg.id"
         :id="'msg-' + msg.id"
         class="message-row"
@@ -88,6 +98,14 @@
             <text class="record-tag-text">待确认 · 点我查看</text>
           </view>
         </view>
+
+        <!-- 聊天沉淀出的方法/感悟/食谱等待确认卡片 -->
+        <PendingAssetCard
+          v-if="pendingAssetsMap[msg.id]?.length"
+          :assets="pendingAssetsMap[msg.id]"
+          @save="onAssetSaved(msg.id, $event)"
+          @discard="onAssetDiscarded(msg.id, $event)"
+        />
       </view>
 
       <view v-if="loading" class="loading-tip">
@@ -232,6 +250,22 @@
             <text class="form-label">内容</text>
             <textarea v-model="editAssetData.content" class="asset-content-input" placeholder="内容" :auto-height="true" />
           </view>
+
+          <!-- 食谱扩展字段 -->
+          <template v-if="editAssetData.type === 'recipe'">
+            <view class="form-item">
+              <text class="form-label">食材（每行一个）</text>
+              <textarea v-model="editAssetData.ingredients" class="asset-content-input" placeholder="例如：鸡胸肉 200g" :auto-height="true" />
+            </view>
+            <view class="form-item">
+              <text class="form-label">步骤</text>
+              <textarea v-model="editAssetData.steps" class="asset-content-input" placeholder="请输入制作步骤" :auto-height="true" />
+            </view>
+            <view class="form-item">
+              <text class="form-label">小贴士</text>
+              <input v-model="editAssetData.tip" class="body-value-input" placeholder="可选" />
+            </view>
+          </template>
         </template>
       </view>
 
@@ -334,16 +368,31 @@ import { chatApi, partnerApi, recordApi, precipitationApi, systemApi } from '../
 import { formatDate } from '../../utils/date';
 import { checkPermission, reportCount } from '../../utils/trial.js';
 import AuthPopup from '../../components/AuthPopup.vue';
+import PendingAssetCard from '../../components/PendingAssetCard.vue';
 import CustomTabBar from '../../custom-tab-bar/index.vue';
 
 const userStore = useUserStore();
 
 const messages = ref([]);
+const pendingAssetsMap = ref({}); // key: chat_message_id, value: pending museum_items
+const welcomeMessage = computed(() => {
+  if (messages.value.length > 0) return null;
+  return {
+    id: 'welcome',
+    role: 'partner',
+    content: '你好呀，我是你的专属减肥搭子～\n从今天开始，我会陪你一起记录饮食、运动、体重，一起瘦下来！有什么想聊的，随时告诉我吧～',
+    precipitation_status: 0,
+    precipitation_type: null
+  };
+});
+const displayMessages = computed(() => welcomeMessage.value ? [welcomeMessage.value, ...messages.value] : messages.value);
 const inputText = ref('');
 const loading = ref(false);
 const scrollTop = ref(0);
 const scrollIntoView = ref('');
 const page = ref(1);
+const avatarLoaded = ref(false);
+const avatarLoadError = ref(false);
 
 // 长按复制手势状态
 const longPressTimer = ref(null);
@@ -388,7 +437,7 @@ const editRecordType = ref('diet'); // diet | body | exercise | habit | asset
 const editBodyData = ref([]);
 const editExercises = ref([]);
 const editHabitData = ref({ type: 'water', value: '' });
-const editAssetData = ref({ type: '', title: '', content: '' });
+const editAssetData = ref({ type: '', title: '', content: '', ingredients: '', steps: '', tip: '' });
 
 const ASSET_TYPES = ['recipe', 'method', 'pitfall', 'insight', 'quote'];
 const RECORD_TYPES = ['diet_record', 'exercise_record', 'body_data', 'habit'];
@@ -444,6 +493,9 @@ const modes = [
 const partnerName = computed(() => userStore.userInfo?.partner?.name || '瘦瘦');
 const currentMode = computed(() => userStore.userInfo?.partner?.mode || 'gentle');
 const partnerAvatarUrl = computed(() => {
+  if (avatarLoadError.value) {
+    return '/static/image/icon/rou.png';
+  }
   const map = {
     gentle: '/static/image/icon/rou.png',
     strict: '/static/image/icon/zhuan.png',
@@ -451,6 +503,21 @@ const partnerAvatarUrl = computed(() => {
   };
   return map[currentMode.value] || '/static/image/icon/rou.png';
 });
+
+function onAvatarLoad() {
+  avatarLoaded.value = true;
+  if (messages.value.length > 0) {
+    scrollToBottom();
+  }
+}
+
+function onAvatarError() {
+  avatarLoadError.value = true;
+  avatarLoaded.value = true;
+  if (messages.value.length > 0) {
+    scrollToBottom();
+  }
+}
 const partnerStatus = computed(() => userStore.userInfo?.partner?.status || 'awake');
 const partnerStatusText = computed(() => userStore.userInfo?.partner?.status_text || '刚刚起床');
 
@@ -465,13 +532,15 @@ function isRecordType(type) {
 }
 
 function showRecordTag(msg) {
-  // 只给真正的业务记录（饮食/运动/身体/习惯）显示"已记录"
+  // 给业务记录（饮食/运动/身体/习惯）以及食谱显示"已记录"
   // 且必须有 precipitation_id，否则点击后无法编辑
-  return Number(msg.precipitation_status) === 1 && isRecordType(msg.precipitation_type) && !!msg.precipitation_id;
+  const recordTypes = [...RECORD_TYPES, 'recipe'];
+  return Number(msg.precipitation_status) === 1 && recordTypes.includes(msg.precipitation_type) && !!msg.precipitation_id;
 }
 
 function showPendingTag(msg) {
-  return Number(msg.precipitation_status) === 2 && isRecordType(msg.precipitation_type);
+  const recordTypes = [...RECORD_TYPES, 'recipe'];
+  return Number(msg.precipitation_status) === 2 && recordTypes.includes(msg.precipitation_type);
 }
 
 function getMessageText(msg) {
@@ -664,20 +733,38 @@ const partnerMoodEmoji = computed(() => partnerMood.value.emoji);
 const partnerMoodText = computed(() => partnerMood.value.text);
 
 onMounted(() => {
+  preloadAvatarImages();
   userStore.fetchUserInfo();
-  loadMessages();
+  // 首次进入需要重置列表并滚动到底部，否则 loadMessages(false) 会按"加载更多"处理，停留在顶部
+  loadMessages(true);
   loadTodayStats();
   checkWakeupMessage();
   uni.$emit('tabbar-select', 0);
   uni.hideTabBar({ animation: false }).catch(() => {});
 });
 
+function preloadAvatarImages() {
+  if (typeof Image === 'undefined') return;
+  const paths = [
+    '/static/image/icon/rou.png',
+    '/static/image/icon/zhuan.png',
+    '/static/image/icon/sun.png'
+  ];
+  paths.forEach(src => {
+    const img = new Image();
+    img.src = src;
+  });
+}
+
 onShow(() => {
-  setTimeout(() => {
-    if (messages.value.length > 0) {
-      scrollToBottom();
-    }
-  }, 100);
+  // 页面显示后多执行几次滚动到底部，避免图片/布局未完成导致停留在顶部
+  [100, 400, 800, 1500, 2500].forEach(delay => {
+    setTimeout(() => {
+      if (messages.value.length > 0) {
+        scrollToBottom();
+      }
+    }, delay);
+  });
   uni.$emit('tabbar-select', 0);
   uni.hideTabBar({ animation: false }).catch(() => {});
 });
@@ -732,6 +819,8 @@ async function loadMessages(reset = false) {
     if (reset) {
       messages.value = list;
       scrollToBottom();
+      // 图片/气泡布局可能还没完成，延迟再滚几次兜底
+      [500, 1500, 2500].forEach(delay => setTimeout(scrollToBottom, delay));
     } else {
       const oldHeight = await getScrollHeight();
       messages.value = [...list, ...messages.value];
@@ -743,16 +832,57 @@ async function loadMessages(reset = false) {
 
     hasMore.value = res.data.pagination.has_more;
     page.value++;
+
+    // 加载这些消息关联的待确认资产
+    const messageIds = list.map(m => m.id).filter(Boolean);
+    if (messageIds.length) {
+      loadPendingAssets(messageIds);
+    }
   } catch (err) {
     console.error('加载消息失败:', err);
   }
+}
+
+function onAssetSaved(messageId, assetId) {
+  const list = pendingAssetsMap.value[messageId] || [];
+  pendingAssetsMap.value[messageId] = list.filter(a => a.id !== assetId);
+}
+
+function onAssetDiscarded(messageId, assetId) {
+  const list = pendingAssetsMap.value[messageId] || [];
+  pendingAssetsMap.value[messageId] = list.filter(a => a.id !== assetId);
+}
+
+// 批量查询聊天消息关联的待确认资产
+async function loadPendingAssets(messageIds) {
+  try {
+    const res = await chatApi.getPendingAssets(messageIds);
+    const items = res.data.list || [];
+    for (const item of items) {
+      const key = item.chat_message_id;
+      if (!key) continue;
+      const existing = pendingAssetsMap.value[key] || [];
+      if (!existing.find(a => a.id === item.id)) {
+        pendingAssetsMap.value[key] = [...existing, item];
+      }
+    }
+  } catch (e) {
+    console.error('加载待确认资产失败:', e);
+  }
+}
+
+function getScrollContainer() {
+  // uni-app H5 中 scroll-view 的可滚动区域是内部的 .uni-scroll-view
+  return document.querySelector('.message-list .uni-scroll-view') ||
+         document.querySelector('.message-list') ||
+         document.querySelector('uni-scroll-view .uni-scroll-view');
 }
 
 // 获取 scroll-view 滚动高度
 function getScrollHeight() {
   return new Promise((resolve) => {
     nextTick(() => {
-      const scrollView = document.querySelector('.message-list');
+      const scrollView = getScrollContainer();
       if (scrollView) {
         resolve(scrollView.scrollHeight);
       } else {
@@ -824,6 +954,18 @@ async function sendMessage() {
     if (data.partner_message?.role === 'partner' && data.partner_message?.content?.length > 60) {
       startTypeWriter(data.partner_message);
     }
+    // 沉淀食谱/方法需要后端异步提取，延迟拉取待确认资产
+    setTimeout(() => {
+      if (data.partner_message?.id) {
+        loadPendingAssets([data.partner_message.id]);
+      }
+    }, 2500);
+    // 部分提取较慢，再延迟拉取一次兜底
+    setTimeout(() => {
+      if (data.partner_message?.id) {
+        loadPendingAssets([data.partner_message.id]);
+      }
+    }, 6000);
 
     if (data.async_helper) {
       console.log('[sendMessage] 异步 helper 已启动，开始轮询');
@@ -854,6 +996,12 @@ async function sendMessage() {
               }
             });
             console.log('[sendMessage] 异步 helper 结果已获取，添加消息数:', newMessages.length, '消息IDs:', newMessages.map(m => m.id));
+            // 拉取异步 helper 消息关联的待确认资产
+            loadPendingAssets(newMessages.map(m => m.id));
+            // 沉淀提取可能还在进行，延迟再拉取一次，避免卡片漏显示
+            setTimeout(() => {
+              loadPendingAssets(newMessages.map(m => m.id));
+            }, 5000);
             loading.value = false;
             clearInterval(pollInterval);
             nextTick(() => {
@@ -975,6 +1123,9 @@ async function refreshMessages() {
     } else {
       console.log('[refreshMessages] 无需更新');
     }
+
+    // 同时刷新待确认资产
+    loadPendingAssets(list.map(m => m.id));
   } catch (err) {
     console.error('刷新消息失败:', err);
   }
@@ -996,7 +1147,9 @@ function scrollToBottom() {
   nextTick(() => {
     scrollIntoView.value = 'msg-bottom-spacer';
     nextTick(() => {
-      const scrollView = document.querySelector('.message-list');
+      // 关键：uni-app H5 的可滚动容器是 .message-list 内部的 .uni-scroll-view，
+      // 必须把 scrollTop 同步到这个容器上，否则页面会停留在顶部。
+      const scrollView = getScrollContainer();
       if (scrollView) {
         scrollTop.value = scrollView.scrollHeight + 9999;
       }
@@ -1102,10 +1255,17 @@ function openEditModal(record, mode = 'edit', targetMsg = null) {
     }
     default: {
       if (isAssetType(recordType)) {
+        const ext = data || {};
+        const ingredients = Array.isArray(ext.ingredients)
+          ? ext.ingredients.map(i => (typeof i === 'string' ? i : i.name)).join('\n')
+          : '';
         editAssetData.value = {
           type: recordType,
           title: data.title || data.name || assetTypeLabelMap[recordType] || recordType,
-          content: data.content || record.content || ''
+          content: data.content || record.content || '',
+          ingredients,
+          steps: ext.steps || '',
+          tip: ext.tip || ''
         };
         editRecordType.value = 'asset';
       } else {
@@ -1125,7 +1285,7 @@ function closeEditModal() {
   editMode.value = 'edit';
   editTargetMsg.value = null;
   editRecordType.value = 'diet';
-  editAssetData.value = { type: '', title: '', content: '' };
+  editAssetData.value = { type: '', title: '', content: '', ingredients: '', steps: '', tip: '' };
 }
 
 // 忽略/取消编辑弹窗
@@ -1356,7 +1516,21 @@ async function saveEdit() {
         updateSubType = '喝水';
         break;
       }
-      case 'recipe':
+      case 'recipe': {
+        const ingredients = (editAssetData.value.ingredients || '')
+          .split('\n')
+          .map(s => s.trim())
+          .filter(Boolean);
+        extractedData = {
+          title: editAssetData.value.title || assetTypeLabelMap[recordType] || recordType,
+          content: editAssetData.value.content || '',
+          ingredients,
+          steps: editAssetData.value.steps || '',
+          tip: editAssetData.value.tip || ''
+        };
+        updateSubType = recordType;
+        break;
+      }
       case 'method':
       case 'pitfall':
       case 'insight':
@@ -1490,10 +1664,35 @@ async function onPendingTag(msg) {
 }
 
 .avatar {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   border-radius: 50%;
   background: #CFE9BF;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.avatar.avatar-visible {
+  opacity: 1;
+}
+
+.avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #CFE9BF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-placeholder-text {
+  font-size: 40rpx;
+  color: #8DBB77;
+  font-weight: 600;
 }
 
 .ai-badge {

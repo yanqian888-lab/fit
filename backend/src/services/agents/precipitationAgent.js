@@ -174,6 +174,85 @@ function isInvalidFoodName(name) {
 }
 
 /**
+ * 含热量的饮品关键词（不应沉淀为喝水习惯，应走饮食记录）
+ */
+const BEVERAGE_FOOD_KEYWORDS = [
+  '牛奶', '酸奶', '豆浆', '豆奶', '奶昔', '咖啡', '奶茶',
+  '果汁', '可乐', '雪碧', '汽水', '苏打水', '碳酸饮料',
+  '啤酒', '红酒', '白酒', '葡萄酒', '鸡尾酒', '酒',
+  '椰汁', '核桃露', '杏仁露', '燕麦奶', '养乐多', '优酸乳',
+  '饮料'
+];
+
+function isBeverageFoodContent(content) {
+  if (!content) return false;
+  const text = String(content);
+  return BEVERAGE_FOOD_KEYWORDS.some(kw => text.includes(kw));
+}
+
+/**
+ * 把 LLM 误识别为喝水习惯的饮品消息，转成 diet_record
+ */
+function convertBeverageHabitToDiet(item, content) {
+  if (item.type !== 'habit') return item;
+  const data = item.extracted_data || {};
+  const subType = data.sub_type || 'water';
+  if (subType !== 'water' && subType !== '喝水') return item;
+  if (!isBeverageFoodContent(content)) return item;
+
+  let value = parseFloat(data.value) || 0;
+  let unit = String(data.unit || 'ml').toLowerCase();
+  let namePart = content;
+
+  // 优先从原文解析数量和单位，并截取出饮品名称
+  const qtyMatch = content.match(/(\d+(?:\.\d+)?)\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗)/i);
+  if (qtyMatch) {
+    value = parseFloat(qtyMatch[1]);
+    unit = qtyMatch[2].toLowerCase();
+    const idx = content.indexOf(qtyMatch[0]) + qtyMatch[0].length;
+    namePart = content.slice(idx).replace(/^[\s的]+/, '');
+  }
+
+  // 把常见饮品单位换算成克（近似 ml=1g）
+  let weight = value;
+  if (['杯'].includes(unit)) weight = value * 250;
+  else if (['瓶'].includes(unit)) weight = value * 500;
+  else if (['盒'].includes(unit)) weight = value * 200;
+  else if (['罐'].includes(unit)) weight = value * 330;
+  else if (['碗'].includes(unit)) weight = value * 250;
+
+  const cleanedName = cleanFoodName(namePart) || '饮品';
+  const nutrition = getFoodNutrition(cleanedName) || {};
+  const caloriePer100g = nutrition.calorie_per_100g || 0;
+  const ratio = weight > 0 ? weight / 100 : 0;
+
+  const food = {
+    name: cleanedName,
+    weight: Math.round(weight),
+    quantity: 1,
+    unit: 'g',
+    calorie: Math.round(caloriePer100g * ratio),
+    protein: Math.round((nutrition.protein_per_100g || 0) * ratio * 10) / 10,
+    carb: Math.round((nutrition.carb_per_100g || 0) * ratio * 10) / 10,
+    fat: Math.round((nutrition.fat_per_100g || 0) * ratio * 10) / 10
+  };
+
+  item.type = 'diet_record';
+  item.sub_type = undefined;
+  item.extracted_data = {
+    foods: [food],
+    total_calorie: food.calorie,
+    total_protein: food.protein,
+    total_carb: food.carb,
+    total_fat: food.fat,
+    meal_time: inferMealTimeByContent(content) || normalizeMealTime(null, content)
+  };
+  item.reason = (item.reason || '') + '（饮品校正为饮食记录）';
+  console.log(`[饮品校正] habit→diet: ${cleanedName} ${food.weight}g ${food.calorie}千卡`);
+  return item;
+}
+
+/**
  * 兜底补回用户明确写出热量的食物（如"卤鸭腿160千卡"）
  * 防止LLM将其误判为热量修正而丢弃
  */
@@ -717,8 +796,17 @@ function processSinglePrecipitation(userId, chatId, content, item, recordDate) {
     }
   }
 
-  const isAutoConfirmAsset = item.type === 'insight' || item.type === 'quote';
-  const status = isAutoConfirmAsset ? 1 : (confidence >= 0.85 ? 1 : 2);
+  // 个人资产类（方法/感悟/食谱/踩坑/金句）统一进入 museum_items pending，由用户在聊天页确认。
+  // 食谱需要和其他记录（体重/运动/饮食）一样走待确认流程，不自动确认。
+  const isAsset = ASSET_TYPES.includes(item.type);
+  let status;
+  if (isAsset && item.type !== 'recipe') {
+    status = 1;
+  } else if (item.type === 'recipe') {
+    status = 0;
+  } else {
+    status = confidence >= 0.85 ? 1 : 2;
+  }
 
   const insert = db.prepare(`
     INSERT INTO precipitation_records
@@ -1155,8 +1243,26 @@ const MEAL_TIME_MAP = {
   '加餐': 'snack', '下午': 'snack', '夜宵': 'snack'
 };
 
-function inferMealTimeByContent(content) {
+function inferMealTimeByContent(content, foods = []) {
   if (!content) return null;
+
+  // 优先按“食物名称前面的最近一个餐别词”判断，避免整句同时出现“中午”“晚上”时被错判
+  const foodNames = (foods || []).map(f => f.name).filter(Boolean);
+  for (const name of foodNames) {
+    const idx = content.indexOf(name);
+    if (idx < 0) continue;
+    const before = content.slice(0, idx + name.length);
+    const segments = before.split(/[，,。！？；~]/);
+    for (let i = segments.length - 1; i >= 0; i--) {
+      const seg = segments[i];
+      if (/早|早餐|早饭|早上/.test(seg)) return 'breakfast';
+      if (/午|午餐|午饭|中午/.test(seg)) return 'lunch';
+      if (/晚|晚餐|晚饭|晚上/.test(seg)) return 'dinner';
+      if (/加餐|夜宵|下午/.test(seg)) return 'snack';
+    }
+  }
+
+  // fallback：按整句第一次出现的餐别词判断
   if (/早|早餐|早饭|早上/.test(content)) return 'breakfast';
   if (/午|午餐|午饭|中午/.test(content)) return 'lunch';
   if (/晚|晚餐|晚饭|晚上/.test(content)) return 'dinner';
@@ -1171,8 +1277,8 @@ function inferMealTimeByHour(hour = new Date().getHours()) {
   return 'dinner';
 }
 
-function normalizeMealTime(mealTime, content) {
-  const contentMeal = inferMealTimeByContent(content);
+function normalizeMealTime(mealTime, content, foods = []) {
+  const contentMeal = inferMealTimeByContent(content, foods);
   const timeMeal = inferMealTimeByHour();
 
   // 用户原文有明确餐别/时间词，优先级最高
@@ -1268,7 +1374,7 @@ function calculateFoodTotals(foods) {
 /**
  * 同步沉淀数据到业务表
  */
-function syncToBusinessTable(userId, type, content, data, recordDate, subType = null, precipitationId = null) {
+function syncToBusinessTable(userId, type, content, data, recordDate, subType = null, precipitationId = null, chatMessageId = null) {
   const today = recordDate || new Date().toISOString().split('T')[0];
   
   // 检查是否重复记录（饮食记录按 precipitation_id  upsert，不走旧的食物级去重）
@@ -1385,8 +1491,8 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
   switch (type) {
     case 'diet_record': {
       const dietData = data || {};
-      const mealTime = normalizeMealTime(dietData.meal_time || subType, content);
       const rawFoods = Array.isArray(dietData.foods) ? dietData.foods : [];
+      const mealTime = normalizeMealTime(dietData.meal_time || subType, content, rawFoods);
       if (rawFoods.length === 0) {
         console.log(`[饮食同步] 无食物，跳过: precipitation_id=${precipitationId}`);
         return { skipped: true, reason: 'no foods' };
@@ -1598,22 +1704,41 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
     case 'recipe':
     case 'method':
     case 'pitfall': {
-      const insertMuseum = db.prepare(`
-        INSERT INTO museum_items (user_id, type, content, extracted_data, author, emotion, tags, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      // 感悟/金句/踩坑/方法等个人资产，作者固定为用户自己
-      const museumAuthor = (type === 'quote' || type === 'insight') ? 'user' : (data?.author || 'user');
-      const museumId = insertMuseum.run(userId, type, content,
-        data ? JSON.stringify(data) : null, museumAuthor,
-        data?.emotion || null, null, 1
-      ).lastInsertRowid;
+      // 食谱在确认时支持更新已有的 museum_items（如搭子推荐时已创建 pending）
+      if (type === 'recipe' && chatMessageId) {
+        const existing = db.prepare(`
+          SELECT id FROM museum_items
+          WHERE user_id = ? AND type = 'recipe' AND chat_message_id = ?
+          ORDER BY id DESC LIMIT 1
+        `).get(userId, chatMessageId);
+        if (existing) {
+          db.prepare(`
+            UPDATE museum_items
+            SET content = ?, extracted_data = ?, status = 1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(content, data ? JSON.stringify(data) : null, existing.id);
+          console.log(`[食谱同步] 更新已有食谱 id=${existing.id}, chat_message_id=${chatMessageId}`);
+          break;
+        }
+      }
 
-      const titleMap = { quote: '金句', insight: '感悟', recipe: '食谱', method: '方法', pitfall: '踩坑' };
-      db.prepare(`
-        INSERT INTO timelines (user_id, event_type, title, content, related_id, related_type, event_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(userId, type, titleMap[type] || type, content, museumId, 'museum_items', today);
+      const insertMuseum = db.prepare(`
+        INSERT INTO museum_items (user_id, chat_message_id, type, content, extracted_data, author, emotion, tags, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      // 感悟/金句作者为用户；食谱/方法等来自搭子的资产保留 data.author 或 partner
+      const museumAuthor = (type === 'quote' || type === 'insight') ? 'user' : (data?.author || 'partner');
+      insertMuseum.run(
+        userId,
+        chatMessageId || null,
+        type,
+        content,
+        data ? JSON.stringify(data) : null,
+        museumAuthor,
+        data?.emotion || null,
+        null,
+        type === 'recipe' ? 1 : 0
+      );
       break;
     }
   }
@@ -1700,6 +1825,13 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
 
     items = rawItems.filter(item => isValidPrecipitationItem(item));
 
+    // 兜底：LLM 把牛奶/咖啡/果汁等饮品误判为喝水习惯时，转成 diet_record
+    for (const item of items) {
+      if (item.type === 'habit') {
+        convertBeverageHabitToDiet(item, content);
+      }
+    }
+
     // 仅保留喝水习惯；睡眠、排便、心情等暂不生成沉淀记录（后续用于日记生成）
     items = items.filter(item => {
       if (item.type === 'habit') {
@@ -1752,7 +1884,7 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
         processed = result;
         processedCount++;
         if (result.status === 1) {
-          const syncResult = syncToBusinessTable(userId, result.type, content, result.extracted_data, recordDate, result.sub_type, result.precipitation_id);
+          const syncResult = syncToBusinessTable(userId, result.type, content, result.extracted_data, recordDate, result.sub_type, result.precipitation_id, chatId);
           if (syncResult && syncResult.skipped) {
             // 记录被去重跳过
             console.log(`[去重] 沉淀ID ${result.precipitation_id} 被跳过，原因: ${syncResult.reason}`);

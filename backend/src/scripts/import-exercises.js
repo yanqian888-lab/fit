@@ -15,7 +15,7 @@ function parseCSVLine(line) {
   const result = [];
   let current = '';
   let inQuotes = false;
-  
+
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
     if (char === '"') {
@@ -41,9 +41,22 @@ function mapIntensity(intensityDesc) {
   return 'moderate';
 }
 
+// 兼容旧库 type 字段的简单映射
+function mapType(category) {
+  const c = (category || '').toLowerCase();
+  if (c.includes('有氧') || c.includes('跑步') || c.includes('步行') || c.includes('骑行') || c.includes('游泳') || c.includes('舞蹈') || c.includes('操') || c.includes('球类')) return 'aerobic';
+  if (c.includes('力量') || c.includes('哑铃') || c.includes('杠铃') || c.includes('器械') || c.includes('自重') || c.includes('核心')) return 'strength';
+  if (c.includes('拉伸') || c.includes('瑜伽') || c.includes('普拉提') || c.includes('冥想')) return 'flexibility';
+  return 'aerobic';
+}
+
+function getColumns(table) {
+  return db.pragma(`table_info(${table})`).map(col => col.name);
+}
+
 function importExercises() {
   const filePath = path.join(__dirname, '../../../word/运动库.txt');
-  
+
   if (!fs.existsSync(filePath)) {
     console.error('运动库文件不存在:', filePath);
     process.exit(1);
@@ -51,27 +64,30 @@ function importExercises() {
 
   const content = fs.readFileSync(filePath, 'utf-8');
   const lines = content.split('\n').filter(line => line.trim());
-  
-  // 跳过表头
   const dataLines = lines.slice(1);
-  
+
   console.log(`读取到 ${dataLines.length} 条运动数据`);
 
-  // 开启事务
   db.exec('BEGIN TRANSACTION');
-  
+
   try {
-    // 清空现有数据
     db.exec('DELETE FROM exercise_db');
     db.exec("DELETE FROM sqlite_sequence WHERE name='exercise_db'");
     console.log('已清空旧运动数据');
 
-    const insert = db.prepare(`
-      INSERT INTO exercise_db (
-        id, exercise_name, category, sub_category,
-        intensity_desc, met_value, calorie_per_hour, remark
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const existingColumns = getColumns('exercise_db');
+    const baseColumns = [
+      'id', 'exercise_name', 'category', 'sub_category',
+      'intensity_desc', 'met_value', 'calorie_per_hour', 'remark'
+    ];
+    const extraColumns = [];
+    if (existingColumns.includes('name')) extraColumns.push('name');
+    if (existingColumns.includes('type')) extraColumns.push('type');
+    if (existingColumns.includes('intensity')) extraColumns.push('intensity');
+
+    const columns = [...baseColumns, ...extraColumns];
+    const placeholders = columns.map(() => '?').join(', ');
+    const insert = db.prepare(`INSERT INTO exercise_db (${columns.join(', ')}) VALUES (${placeholders})`);
 
     let successCount = 0;
     let errorCount = 0;
@@ -99,8 +115,22 @@ function importExercises() {
         continue;
       }
 
+      const row = {
+        id: exerciseId,
+        exercise_name: exerciseName,
+        category,
+        sub_category: subCategory,
+        intensity_desc: intensityDesc,
+        met_value: metValue,
+        calorie_per_hour: kcalPerHour,
+        remark
+      };
+      if (extraColumns.includes('name')) row.name = exerciseName;
+      if (extraColumns.includes('type')) row.type = mapType(category);
+      if (extraColumns.includes('intensity')) row.intensity = mapIntensity(intensityDesc);
+
       try {
-        insert.run(exerciseId, exerciseName, category, subCategory, intensityDesc, metValue, kcalPerHour, remark);
+        insert.run(...columns.map(c => row[c]));
         successCount++;
       } catch (err) {
         console.error(`插入失败 [${exerciseName}]:`, err.message);
