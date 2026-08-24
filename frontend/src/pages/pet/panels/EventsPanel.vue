@@ -256,6 +256,7 @@ onMounted(load);
   text-overflow: ellipsis;
 }
 .bottom-safe {
-  height: calc(24rpx + env(safe-area-inset-bottom));
+  /* 列表末尾内容能完整滚入视口，不被底部手势条/tab 遮挡 */
+  height: calc(96rpx + env(safe-area-inset-bottom));
 }
 </style>

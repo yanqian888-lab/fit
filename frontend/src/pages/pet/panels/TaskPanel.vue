@@ -256,11 +256,12 @@ onMounted(load);
   height: 0;
   padding: 0 32rpx;
   box-sizing: border-box;
-  /* 滚动条向右移 4px（8rpx），面板 overflow:hidden 裁掉超出部分 */
-  margin-right: -8rpx;
+  /* 滚动条向右移 12px（24rpx），不压「去完成」按钮；面板 overflow:hidden 裁掉超出部分 */
+  margin-right: -24rpx;
 }
 .bottom-safe {
-  height: calc(24rpx + env(safe-area-inset-bottom));
+  /* 列表末尾任务能完整滚入视口，不被底部手势条/tab 遮挡 */
+  height: calc(96rpx + env(safe-area-inset-bottom));
 }
 
 .checkin-card {
