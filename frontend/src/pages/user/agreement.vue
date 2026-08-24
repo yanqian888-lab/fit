@@ -30,6 +30,9 @@ import { goBack } from '../../utils/navigate';
 const statusBarHeight = ref(44);
 try {
   statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 44;
+  // #ifdef MP-WEIXIN
+  statusBarHeight.value += 44; // 小程序胶囊高度
+  // #endif
 } catch (e) {}
 
 const userAgreement = ref('');
@@ -69,6 +72,9 @@ onMounted(async () => {
 }
 
 .page-header {
+  /* #ifdef MP-WEIXIN */
+  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
+  /* #endif */
   position: relative;
   z-index: 1;
   display: flex;

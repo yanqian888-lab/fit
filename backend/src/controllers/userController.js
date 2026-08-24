@@ -93,7 +93,11 @@ function getMe(req, res) {
   const userId = req.userId;
 
   const user = db.prepare(`
-    SELECT u.*, p.* FROM users u
+    SELECT u.*,
+      p.initial_weight, p.current_weight, p.target_weight, p.target_date,
+      p.bmr, p.tdee, p.daily_calorie_target, p.calorie_deficit,
+      p.dietary_taboos, p.preferences, p.water_goal, p.quiet_hours_start, p.quiet_hours_end
+    FROM users u
     LEFT JOIN user_profiles p ON u.id = p.user_id
     WHERE u.id = ?
   `).get(userId);

@@ -135,6 +135,9 @@ const submitting = ref(false);
 const statusBarHeight = ref(44);
 try {
   statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 44;
+  // #ifdef MP-WEIXIN
+  statusBarHeight.value += 44; // 小程序胶囊高度
+  // #endif
 } catch (e) {}
 
 onMounted(() => {
@@ -286,6 +289,9 @@ async function submit() {
 
 /* 防止 AppPage flex 布局下标题栏被长内容压缩 */
 .page-header {
+  /* #ifdef MP-WEIXIN */
+  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
+  /* #endif */
   flex-shrink: 0;
 }
 

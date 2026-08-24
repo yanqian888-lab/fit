@@ -376,6 +376,8 @@ async function accountLogin() {
   try {
     const res = await authApi.login({ username, password, device_id: getDeviceId() });
     userStore.login(res.data.token, res.data.user);
+    // 沉睡标记随本次登录落盘（fetchUserInfo 会覆盖 userInfo，last_login_at 登录后已刷新，无法用其判断沉睡）
+    uni.setStorageSync('stale_returning', res.data.stale_returning ? 1 : '');
 
     uni.showToast({ title: '登录成功', icon: 'success' });
     setTimeout(() => {
@@ -429,10 +431,12 @@ async function onWechatLoginClick() {
     if (res.data.need_bind_phone) {
       console.log('[登录] 需要绑定手机号');
       userStore.login(res.data.token, res.data.user);
+      uni.setStorageSync('stale_returning', res.data.stale_returning ? 1 : '');
       showBindPhone.value = true;
     } else {
       console.log('[登录] 登录成功，跳转主页');
       userStore.login(res.data.token, res.data.user);
+      uni.setStorageSync('stale_returning', res.data.stale_returning ? 1 : '');
       uni.showToast({ title: '登录成功', icon: 'success' });
       setTimeout(() => {
         handlePostAuthRedirect(userStore);

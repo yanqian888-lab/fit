@@ -299,6 +299,10 @@ function formatTime(seconds) {
 }
 .status-bar {
   height: var(--status-bar-height);
+  /* #ifdef MP-WEIXIN */
+  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
+  height: calc(var(--status-bar-height) + 88rpx);
+  /* #endif */
   flex-shrink: 0;
 }
 .page-header {

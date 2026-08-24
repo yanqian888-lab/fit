@@ -54,9 +54,28 @@ async function saveSetupDataIfExists() {
 }
 
 /**
+ * 沉睡用户判定：超过 90 天未登录的老用户
+ * 优先用登录响应里的 stale_returning 标记（按登录前的 last_login 计算）；
+ * token 续期场景用 /users/me 的 last_login_at（该字段仅在真实登录时更新）判断
+ */
+const STALE_DAYS = 90;
+export function isStaleReturning(user) {
+  if (!user) return false;
+  if (user.stale_returning) return true;
+  // 本次登录的沉睡标记（登录响应落盘，fetchUserInfo 覆盖 userInfo 后仍有效）
+  if (uni.getStorageSync('stale_returning') === 1) return true;
+  if (!user.last_login_at) return false;
+  const t = new Date(String(user.last_login_at).replace(' ', 'T') + 'Z').getTime();
+  if (isNaN(t)) return false;
+  return Date.now() - t > STALE_DAYS * 86400000;
+}
+
+/**
  * 登录/注册成功后的统一跳转
  * - 有 setup_data 时先保存，然后去首页
- * - 否则判断基础资料是否完善，不完善则去完善信息页
+ * - 新用户（资料未完善）：走新用户流程（完善信息无跳过 → 选搭子模式 → 首页搭子分析）
+ * - 老用户（90 天内活跃）：直接进入首页，不走新用户流程
+ * - 沉睡老用户（90 天+ 未登录）：再走新用户流程（带入历史信息、右上角可跳过，修改后同步更新并重新分析）
  */
 export async function handlePostAuthRedirect(userStore) {
   const hasSetupData = await saveSetupDataIfExists();
@@ -73,9 +92,15 @@ export async function handlePostAuthRedirect(userStore) {
     console.warn('[authRedirect] 获取用户信息失败，使用登录返回的数据');
   }
 
-  // 用户已在完善信息页主动跳过过，不再每次登录强制拦截（可在"我的-资料"里补全）
+  // 新用户/资料未完善：完善信息页（无跳过；历史跳过标记仅对沉睡用户生效）
   if (!isProfileComplete(user) && !uni.getStorageSync('profile_setup_skipped')) {
     uni.redirectTo({ url: '/pages/profile/setup' });
+    return;
+  }
+
+  // 沉睡老用户：再走新用户流程（预填历史信息、可跳过）
+  if (isStaleReturning(user) && !uni.getStorageSync('profile_setup_skipped')) {
+    uni.redirectTo({ url: '/pages/profile/setup?from=stale' });
     return;
   }
 

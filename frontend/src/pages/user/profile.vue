@@ -237,6 +237,9 @@ async function save() {
 .profile-back {
   position: fixed;
   top: calc(var(--status-bar-height) + 20rpx);
+  /* #ifdef MP-WEIXIN */
+  top: calc(var(--status-bar-height) + 108rpx);
+  /* #endif */
   left: 32rpx;
   z-index: 1000;
   width: 56rpx;

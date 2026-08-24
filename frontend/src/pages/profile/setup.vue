@@ -36,8 +36,12 @@
 
       <AppButton block size="lg" :loading="loading" @click="submit">下一步</AppButton>
 
+      <!-- 沉睡老用户（90 天+ 未登录）重走新用户流程：右上角可跳过 -->
+      <view v-if="isFromStale" class="skip-wrap">
+        <text class="skip-btn" @click="skipToHome">暂不填写，随便逛逛</text>
+      </view>
       <!-- 未登录用户显示跳过按钮（登录前引导流程） -->
-      <view v-if="!isLoggedIn" class="skip-wrap">
+      <view v-else-if="!isLoggedIn" class="skip-wrap">
         <text class="skip-btn" @click="skip">跳过，先去登录</text>
       </view>
     </view>
@@ -46,6 +50,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { onLoad } from '@dcloudio/uni-app';
 import { useUserStore } from '../../store';
 import { userApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';
@@ -74,6 +79,11 @@ const form = ref({
 // 如果已登录，预填充已有信息
 // 后端默认昵称（掉秤搭搭用户/减肥搭子用户）不视为真实昵称，不预填，让用户手动输入或选微信昵称
 const DEFAULT_NICKNAMES = ['掉秤搭搭用户', '减肥搭子用户'];
+// 沉睡老用户重走新用户流程标记（from=stale 时右上角显示跳过）
+const isFromStale = ref(false);
+onLoad((options) => {
+  isFromStale.value = options?.from === 'stale';
+});
 onMounted(async () => {
   if (isLoggedIn.value && userStore.userInfo) {
     const user = userStore.userInfo;
@@ -178,6 +188,12 @@ async function submit() {
 // 跳过完善信息，直接去登录
 function skip() {
   uni.redirectTo({ url: '/pages/login/index' });
+}
+
+// 沉睡老用户跳过：记住跳过标记避免每次登录强制拦截，直接进首页（其引导早已完成）
+function skipToHome() {
+  uni.setStorageSync('profile_setup_skipped', 1);
+  uni.switchTab({ url: '/pages/index/index' });
 }
 </script>
 

@@ -13,7 +13,7 @@
 <script setup>
 import { onMounted } from 'vue';
 import { useUserStore } from '../../store';
-import { isProfileComplete } from '../../utils/authRedirect';
+import { isProfileComplete, isStaleReturning } from '../../utils/authRedirect';
 
 const userStore = useUserStore();
 
@@ -66,6 +66,9 @@ function enterApp() {
     uni.redirectTo({ url: '/pages/login/index' });
   } else if (!isProfileComplete(userStore.userInfo)) {
     uni.redirectTo({ url: '/pages/profile/setup' });
+  } else if (isStaleReturning(userStore.userInfo) && !uni.getStorageSync('profile_setup_skipped')) {
+    // 沉睡老用户（90 天+ 未登录）：再走新用户流程（预填历史信息、可跳过）
+    uni.redirectTo({ url: '/pages/profile/setup?from=stale' });
   } else {
     uni.switchTab({ url: '/pages/index/index' });
   }

@@ -202,6 +202,9 @@ onMounted(() => {
   // #ifndef H5
   const sysInfo = uni.getSystemInfoSync();
   statusBarHeight.value = sysInfo.statusBarHeight || 44;
+  // #ifdef MP-WEIXIN
+  statusBarHeight.value += 44; // 小程序胶囊高度
+  // #endif
   // #endif
 
   const pages = getCurrentPages();
@@ -395,6 +398,9 @@ async function confirmDelete() {
 }
 
 .page-header {
+  /* #ifdef MP-WEIXIN */
+  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
+  /* #endif */
   position: relative;
   z-index: 1;
   display: flex;

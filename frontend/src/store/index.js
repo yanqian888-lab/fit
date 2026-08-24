@@ -50,6 +50,7 @@ export const useUserStore = defineStore('user', () => {
     userInfo.value = null;
     uni.removeStorageSync('token');
     uni.removeStorageSync('userInfo');
+    uni.removeStorageSync('stale_returning');
   }
 
   /**

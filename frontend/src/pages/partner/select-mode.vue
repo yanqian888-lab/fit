@@ -16,7 +16,7 @@
           @click="selected = mode.value"
         >
           <view class="mode-icon" :style="{ background: mode.color + '20' }">
-            <text>{{ mode.emoji }}</text>
+            <image class="mode-avatar" :src="mode.avatar" mode="aspectFit" />
           </view>
           <view class="mode-info">
             <text class="mode-name">{{ mode.label }}</text>
@@ -50,9 +50,9 @@ const selected = ref('gentle');
 const loading = ref(false);
 
 const modes = [
-  { value: 'gentle', label: '温柔鼓励型', desc: '永远先安慰，再鼓励，绝不批评', emoji: '🌸', color: '#B5E2FF' },
-  { value: 'strict', label: '严格监督型', desc: '坚定直接，该严格时绝不心软', emoji: '💪', color: '#B5E2FF' },
-  { value: 'tease', label: '毒舌模式', desc: '直接犀利不留情面，扎心但有效', emoji: '😏', color: '#FFD6E0' }
+  { value: 'gentle', label: '温柔鼓励型', desc: '永远先安慰，再鼓励，绝不批评', emoji: '🌸', color: '#B5E2FF', avatar: '/static/image/icon/rou.png' },
+  { value: 'strict', label: '严格监督型', desc: '坚定直接，该严格时绝不心软', emoji: '💪', color: '#B5E2FF', avatar: '/static/image/icon/zhuan.png' },
+  { value: 'tease', label: '毒舌模式', desc: '直接犀利不留情面，扎心但有效', emoji: '😏', color: '#FFD6E0', avatar: '/static/image/icon/sun.png' }
 ];
 
 const previews = {
@@ -131,6 +131,12 @@ async function submit() {
   justify-content: center;
   font-size: 48rpx;
   margin-right: $spacing-md;
+  overflow: hidden;
+}
+
+.mode-avatar {
+  width: 84rpx;
+  height: 84rpx;
 }
 
 .mode-info {

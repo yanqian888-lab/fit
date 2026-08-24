@@ -98,8 +98,13 @@ function generateToken(user) {
  * @returns {object} 完整用户响应体
  */
 function serializeUser(userId) {
+  // 显式列出 user_profiles 字段，避免与 users 同名列（height）互相覆盖
   const u = db.prepare(`
-    SELECT u.*, p.* FROM users u
+    SELECT u.*,
+      p.initial_weight, p.current_weight, p.target_weight, p.target_date,
+      p.bmr, p.tdee, p.daily_calorie_target, p.calorie_deficit,
+      p.dietary_taboos, p.preferences, p.water_goal, p.quiet_hours_start, p.quiet_hours_end
+    FROM users u
     LEFT JOIN user_profiles p ON u.id = p.user_id
     WHERE u.id = ?
   `).get(userId);
@@ -181,6 +186,11 @@ function login(req, res) {
     return res.status(401).json(error('账号或密码错误', 401));
   }
 
+  // 沉睡用户判定（登录前的 last_login 距今超过 90 天）：需再走新用户流程
+  const STALE_DAYS = 90;
+  const staleReturning = !!(user.last_login_at &&
+    (Date.now() - new Date(String(user.last_login_at).replace(' ', 'T') + 'Z').getTime()) > STALE_DAYS * 86400000);
+
   // 更新登录时间
   db.prepare('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
 
@@ -193,7 +203,8 @@ function login(req, res) {
 
   return res.json(success({
     token,
-    user: serializeUser(user.id)
+    stale_returning: staleReturning,
+    user: (() => { const u = serializeUser(user.id); if (u) u.stale_returning = staleReturning; return u; })()
   }));
 }
 
@@ -270,6 +281,7 @@ async function wechatLogin(req, res) {
 
   let user = db.prepare('SELECT * FROM users WHERE openid = ?').get(openid);
   let isNewUser = false;
+  let staleReturning = false;
 
   if (user && user.status !== 1) {
     return res.status(403).json(error('账号已被禁用', 403));
@@ -312,6 +324,11 @@ async function wechatLogin(req, res) {
     user = createTx();
     isNewUser = true;
   } else {
+    // 沉睡用户判定（登录前的 last_login 距今超过 90 天）：需再走新用户流程
+    if (user.last_login_at &&
+        (Date.now() - new Date(String(user.last_login_at).replace(' ', 'T') + 'Z').getTime()) > 90 * 86400000) {
+      staleReturning = true;
+    }
     // 已有 unionid 但本次拿到新的 unionid 时补写一次
     if (unionid && !user.unionid) {
       db.prepare('UPDATE users SET unionid = ?, last_login_at = CURRENT_TIMESTAMP WHERE id = ?')
@@ -338,7 +355,8 @@ async function wechatLogin(req, res) {
     token,
     need_bind_phone: needBindPhone,
     is_new_user: isNewUser,
-    user: serializeUser(user.id)
+    stale_returning: staleReturning,
+    user: (() => { const u = serializeUser(user.id); if (u) u.stale_returning = staleReturning; return u; })()
   }));
 }
 

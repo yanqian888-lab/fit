@@ -48,6 +48,12 @@ import { getToday } from '../../utils/date';
 import { goBack as navigateBack } from '../../utils/navigate';
 
 const statusBarHeight = ref(44);
+try {
+  statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 44;
+  // #ifdef MP-WEIXIN
+  statusBarHeight.value += 44; // 小程序胶囊高度
+  // #endif
+} catch (e) {}
 const selectedMood = ref('');
 const note = ref('');
 
@@ -88,6 +94,9 @@ async function submit() {
   background: #f5f5f5;
 }
 .page-header {
+  /* #ifdef MP-WEIXIN */
+  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
+  /* #endif */
   display: flex;
   align-items: center;
   justify-content: space-between;

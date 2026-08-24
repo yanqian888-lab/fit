@@ -170,6 +170,10 @@ onShow(() => {
 
 .status-bar {
   height: var(--status-bar-height);
+  /* #ifdef MP-WEIXIN */
+  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
+  height: calc(var(--status-bar-height) + 88rpx);
+  /* #endif */
   position: relative;
   z-index: 1;
 }
@@ -256,11 +260,21 @@ onShow(() => {
   display: flex;
   align-items: center;
   padding: 28rpx 32rpx;
-  border-bottom: 1rpx solid #D9D9D9;
 }
 
-.menu-item:last-child {
-  border-bottom: none;
+/* 分割线：左右各留 8px 空白，用设计系统浅一度的灰（$gray-200） */
+.menu-item::after {
+  content: '';
+  position: absolute;
+  left: 16rpx;
+  right: 16rpx;
+  bottom: 0;
+  height: 1rpx;
+  background: #E5E8ED;
+}
+
+.menu-item:last-child::after {
+  display: none;
 }
 
 .menu-item {
