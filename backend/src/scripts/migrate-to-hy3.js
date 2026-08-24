@@ -13,7 +13,7 @@
  */
 require('dotenv').config({ path: require('path').resolve(__dirname, '..', '..', '.env') });
 
-const { db, initDb } = require('../db');
+const { db, initTables, migrateTables } = require('../db');
 
 /**
  * 配置迁移映射：旧名字 → 新名字 + Hy3 参数
@@ -132,7 +132,8 @@ function main() {
   console.log(`🔑 使用 API Key：${maskedKey}`);
 
   // 2. 初始化数据库（自动加载 .env 里的 DB_PATH）
-  initDb();
+  initTables();
+  migrateTables();
   const dbPath = process.env.DB_PATH || './data/app.db';
   console.log(`🗄️  目标数据库：${dbPath}`);
 
