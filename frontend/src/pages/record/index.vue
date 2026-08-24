@@ -528,6 +528,12 @@ const fastingDisabled = computed(() => {
 
 function onFastingAction() {
   if (fastingDisabled.value) return;
+  // 未设置过轻断食时间：提示并调起设置弹窗（与右上角「编辑」同一弹窗）
+  if (!hasFastingSettings.value) {
+    uni.showToast({ title: '请设置轻断食时间', icon: 'none' });
+    openFastingPanel();
+    return;
+  }
   if (!hasStartedToday.value) startEating();
   else if (isInEatingWindow.value) {
     // 提前结束用餐前添加二次确认
