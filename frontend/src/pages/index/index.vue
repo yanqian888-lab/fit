@@ -48,6 +48,7 @@
       >
         <view v-if="msg.role === 'partner'" class="user-column partner-column">
           <view
+            v-if="msg.displayContent !== undefined ? msg.displayContent : msg.content"
             class="bubble partner-bubble"
             @touchstart="handleTouchStart($event, msg)"
             @touchmove="handleTouchMove"
@@ -1262,8 +1263,9 @@ function startTypeWriter(msg, speed) {
   const step = full.length > 500 ? 3 : full.length > 200 ? 2 : 1;
   const interval = speed ?? (full.length > 400 ? 10 : full.length > 150 ? 15 : 20);
   // #endif
-  msg.displayContent = '';
-  let i = 0;
+  // 直接以第一段起笔，避免出现只有标签没有内容的空气泡
+  msg.displayContent = full.slice(0, step);
+  let i = step;
   const timer = setInterval(() => {
     if (i < full.length) {
       i = Math.min(full.length, i + step);
@@ -1952,6 +1954,7 @@ async function onPendingTag(msg) {
   height: calc(var(--status-bar-height) + 88rpx);
   /* #endif */
   flex-shrink: 0;
+  background: #E8F6D7; /* 与下方标题区浅绿底色衔接，避免顶部白边 */
 }
 
 .header {

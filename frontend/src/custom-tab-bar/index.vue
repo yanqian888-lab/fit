@@ -97,7 +97,7 @@ onMounted(() => {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: 32rpx; /* 整体上移 16px，避开底部手势区 */
   width: 750rpx;
   height: 156rpx;
   background: #F7FBF4;
