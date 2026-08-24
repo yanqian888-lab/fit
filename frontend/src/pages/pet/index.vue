@@ -1567,6 +1567,7 @@ onUnmounted(() => {
   width: 184rpx;
   height: 268rpx;
   transform: scaleX(-1);
+  z-index: 2; /* 形象压在对话框上层，不被气泡遮挡 */
 }
 
 .hint-bubble {
@@ -1583,6 +1584,7 @@ onUnmounted(() => {
   justify-content: center;
   padding: 24rpx 32rpx;
   box-sizing: border-box;
+  z-index: 1;
 }
 
 .hint-bubble-text {

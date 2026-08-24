@@ -218,6 +218,10 @@ const bindPhone = ref('');
 // 微信 wx.login 返回的 code，绑定手机号失败重试时复用
 const wechatLoginCode = ref('');
 
+// 账号密码登录表单（H5/App 端）
+const accountForm = ref({ username: '', password: '' });
+const showPassword = ref(false);
+
 /**
  * 登录页展示时如果已经登录，直接跳走（避免用户手动回到 login 页看到已登录却没跳转）
  */
