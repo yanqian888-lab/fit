@@ -451,7 +451,7 @@ const DEFAULT_SPRITE = {
   width: 380,
   height: 380,
   fps: 2,
-  frames: ['/static/image/icon/dada01@3x.png', '/static/image/icon/dada02@3x.png']
+  frames: ['/static/image/icon/dada@3x.png', '/static/image/icon/dada02@3x.png']
 };
 const spriteConfig = computed(() => {
   // 吃饭/运动时段且该时段还未进食/运动：打断居家状态（看书/冥想等），
@@ -542,7 +542,7 @@ function onItemBubbleClick(item) {
   // 模拟从接口获取弹窗内容
   taskPopup.value = {
     type: 'gif',
-    url: '/static/image/icon/dada01@3x.png',
+    url: '/static/image/icon/dada@3x.png',
     description: `点击了【${item.name}】的任务气泡，这里应展示后台配置的 GIF/视频。`
   };
   taskPopupVisible.value = true;
