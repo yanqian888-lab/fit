@@ -101,6 +101,8 @@ onMounted(() => {
   width: 750rpx;
   height: 156rpx;
   background: #F7FBF4;
+  /* 背景向下补齐上移露出的 16px 缝隙，避免下方弹窗/列表内容透出 */
+  box-shadow: 0 32rpx 0 0 #F7FBF4;
   z-index: 999;
   pointer-events: none;
   padding-bottom: env(safe-area-inset-bottom);
