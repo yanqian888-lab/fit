@@ -3,6 +3,29 @@ import { createPinia } from 'pinia';
 import App from './App.vue';
 import popupManager from './utils/popupManager';
 
+// #ifdef MP-WEIXIN
+// 规避基础库 3.16.2 的 bug：tabBar 第 1 项 switchTab 报 "can not switch to no-tabBar page"
+//（已实测：任何页面放到 tabBar 第 1 位都切不过去，其余位置正常）
+// 注意：uni-app 编译后 uni.* 实为 wx.*，需直接补丁 wx.switchTab；
+// 仅拦截目标为首个 tab（/pages/index/index）的调用改用 reLaunch，其余保持原生语义
+(function patchSwitchTabForFirstTab() {
+  const FIRST_TAB = 'pages/index/index';
+  const rawSwitchTab = wx.switchTab.bind(wx);
+  wx.switchTab = function (opts = {}) {
+    const target = (opts.url || '').replace(/^\//, '');
+    if (target === FIRST_TAB) {
+      return wx.reLaunch({
+        url: opts.url,
+        success: opts.success,
+        fail: opts.fail,
+        complete: opts.complete
+      });
+    }
+    return rawSwitchTab(opts);
+  };
+})();
+// #endif
+
 export function createApp() {
   const app = createSSRApp(App);
   const pinia = createPinia();
