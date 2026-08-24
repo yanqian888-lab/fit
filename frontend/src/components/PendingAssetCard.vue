@@ -208,6 +208,8 @@ async function onDiscard() {
 <style lang="scss" scoped>
 .pending-asset-card {
   margin-top: 16rpx;
+  width: 100%;
+  box-sizing: border-box;
   background: $white;
   border-radius: $radius-lg;
   box-shadow: $shadow-card;
@@ -317,6 +319,11 @@ async function onDiscard() {
   padding: 16rpx;
   font-size: $text-base;
   color: $text-primary;
+}
+
+.edit-input {
+  min-height: 80rpx;
+  line-height: 1.5;
 }
 
 .edit-textarea {

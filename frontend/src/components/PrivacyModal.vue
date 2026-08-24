@@ -7,7 +7,7 @@
       </view>
       <view class="modal-body">
         <text class="modal-text">
-          欢迎使用减肥搭子！在使用本应用前，请您仔细阅读并同意我们的
+          欢迎使用掉秤搭搭！在使用本应用前，请您仔细阅读并同意我们的
           <text class="link" @click="openAgreement">《用户协议》</text>
           和
           <text class="link" @click="openPrivacy">《隐私政策》</text>
@@ -19,15 +19,30 @@
         <button class="btn-agree" @click="agree">同意</button>
       </view>
     </view>
+
+    <!-- 退出二次确认弹框 -->
+    <AppModal
+      v-model:visible="showRejectConfirm"
+      icon="none"
+      title="提示"
+      text="不同意隐私政策和用户协议将无法使用本应用，是否退出？"
+      confirmText="退出"
+      confirmDanger
+      cancelText="再想想"
+      @confirm="confirmRejectExit"
+    />
   </view>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
 import { configApi } from '../api';
+import AppModal from './AppModal.vue';
 
 const visible = ref(false);
 const config = ref({});
+// 拒绝协议退出二次确认
+const showRejectConfirm = ref(false);
 const emit = defineEmits(['agreed', 'rejected']);
 
 onMounted(() => {
@@ -62,6 +77,8 @@ async function check() {
     return true;
   }
 
+  // 小程序端不再处理原生隐私弹窗（微信在启动期已通过《小程序隐私保护指引》弹窗获得同意）
+
   // 未同意过，或版本号不一致时展示
   if (!acceptedVersion || acceptedVersion !== currentVersion) {
     visible.value = true;
@@ -81,32 +98,24 @@ function agree() {
 }
 
 function reject() {
-  uni.showModal({
-    title: '提示',
-    content: '不同意隐私政策和用户协议将无法使用本应用，是否退出？',
-    confirmText: '退出',
-    cancelText: '再想想',
-    success: (res) => {
-      if (res.confirm) {
-        emit('rejected');
-        exitApp();
-      }
-    }
-  });
+  showRejectConfirm.value = true;
 }
 
+/**
+ * 确认执行退出 App
+ */
+function confirmRejectExit() {
+  showRejectConfirm.value = false;
+  emit('rejected');
+  exitApp();
+}
+
+/**
+ * 用户拒绝隐私协议时退出到空白页
+ * 小程序端：仅保留 reLaunch 到空白页，不触发 APP/H5 的退出逻辑
+ */
 function exitApp() {
-  // #ifdef APP-PLUS
-  plus.runtime.quit();
-  // #endif
-  // #ifdef H5
-  // H5 无法强制关闭标签页，清空本地授权并跳转到空白提示页
-  uni.removeStorageSync('privacy_agreed_version');
-  window.location.replace('about:blank');
-  // #endif
-  // #ifdef MP-WEIXIN
   uni.reLaunch({ url: '/pages/blank/index' });
-  // #endif
 }
 
 function openAgreement() {

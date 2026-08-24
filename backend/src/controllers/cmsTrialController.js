@@ -4,6 +4,7 @@
 const { db } = require('../db');
 const trialService = require('../services/trialService');
 const cmsLogService = require('../services/cmsLogService');
+const configMonitor = require('../services/configMonitorService');
 const { success, error } = require('../utils/response');
 
 const CONFIG_KEYS = [

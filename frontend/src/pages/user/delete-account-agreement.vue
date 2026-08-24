@@ -21,13 +21,26 @@
     <view class="bottom-actions">
       <button class="agree-btn" :loading="loading" @click="onAgree">我已阅读并同意注销</button>
     </view>
+
+    <!-- 注销二次确认弹框 -->
+    <AppModal
+      v-model:visible="showConfirmModal"
+      icon="none"
+      title="二次确认"
+      text="注销后所有数据将无法恢复，绑定的手机号可重新注册新账号。确定要注销吗？"
+      confirmText="确定注销"
+      confirmDanger
+      cancelText="取消"
+      @confirm="confirmDeleteAccount"
+    />
   </AppPage>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import AppPage from '../../components/AppPage.vue';
-import { userApi } from '../../api';
+import AppModal from '../../components/AppModal.vue';
+import { userApi, configApi } from '../../api';
 import { useUserStore } from '../../store';
 import popupManager from '../../utils/popupManager';
 import { goBack } from '../../utils/navigate';
@@ -35,16 +48,20 @@ import { goBack } from '../../utils/navigate';
 const userStore = useUserStore();
 const loading = ref(false);
 
+// 注销二次确认弹框状态
+const showConfirmModal = ref(false);
+
 const statusBarHeight = ref(44);
 try {
   statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 44;
 } catch (e) {}
 
-const agreementText = `注销账号协议
+// 默认文案（后台协议配置未配置注销协议时使用）
+const defaultAgreementText = `注销账号协议
 
 尊敬的用户：
 
-在您申请注销减肥搭子 APP（以下简称“本应用”）账号之前，请仔细阅读并充分理解本协议的全部内容。本协议构成您与本应用运营方之间关于账号注销的具有法律约束力的协议。一旦您点击“同意并注销”，即视为您已充分阅读、理解并接受本协议所有条款。
+在您申请注销掉秤搭搭 APP（以下简称“本应用”）账号之前，请仔细阅读并充分理解本协议的全部内容。本协议构成您与本应用运营方之间关于账号注销的具有法律约束力的协议。一旦您点击“同意并注销”，即视为您已充分阅读、理解并接受本协议所有条款。
 
 一、账号注销的定义
 账号注销是指您主动终止本应用向您提供的全部服务，并永久删除您在本应用中的账号及与该账号相关的全部数据。注销完成后，您将无法再以该账号登录本应用，也无法恢复任何历史数据。
@@ -78,24 +95,35 @@ const agreementText = `注销账号协议
 
 请您再次确认：注销账号后，所有数据将无法恢复，绑定的手机号可用于注册新账号，新账号与原账号完全独立。`;
 
+// 后台协议配置可覆盖默认文案
+const agreementText = ref(defaultAgreementText);
+onMounted(async () => {
+  try {
+    const res = await configApi.getAppConfig();
+    const custom = res.data?.delete_account_agreement;
+    if (custom && String(custom).trim()) {
+      agreementText.value = custom;
+    }
+  } catch (e) {}
+});
+
 const paragraphs = computed(() => {
-  return agreementText
+  return agreementText.value
     .split(/\n+/)
     .map(p => p.trim())
     .filter(p => p.length > 0);
 });
 
 function onAgree() {
-  uni.showModal({
-    title: '二次确认',
-    content: '注销后所有数据将无法恢复，绑定的手机号可重新注册新账号。确定要注销吗？',
-    confirmColor: '#E57373',
-    confirmText: '确定注销',
-    success: async (res) => {
-      if (!res.confirm) return;
-      await doDeleteAccount();
-    }
-  });
+  showConfirmModal.value = true;
+}
+
+/**
+ * 确认执行账号注销
+ */
+async function confirmDeleteAccount() {
+  showConfirmModal.value = false;
+  await doDeleteAccount();
 }
 
 async function doDeleteAccount() {

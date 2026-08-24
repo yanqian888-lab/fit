@@ -6,103 +6,199 @@
       <view class="back-btn" @click="goBack">
         <text class="back-icon">‹</text>
       </view>
-      <text class="page-title">喝水记录</text>
+      <text class="page-title">习惯打卡</text>
       <view class="header-right"></view>
     </view>
     <view class="habit-content">
-        <!-- 日期切换 -->
-        <view class="date-module">
-          <!-- 展开：月历标题 -->
-          <view v-if="isExpanded" class="date-header">
-            <text class="date-arrow" @click="prevMonth()">‹</text>
-            <text class="date-title">{{ monthTitle }}</text>
-            <text class="date-arrow" @click="nextMonth()">›</text>
-          </view>
+      <!-- 日期切换 -->
+      <view class="date-module">
+        <view v-if="isExpanded" class="date-header">
+          <text class="date-arrow" @click="prevMonth()">‹</text>
+          <text class="date-title">{{ monthTitle }}</text>
+          <text class="date-arrow" @click="nextMonth()">›</text>
+        </view>
 
-          <!-- 折叠：周视图 -->
-          <view v-if="!isExpanded" class="date-bar">
+        <view v-if="!isExpanded" class="date-bar">
+          <view
+            v-for="item in weekDays"
+            :key="item.date"
+            class="date-item"
+            :class="{ today: item.isToday && !item.isSelected, selected: item.isSelected }"
+            @click="selectDate(item.date)"
+          >
+            <text class="date-week">{{ item.weekLabel }}</text>
+            <text class="date-day">{{ item.day }}</text>
+          </view>
+        </view>
+
+        <view v-else class="calendar-panel">
+          <view class="calendar-weekdays">
+            <text v-for="w in WEEKDAYS" :key="w" class="calendar-weekday">{{ w }}</text>
+          </view>
+          <view class="calendar-days">
             <view
-              v-for="item in weekDays"
-              :key="item.date"
-              class="date-item"
-              :class="{ today: item.isToday && !item.isSelected, selected: item.isSelected }"
+              v-for="(item, index) in calendarDays"
+              :key="index"
+              class="calendar-day"
+              :class="{
+                'other-month': !item.isCurrentMonth,
+                today: item.isToday && !item.isSelected,
+                selected: item.isSelected
+              }"
               @click="selectDate(item.date)"
             >
-              <text class="date-week">{{ item.weekLabel }}</text>
-              <text class="date-day">{{ item.day }}</text>
+              <text class="calendar-day-text">{{ item.day }}</text>
             </view>
           </view>
+        </view>
 
-          <!-- 展开：月视图 -->
-          <view v-else class="calendar-panel">
-            <view class="calendar-weekdays">
-              <text v-for="w in WEEKDAYS" :key="w" class="calendar-weekday">{{ w }}</text>
+        <view class="toggle-bar" @click="toggleCalendar">
+          <image
+            class="toggle-icon"
+            :src="isExpanded ? '/static/image/icon/xiangshang.png' : '/static/image/icon/xiangxia.png'"
+            mode="aspectFit"
+          />
+        </view>
+      </view>
+
+      <!-- 类型切换 -->
+      <view class="type-tabs">
+        <view
+          v-for="tab in tabs"
+          :key="tab.value"
+          class="type-tab"
+          :class="{ active: currentType === tab.value }"
+          @click="switchType(tab.value)"
+        >
+          <text>{{ tab.label }}</text>
+        </view>
+      </view>
+
+      <!-- 喝水 -->
+      <view v-if="currentType === 'water'" class="habit-card">
+        <text class="card-title">{{ selectedDate === today ? '今日喝水' : selectedDateText }}</text>
+        <view class="water-progress">
+          <view class="water-fill" :style="{ width: Math.min((waterTotal / 2000) * 100, 100) + '%' }"></view>
+        </view>
+        <view class="water-info">
+          <text class="water-value">{{ waterTotal }} ml</text>
+          <text class="water-target">/ 2000 ml</text>
+        </view>
+        <view class="water-actions">
+          <text v-for="cap in cups" :key="cap" class="cup-btn" @click="addWater(cap)">+{{ cap }}ml</text>
+          <text class="cup-btn undo" :class="{ disabled: undoStack.length === 0 }" @click="undoWater">↩</text>
+        </view>
+      </view>
+
+      <!-- 睡眠 -->
+      <view v-else-if="currentType === 'sleep'" class="habit-card">
+        <text class="card-title">{{ selectedDate === today ? '今日睡眠' : selectedDateText }}</text>
+        <view class="sleep-form">
+          <view class="sleep-field">
+            <text class="field-label">睡眠时长</text>
+            <view class="field-input-row">
+              <input v-model="sleepValue" class="field-input" type="digit" placeholder="0" />
+              <text class="field-unit">小时</text>
             </view>
-            <view class="calendar-days">
+          </view>
+          <view class="sleep-field">
+            <text class="field-label">睡眠质量</text>
+            <view class="quality-options">
               <view
-                v-for="(item, index) in calendarDays"
-                :key="index"
-                class="calendar-day"
-                :class="{
-                  'other-month': !item.isCurrentMonth,
-                  today: item.isToday && !item.isSelected,
-                  selected: item.isSelected
-                }"
-                @click="selectDate(item.date)"
+                v-for="q in sleepQualityOptions"
+                :key="q.value"
+                class="quality-option"
+                :class="{ active: sleepQuality === q.value }"
+                @click="sleepQuality = q.value"
               >
-                <text class="calendar-day-text">{{ item.day }}</text>
+                <text>{{ q.label }}</text>
               </view>
             </view>
           </view>
+        </view>
+        <view class="submit-btn" :class="{ disabled: !sleepValue }" @click="saveSleep">
+          <text>保存睡眠</text>
+        </view>
+      </view>
 
-          <view class="toggle-bar" @click="toggleCalendar">
-            <image
-              class="toggle-icon"
-              :src="isExpanded ? '/static/image/icon/xiangshang.png' : '/static/image/icon/xiangxia.png'"
-              mode="aspectFit"
-            />
+      <!-- 排便 -->
+      <view v-else-if="currentType === 'defecation'" class="habit-card">
+        <text class="card-title">{{ selectedDate === today ? '今日排便' : selectedDateText }}</text>
+        <view class="defecation-options">
+          <view
+            v-for="opt in defecationOptions"
+            :key="opt.value"
+            class="defecation-option"
+            :class="{ active: defecationValue === opt.value }"
+            @click="defecationValue = opt.value"
+          >
+            <text class="defecation-emoji">{{ opt.emoji }}</text>
+            <text class="defecation-label">{{ opt.label }}</text>
           </view>
         </view>
+        <view class="submit-btn" @click="saveDefecation">
+          <text>保存记录</text>
+        </view>
+      </view>
 
-        <view class="water-card">
-          <text class="card-title">{{ selectedDate === today ? '今日喝水' : selectedDateText }}</text>
-          <view class="water-progress">
-            <view class="water-fill" :style="{ width: Math.min((waterTotal / 2000) * 100, 100) + '%' }"></view>
-          </view>
-          <view class="water-info">
-            <text class="water-value">{{ waterTotal }} ml</text>
-            <text class="water-target">/ 2000 ml</text>
-          </view>
-          <view class="water-actions">
-            <text v-for="cap in cups" :key="cap" class="cup-btn" @click="addWater(cap)">+{{ cap }}ml</text>
-            <text class="cup-btn undo" :class="{ disabled: undoStack.length === 0 }" @click="undoWater">↩</text>
-          </view>
+      <!-- 心情 -->
+      <view v-else-if="currentType === 'mood'" class="habit-card">
+        <text class="card-title">记录心情</text>
+        <text class="mood-tip">去心情页记录今日感受吧～</text>
+        <view class="submit-btn" @click="goMood">
+          <text>去记录心情</text>
         </view>
       </view>
     </view>
+  </view>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { onShow, onLoad } from '@dcloudio/uni-app';
 import { recordApi } from '../../api';
 import { getToday } from '../../utils/date';
 import { goBack as navigateBack } from '../../utils/navigate';
 
+const tabs = [
+  { label: '喝水', value: 'water' },
+  { label: '睡眠', value: 'sleep' },
+  { label: '排便', value: 'defecation' },
+  { label: '心情', value: 'mood' }
+];
+
+const currentType = ref('water');
 
 const waterTotal = ref(0);
 const waterRecordId = ref(null);
 const undoStack = ref([]);
 const cups = [100, 300, 500];
-const statusBarHeight = ref(44);
 
+const sleepValue = ref('');
+const sleepQuality = ref('good');
+const sleepRecordId = ref(null);
+const sleepQualityOptions = [
+  { label: '很好', value: 'great' },
+  { label: '不错', value: 'good' },
+  { label: '一般', value: 'normal' },
+  { label: '较差', value: 'poor' }
+];
+
+const defecationValue = ref(1);
+const defecationRecordId = ref(null);
+const defecationOptions = [
+  { label: '正常', value: 1, emoji: '✅' },
+  { label: '没有', value: 0, emoji: '❌' }
+];
+
+const statusBarHeight = ref(44);
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 const today = getToday();
 const selectedDate = ref(today);
 
 const selectedDateText = computed(() => {
   const d = new Date(selectedDate.value + 'T00:00:00');
-  return `${d.getMonth() + 1}月${d.getDate()}日喝水`;
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
 });
 
 function getWeekStart(dateStr) {
@@ -204,10 +300,18 @@ function goBack() {
   navigateBack('/pages/record/index');
 }
 
+function switchType(type) {
+  currentType.value = type;
+}
+
+onLoad((options) => {
+  if (options && options.type && tabs.some(t => t.value === options.type)) {
+    currentType.value = options.type;
+  }
+});
+
 onMounted(async () => {
-  // #ifdef H5
   statusBarHeight.value = 44;
-  // #endif
   // #ifndef H5
   const sysInfo = uni.getSystemInfoSync();
   statusBarHeight.value = sysInfo.statusBarHeight || 44;
@@ -223,33 +327,41 @@ async function loadHabits() {
   try {
     const res = await recordApi.getHabits({ date: selectedDate.value });
     const list = res.data.list || [];
-    // 按 created_at DESC 返回，取第一条作为当前最新喝水量
+
     const water = list.find(item => item.type === 'water');
-    waterTotal.value = water ? water.value : 0;
+    waterTotal.value = water ? Number(water.value) || 0 : 0;
     waterRecordId.value = water ? water.id : null;
     undoStack.value = [];
+
+    const sleep = list.find(item => item.type === 'sleep');
+    sleepValue.value = sleep ? Number(sleep.value) || '' : '';
+    sleepQuality.value = sleep ? (sleep.remark || 'good') : 'good';
+    sleepRecordId.value = sleep ? sleep.id : null;
+
+    const def = list.find(item => item.type === 'defecation');
+    defecationValue.value = def ? (Number(def.value) === 0 ? 0 : 1) : 1;
+    defecationRecordId.value = def ? def.id : null;
   } catch (err) {
     console.error(err);
   }
 }
 
-async function saveHabit(type, value, unit, remark) {
-  try {
-    const res = await recordApi.saveHabit({
-      id: waterRecordId.value,
-      record_date: selectedDate.value,
-      type,
-      value,
-      unit,
-      remark
-    });
-    // 新增时后端会返回 id，后续在此基础上更新而非重复插入
-    if (!waterRecordId.value && res && res.data && res.data.id) {
-      waterRecordId.value = res.data.id;
-    }
-  } catch (err) {
-    console.error(err);
-  }
+import { showRewardToast } from '../../utils/rewardToast.js';
+
+async function saveHabit(type, value, unit, remark, id) {
+  const res = await recordApi.saveHabit({
+    id: id || null,
+    record_date: selectedDate.value,
+    type,
+    value,
+    unit,
+    remark
+  });
+  return res;
+}
+
+function showHabitReward(res, defaultTitle) {
+  showRewardToast(res.data?.reward_messages || [], defaultTitle);
 }
 
 function selectDate(date) {
@@ -259,21 +371,63 @@ function selectDate(date) {
 }
 
 async function addWater(amount) {
+  const oldTotal = waterTotal.value;
   waterTotal.value += amount;
   undoStack.value.push(amount);
-  if (undoStack.value.length > 3) {
-    undoStack.value.shift();
+  if (undoStack.value.length > 3) undoStack.value.shift();
+  try {
+    const res = await saveHabit('water', waterTotal.value, 'ml', '', waterRecordId.value);
+    if (!waterRecordId.value && res && res.data && res.data.id) waterRecordId.value = res.data.id;
+    showHabitReward(res, `已记录 ${waterTotal.value}ml`);
+  } catch (e) {
+    waterTotal.value = oldTotal;
+    undoStack.value.pop();
+    uni.showToast({ title: e.message || '记录失败', icon: 'none' });
   }
-  await saveHabit('water', waterTotal.value, 'ml');
-  uni.showToast({ title: `已记录 ${waterTotal.value}ml`, icon: 'none' });
 }
 
 async function undoWater() {
   if (undoStack.value.length === 0) return;
   const amount = undoStack.value.pop();
+  const oldTotal = waterTotal.value;
   waterTotal.value = Math.max(0, waterTotal.value - amount);
-  await saveHabit('water', waterTotal.value, 'ml');
-  uni.showToast({ title: `已撤销 ${amount}ml`, icon: 'none' });
+  try {
+    const res = await saveHabit('water', waterTotal.value, 'ml', '', waterRecordId.value);
+    if (!waterRecordId.value && res && res.data && res.data.id) waterRecordId.value = res.data.id;
+    uni.showToast({ title: `已撤销 ${amount}ml`, icon: 'none' });
+  } catch (e) {
+    waterTotal.value = oldTotal;
+    undoStack.value.push(amount);
+    uni.showToast({ title: e.message || '撤销失败', icon: 'none' });
+  }
+}
+
+async function saveSleep() {
+  if (!sleepValue.value) {
+    uni.showToast({ title: '请输入睡眠时长', icon: 'none' });
+    return;
+  }
+  try {
+    const res = await saveHabit('sleep', Number(sleepValue.value), '小时', sleepQuality.value, sleepRecordId.value);
+    if (!sleepRecordId.value && res && res.data && res.data.id) sleepRecordId.value = res.data.id;
+    showHabitReward(res, '睡眠已记录');
+  } catch (e) {
+    uni.showToast({ title: e.message || '保存失败', icon: 'none' });
+  }
+}
+
+async function saveDefecation() {
+  try {
+    const res = await saveHabit('defecation', defecationValue.value, '次', '', defecationRecordId.value);
+    if (!defecationRecordId.value && res && res.data && res.data.id) defecationRecordId.value = res.data.id;
+    showHabitReward(res, '排便已记录');
+  } catch (e) {
+    uni.showToast({ title: e.message || '保存失败', icon: 'none' });
+  }
+}
+
+function goMood() {
+  uni.navigateTo({ url: '/pages/record/mood' });
 }
 </script>
 
@@ -486,7 +640,30 @@ async function undoWater() {
   height: 24rpx;
 }
 
-.water-card {
+.type-tabs {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: $spacing-md;
+}
+
+.type-tab {
+  flex: 1;
+  text-align: center;
+  padding: 18rpx 0;
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  font-size: 28rpx;
+  color: #6B7280;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+}
+
+.type-tab.active {
+  background: #8DBB77;
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.habit-card {
   background: $bg-card;
   border-radius: $radius-xl;
   padding: $spacing-md;
@@ -558,5 +735,110 @@ async function undoWater() {
 
 .cup-btn.undo.disabled {
   opacity: 0.4;
+}
+
+.sleep-form {
+  margin-bottom: $spacing-md;
+}
+
+.sleep-field {
+  margin-bottom: $spacing-md;
+}
+
+.field-label {
+  font-size: $text-sm;
+  color: $text-secondary;
+  display: block;
+  margin-bottom: $spacing-sm;
+}
+
+.field-input-row {
+  display: flex;
+  align-items: center;
+  background: #F9FAFB;
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+}
+
+.field-input {
+  flex: 1;
+  font-size: 32rpx;
+  color: $text-primary;
+}
+
+.field-unit {
+  font-size: $text-sm;
+  color: $text-secondary;
+  margin-left: 12rpx;
+}
+
+.quality-options {
+  display: flex;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.quality-option {
+  padding: 14rpx 28rpx;
+  background: #F9FAFB;
+  border-radius: 24rpx;
+  font-size: $text-sm;
+  color: $text-secondary;
+}
+
+.quality-option.active {
+  background: #8DBB77;
+  color: #FFFFFF;
+}
+
+.defecation-options {
+  display: flex;
+  gap: $spacing-md;
+  margin-bottom: $spacing-md;
+}
+
+.defecation-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: $spacing-md;
+  background: #F9FAFB;
+  border-radius: 24rpx;
+}
+
+.defecation-option.active {
+  background: #DDF2D2;
+}
+
+.defecation-emoji {
+  font-size: 48rpx;
+  margin-bottom: 8rpx;
+}
+
+.defecation-label {
+  font-size: $text-sm;
+  color: $text-secondary;
+}
+
+.mood-tip {
+  font-size: $text-sm;
+  color: $text-secondary;
+  margin-bottom: $spacing-md;
+  display: block;
+}
+
+.submit-btn {
+  text-align: center;
+  background: #8DBB77;
+  color: #FFFFFF;
+  border-radius: $radius-pill;
+  padding: 22rpx 0;
+  font-size: $text-base;
+  font-weight: $font-medium;
+}
+
+.submit-btn.disabled {
+  background: #D1D5DB;
 }
 </style>

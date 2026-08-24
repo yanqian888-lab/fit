@@ -1,7 +1,18 @@
 <template>
-  <AppPage>
-    <AppHeader title="生成今日分析" />
-    <view class="generate-page">
+  <view class="generate-page">
+    <view class="header-bg"></view>
+    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+    <view class="page-header">
+      <view class="back-btn" @click="goBack">
+        <text class="back-icon">‹</text>
+      </view>
+      <view class="header-center">
+        <text class="header-title">生成今日分析</text>
+      </view>
+      <view class="header-right"></view>
+    </view>
+
+    <view class="page-body">
       <!-- 生成过程 -->
       <view v-if="status === 'generating'" class="process-card">
         <view class="process-header">
@@ -40,7 +51,7 @@
       <view v-else-if="status === 'error'" class="error-card">
         <text class="error-icon">😅</text>
         <text class="error-title">生成失败</text>
-        <text class="error-desc">网络有点问题，请稍后再试</text>
+        <text class="error-desc">{{ errorDesc }}</text>
       </view>
 
       <!-- 试用权限已用尽 -->
@@ -61,7 +72,7 @@
 
     <!-- 授权引导弹窗 -->
     <AuthPopup ref="authPopupRef" />
-  </AppPage>
+  </view>
 </template>
 
 <script setup>
@@ -105,9 +116,12 @@ function getFastingParams(date) {
   }
   return params;
 }
-import AppPage from '../../components/AppPage.vue';
-import AppHeader from '../../components/AppHeader.vue';
 import AppButton from '../../components/AppButton.vue';
+
+const statusBarHeight = ref(44);
+try {
+  statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 44;
+} catch (e) {}
 
 const props = defineProps({
   date: { type: String, default: '' }
@@ -117,6 +131,7 @@ const props = defineProps({
 const routeDate = computed(() => props.date || getToday());
 
 const status = ref('generating'); // generating | done | error | blocked
+const errorDesc = ref('网络有点问题，请稍后再试');
 const authPopupRef = ref(null);
 const currentStep = ref(0);
 const diary = ref('');
@@ -177,6 +192,8 @@ async function startGeneration() {
     reportCount('diary');
   } catch (err) {
     console.error('日记生成失败:', err);
+    // 优先展示后端返回的具体原因（余额不足/数据不完整等），兜底网络错误
+    errorDesc.value = (err && err.message) ? err.message : '网络有点问题，请稍后再试';
     status.value = 'error';
   }
 }
@@ -195,7 +212,74 @@ function goBack() {
 
 <style lang="scss" scoped>
 .generate-page {
-  padding-top: 216rpx;
+  min-height: 100vh;
+  background: #F7FbF4;
+  position: relative;
+}
+
+.header-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 360rpx;
+  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
+  z-index: 0;
+}
+
+.status-bar {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.page-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 32rpx;
+}
+
+.back-btn {
+  width: 60rpx;
+  height: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.back-icon {
+  font-size: 48rpx;
+  color: #666666;
+  font-weight: 700;
+  line-height: 1;
+  margin-left: -8rpx;
+}
+
+.header-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.header-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #27282D;
+  line-height: 42rpx;
+}
+
+.header-right {
+  width: 60rpx;
+}
+
+.page-body {
+  position: relative;
+  z-index: 1;
+  padding: 0 32rpx 32rpx;
 }
 
 .process-card,

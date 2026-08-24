@@ -10,10 +10,10 @@ export const ENV_CONFIG = {
     serverUrl: import.meta.env.VITE_SERVER_URL || 'http://localhost:3000'
   },
   test: {
-    serverUrl: import.meta.env.VITE_SERVER_URL || 'https://test-api.fitapp.com'
+    serverUrl: import.meta.env.VITE_SERVER_URL || 'https://api.test.fit.mianyan.xin'
   },
   production: {
-    serverUrl: import.meta.env.VITE_SERVER_URL || 'https://api.fitapp.com'
+    serverUrl: import.meta.env.VITE_SERVER_URL || 'https://api.fit.mianyan.xin'
   }
 };
 

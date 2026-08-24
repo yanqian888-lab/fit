@@ -210,7 +210,7 @@ function enrichPopup(row) {
 
 function listPopups(req, res) {
   const page = parseInt(req.query.page, 10) || 1;
-  const size = parseInt(req.query.size, 10) || 20;
+  const size = Math.min(100, Math.max(1, parseInt(req.query.size, 10) || 20));
   const offset = (page - 1) * size;
   const status = req.query.status || '';
   const type = req.query.type || '';
@@ -514,7 +514,7 @@ function batchDelete(req, res) {
 
 function listWhitelist(req, res) {
   const page = parseInt(req.query.page, 10) || 1;
-  const size = parseInt(req.query.size, 10) || 20;
+  const size = Math.min(100, Math.max(1, parseInt(req.query.size, 10) || 20));
   const offset = (page - 1) * size;
   const status = req.query.status || '';
 
@@ -587,7 +587,7 @@ function removeWhitelist(req, res) {
 
 function listRoutes(req, res) {
   const page = parseInt(req.query.page, 10) || 1;
-  const size = parseInt(req.query.size, 10) || 20;
+  const size = Math.min(100, Math.max(1, parseInt(req.query.size, 10) || 20));
   const offset = (page - 1) * size;
   const status = req.query.status || '';
 
@@ -709,7 +709,7 @@ function getStatsDetail(req, res) {
   const startDate = req.query.start_date || '';
   const endDate = req.query.end_date || '';
   const page = parseInt(req.query.page, 10) || 1;
-  const size = parseInt(req.query.size, 10) || 30;
+  const size = Math.min(100, Math.max(1, parseInt(req.query.size, 10) || 30));
   const offset = (page - 1) * size;
 
   let where = 'WHERE 1=1';

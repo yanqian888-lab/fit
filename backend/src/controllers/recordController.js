@@ -1,11 +1,32 @@
 /**
  * 记录中心控制器
  */
-const { db } = require('../db');
+const { db, withTransaction } = require('../db');
 const { success, error } = require('../utils/response');
 const { getUsedDays } = require('../utils/date');
 const helperAgent = require('../services/agents/helperAgent');
 const { computeFoodNutrition } = require('../services/nutritionService');
+const taskService = require('../services/taskService');
+const achievementService = require('../services/achievementService');
+const fastingService = require('../services/fastingService');
+const newbieTaskService = require('../services/newbieTaskService');
+const rewardService = require('../services/rewardService');
+const exerciseMergeService = require('../services/exerciseMergeService');
+const rewardReceiptService = require('../services/rewardReceiptService');
+const { safeJsonParse } = require('../utils/safeJson');
+
+const VALID_MEAL_TIMES = ['breakfast', 'lunch', 'dinner', 'snack'];
+const VALID_EXERCISE_TYPES = ['aerobic', 'strength', 'stretch', 'ball'];
+
+function getHabitAction(type) {
+  const map = {
+    water: 'record_water',
+    sleep: 'record_sleep',
+    defecation: 'record_defecation',
+    mood: 'record_mood'
+  };
+  return map[type] || 'record_habit';
+}
 
 /**
  * 获取今日概览
@@ -65,6 +86,8 @@ function getToday(req, res) {
   const userInfo = db.prepare('SELECT created_at FROM users WHERE id = ?').get(userId);
   const weightDays = getUsedDays(userInfo ? userInfo.created_at : null);
 
+  const userDetail = db.prepare('SELECT height FROM users WHERE id = ?').get(userId);
+
   return res.json(success({
     date: today,
     intake: Math.round(nutrition.intake),
@@ -75,6 +98,7 @@ function getToday(req, res) {
     current_weight: todayWeight ? todayWeight.value : (profile ? profile.current_weight : null),
     initial_weight: profile ? profile.initial_weight : null,
     target_weight: profile ? profile.target_weight : null,
+    height: userDetail ? userDetail.height : null,
     weight_change: weightChange,
     protein: Math.round(nutrition.protein),
     protein_target: Math.round(proteinTarget),
@@ -113,7 +137,7 @@ function getDiet(req, res) {
     meals[row.meal_time].push({
       id: row.id,
       meal_time: row.meal_time,
-      foods: JSON.parse(row.foods || '[]'),
+      foods: safeJsonParse(row.foods, []),
       total_calorie: row.total_calorie,
       total_protein: row.total_protein,
       total_carb: row.total_carb,
@@ -138,8 +162,62 @@ function saveDiet(req, res) {
   const userId = req.userId;
   const { id, record_date, meal_time, foods, tags, remark } = req.body;
 
+  // 输入验证
+  if (!record_date) {
+    return res.status(400).json(error('缺少记录日期', 400));
+  }
+  
+  // 验证日期格式
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(record_date)) {
+    return res.status(400).json(error('日期格式不正确，应为 YYYY-MM-DD', 400));
+  }
+  
+  if (!VALID_MEAL_TIMES.includes(meal_time)) {
+    return res.status(400).json(error('餐次类型不合法', 400));
+  }
+  
+  if (!Array.isArray(foods) || foods.length === 0) {
+    return res.status(400).json(error('请至少添加一项食物', 400));
+  }
+  
+  // 验证食物数量上限
+  if (foods.length > 50) {
+    return res.status(400).json(error('单次记录食物数量不能超过50项', 400));
+  }
+  
+  // 验证每个食物项
+  for (let i = 0; i < foods.length; i++) {
+    const food = foods[i];
+    if (!food.name || typeof food.name !== 'string') {
+      return res.status(400).json(error(`第${i + 1}项食物名称不能为空`, 400));
+    }
+    // 修复：使用字节长度而非字符长度
+    const nameBytes = Buffer.byteLength(food.name, 'utf8');
+    if (nameBytes > 200) {
+      return res.status(400).json(error(`第${i + 1}项食物名称过长`, 400));
+    }
+    // 修复：添加类型检查
+    if (food.weight !== undefined) {
+      const weight = parseFloat(food.weight);
+      if (isNaN(weight) || weight < 0 || weight > 10000) {
+        return res.status(400).json(error(`第${i + 1}项食物重量不合法`, 400));
+      }
+    }
+    if (food.calorie !== undefined) {
+      const calorie = parseFloat(food.calorie);
+      if (isNaN(calorie) || calorie < 0 || calorie > 5000) {
+        return res.status(400).json(error(`第${i + 1}项食物热量不合法`, 400));
+      }
+    }
+  }
+  
+  // 验证备注长度
+  if (remark && remark.length > 500) {
+    return res.status(400).json(error('备注内容过长', 400));
+  }
+
   // 由后端根据食物数据库直接计算每个食物的营养数据，不再依赖 Agent/前端传入的估算值
-  const computedFoods = (foods || []).map(f => computeFoodNutrition(f));
+  const computedFoods = foods.map(f => computeFoodNutrition(f));
 
   const totalCalorie = computedFoods.reduce((sum, f) => sum + (f.calorie || 0), 0);
   const totalProtein = computedFoods.reduce((sum, f) => sum + (f.protein || 0), 0);
@@ -147,18 +225,26 @@ function saveDiet(req, res) {
   const totalFat = computedFoods.reduce((sum, f) => sum + (f.fat || 0), 0);
 
   if (id) {
-    db.prepare(`
-      UPDATE diet_records
-      SET record_date = ?, meal_time = ?, foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, tags = ?, remark = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `).run(record_date, meal_time, JSON.stringify(computedFoods), totalCalorie, totalProtein, totalCarb, totalFat, tags, remark, id, userId);
+    withTransaction(() => {
+      db.prepare(`
+        UPDATE diet_records
+        SET record_date = ?, meal_time = ?, foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, tags = ?, remark = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `).run(record_date, meal_time, JSON.stringify(computedFoods), totalCalorie, totalProtein, totalCarb, totalFat, tags, remark, id, userId);
+    });
     return res.json(success(null, '更新成功'));
   } else {
-    const insertId = db.prepare(`
-      INSERT INTO diet_records (user_id, record_date, meal_time, foods, total_calorie, total_protein, total_carb, total_fat, tags, remark, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(userId, record_date, meal_time, JSON.stringify(computedFoods), totalCalorie, totalProtein, totalCarb, totalFat, tags, remark).lastInsertRowid;
-    return res.json(success({ id: insertId }, '添加成功'));
+    const result = withTransaction(() => {
+      const insertId = db.prepare(`
+        INSERT INTO diet_records (user_id, record_date, meal_time, foods, total_calorie, total_protein, total_carb, total_fat, tags, remark, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+      `).run(userId, record_date, meal_time, JSON.stringify(computedFoods), totalCalorie, totalProtein, totalCarb, totalFat, tags, remark).lastInsertRowid;
+      const rewardResult = rewardService.rewardForRecord(userId, 'record_diet', insertId);
+      newbieTaskService.checkAction(userId, 'record_diet');
+      achievementService.checkAll(userId);
+      return { id: insertId, reward_messages: rewardResult.reward_messages || [] };
+    });
+    return res.json(success(result, '添加成功'));
   }
 }
 
@@ -195,7 +281,7 @@ function getExercise(req, res) {
     types[row.exercise_type] = types[row.exercise_type] || [];
     types[row.exercise_type].push({
       id: row.id,
-      exercises: JSON.parse(row.exercises || '[]'),
+      exercises: safeJsonParse(row.exercises, []),
       total_duration: row.total_duration,
       total_calorie: row.total_calorie,
       remark: row.remark,
@@ -218,22 +304,63 @@ function saveExercise(req, res) {
   const userId = req.userId;
   const { id, record_date, exercise_type, exercises, remark } = req.body;
 
+  if (!record_date) {
+    return res.status(400).json(error('缺少记录日期', 400));
+  }
+  if (!VALID_EXERCISE_TYPES.includes(exercise_type)) {
+    return res.status(400).json(error('运动类型不合法', 400));
+  }
+  if (!Array.isArray(exercises) || exercises.length === 0) {
+    return res.status(400).json(error('请至少添加一项运动', 400));
+  }
+  
+  // 修复：验证运动数量上限
+  if (exercises.length > 20) {
+    return res.status(400).json(error('单次记录运动数量不能超过20项', 400));
+  }
+  
+  // 修复：验证每个运动项
+  for (let i = 0; i < exercises.length; i++) {
+    const exercise = exercises[i];
+    if (!exercise.name || typeof exercise.name !== 'string') {
+      return res.status(400).json(error(`第${i + 1}项运动名称不能为空`, 400));
+    }
+    if (exercise.duration !== undefined) {
+      const duration = parseFloat(exercise.duration);
+      if (isNaN(duration) || duration < 0 || duration > 480) {
+        return res.status(400).json(error(`第${i + 1}项运动时长不合法`, 400));
+      }
+    }
+    if (exercise.calorie !== undefined) {
+      const calorie = parseFloat(exercise.calorie);
+      if (isNaN(calorie) || calorie < 0 || calorie > 5000) {
+        return res.status(400).json(error(`第${i + 1}项运动消耗热量不合法`, 400));
+      }
+    }
+  }
+
   const totalDuration = exercises.reduce((sum, e) => sum + (e.duration || 0), 0);
   const totalCalorie = exercises.reduce((sum, e) => sum + (e.calorie || 0), 0);
 
   if (id) {
-    db.prepare(`
-      UPDATE exercise_records
-      SET record_date = ?, exercise_type = ?, exercises = ?, total_duration = ?, total_calorie = ?, remark = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `).run(record_date, exercise_type, JSON.stringify(exercises), totalDuration, totalCalorie, remark, id, userId);
+    withTransaction(() => {
+      db.prepare(`
+        UPDATE exercise_records
+        SET record_date = ?, exercise_type = ?, exercises = ?, total_duration = ?, total_calorie = ?, remark = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `).run(record_date, exercise_type, JSON.stringify(exercises), totalDuration, totalCalorie, remark, id, userId);
+    });
     return res.json(success(null, '更新成功'));
   } else {
-    const insertId = db.prepare(`
-      INSERT INTO exercise_records (user_id, record_date, exercise_type, exercises, total_duration, total_calorie, remark, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(userId, record_date, exercise_type, JSON.stringify(exercises), totalDuration, totalCalorie, remark).lastInsertRowid;
-    return res.json(success({ id: insertId }, '添加成功'));
+    const result = withTransaction(() => {
+      // 同一天同名运动自动合并（时长/消耗累加），不产生多行重复记录
+      const { recordId } = exerciseMergeService.mergeOrInsertExercise(userId, record_date, exercise_type, exercises);
+      const rewardResult = rewardService.rewardForRecord(userId, 'record_exercise', recordId);
+      newbieTaskService.checkAction(userId, 'record_exercise');
+      achievementService.checkAll(userId);
+      return { id: recordId, reward_messages: rewardResult.reward_messages || [] };
+    });
+    return res.json(success(result, '添加成功'));
   }
 }
 
@@ -304,18 +431,58 @@ function saveBody(req, res) {
   const userId = req.userId;
   const { record_date, type, value, unit } = req.body;
 
-  const insertId = db.prepare(`
-    INSERT INTO body_records (user_id, record_date, type, value, unit, status)
-    VALUES (?, ?, ?, ?, ?, 1)
-  `).run(userId, record_date, type, value, unit || 'kg').lastInsertRowid;
-
-  // 如果是体重，更新当前体重
-  if (type === 'weight') {
-    db.prepare('UPDATE user_profiles SET current_weight = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
-      .run(value, userId);
+  if (!record_date) {
+    return res.status(400).json(error('缺少记录日期', 400));
+  }
+  if (!['weight', 'waist', 'hip', 'chest', 'thigh', 'arm', 'calf', 'body_fat'].includes(type)) {
+    return res.status(400).json(error('身体数据类型不合法', 400));
+  }
+  const numValue = parseFloat(value);
+  if (isNaN(numValue) || numValue <= 0) {
+    return res.status(400).json(error('请输入有效的数值', 400));
   }
 
-  return res.json(success({ id: insertId }, '记录成功'));
+  const result = withTransaction(() => {
+    // 同一天同类型去重：更新而非插入，避免重复奖励
+    const existing = db.prepare(`
+      SELECT id FROM body_records WHERE user_id = ? AND record_date = ? AND type = ? AND status = 1
+      ORDER BY created_at DESC LIMIT 1
+    `).get(userId, record_date, type);
+
+    if (existing) {
+      db.prepare(`
+        UPDATE body_records SET value = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `).run(numValue, unit || 'kg', existing.id);
+
+      if (type === 'weight') {
+        db.prepare('UPDATE user_profiles SET current_weight = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
+          .run(numValue, userId);
+        // 更新场景不再重复发放奖励，但检查体重目标是否达成
+        rewardReceiptService.checkWeightGoalReached(userId, numValue);
+        achievementService.checkAll(userId);
+      }
+      return { id: existing.id };
+    }
+
+    const insertId = db.prepare(`
+      INSERT INTO body_records (user_id, record_date, type, value, unit, status)
+      VALUES (?, ?, ?, ?, ?, 1)
+    `).run(userId, record_date, type, numValue, unit || 'kg').lastInsertRowid;
+
+    // 如果是体重，更新当前体重
+    let rewardMessages = [];
+    if (type === 'weight') {
+      db.prepare('UPDATE user_profiles SET current_weight = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
+        .run(numValue, userId);
+      const rewardResult = rewardService.handleWeightRecord(userId, insertId, numValue);
+      rewardMessages = rewardResult.reward_messages || [];
+      newbieTaskService.checkAction(userId, 'record_body');
+    }
+
+    achievementService.checkAll(userId);
+    return { id: insertId, reward_messages: rewardMessages };
+  });
+  return res.json(success(result, '记录成功'));
 }
 
 /**
@@ -356,23 +523,48 @@ function getHabits(req, res) {
 /**
  * 添加/编辑生活习惯记录
  */
+const VALID_HABIT_TYPES = ['water', 'sleep', 'defecation', 'mood'];
+
 function saveHabit(req, res) {
   const userId = req.userId;
   const { id, record_date, type, value, unit, remark } = req.body;
 
+  if (!record_date) {
+    return res.status(400).json(error('缺少记录日期', 400));
+  }
+  if (!VALID_HABIT_TYPES.includes(type)) {
+    return res.status(400).json(error('习惯类型不合法', 400));
+  }
+  const numValue = parseFloat(value);
+  if (isNaN(numValue)) {
+    return res.status(400).json(error('请输入有效的数值', 400));
+  }
+
   if (id) {
+    const waterMl = type === 'water' ? (parseInt(value) || 0) : 0;
     db.prepare(`
       UPDATE habit_records
-      SET record_date = ?, type = ?, value = ?, unit = ?, remark = ?, updated_at = CURRENT_TIMESTAMP
+      SET record_date = ?, type = ?, value = ?, unit = ?, remark = ?, water_ml = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
-    `).run(record_date, type, value, unit, remark, id, userId);
+    `).run(record_date, type, value, unit, remark, waterMl, id, userId);
     return res.json(success(null, '更新成功'));
   } else {
-    const insertId = db.prepare(`
-      INSERT INTO habit_records (user_id, record_date, type, value, unit, remark, status)
-      VALUES (?, ?, ?, ?, ?, ?, 1)
-    `).run(userId, record_date, type, value, unit || null, remark || null).lastInsertRowid;
-    return res.json(success({ id: insertId }, '添加成功'));
+    const result = withTransaction(() => {
+      const waterMl = type === 'water' ? (parseInt(value) || 0) : 0;
+      const insertId = db.prepare(`
+        INSERT INTO habit_records (user_id, record_date, type, value, unit, remark, water_ml, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      `).run(userId, record_date, type, value, unit || null, remark || null, waterMl).lastInsertRowid;
+      const action = getHabitAction(type);
+      const rewardResult = rewardService.rewardForRecord(userId, action, insertId, value);
+      newbieTaskService.checkAction(userId, action);
+      // habits also count toward the generic habit daily task
+      taskService.updateTaskProgress(userId, 'record_habit', 1);
+
+      achievementService.checkAll(userId);
+      return { id: insertId, reward_messages: rewardResult.reward_messages || [] };
+    });
+    return res.json(success(result, '添加成功'));
   }
 }
 
@@ -450,7 +642,7 @@ function getMilestoneData(req, res) {
   const exerciseMinutes = db.prepare(`
     SELECT 
       strftime('%Y-%W', record_date) as week,
-      SUM(duration) as total_minutes
+      SUM(total_duration) as total_minutes
     FROM exercise_records
     WHERE user_id = ? AND status = 1
     GROUP BY week
@@ -582,6 +774,48 @@ function getRecordDates(req, res) {
   return res.json(success({ dates: rows.map(r => r.date) }));
 }
 
+/**
+ * 获取今日轻断食状态
+ */
+function getFasting(req, res) {
+  const userId = req.userId;
+  const date = req.query.date || new Date().toISOString().split('T')[0];
+  const fasting = fastingService.getTodayFasting(userId, date);
+  return res.json(success({ fasting }));
+}
+
+/**
+ * 创建/操作轻断食计划
+ */
+function saveFasting(req, res) {
+  const userId = req.userId;
+  const { action, mode, target_hours, eating_window_start, eating_window_end, note } = req.body;
+
+  let result;
+  if (action === 'start') {
+    result = fastingService.startFasting(userId, req.body);
+  } else if (action === 'end') {
+    result = fastingService.endFasting(userId, req.body);
+  } else if (action === 'cancel') {
+    result = fastingService.cancelFasting(userId);
+  } else {
+    result = fastingService.planFasting(userId, { mode, target_hours, eating_window_start, eating_window_end, note });
+  }
+
+  if (result.error) return res.status(400).json(error(result.error));
+  achievementService.checkAll(userId);
+  return res.json(success(result));
+}
+
+/**
+ * 获取轻断食统计
+ */
+function getFastingStats(req, res) {
+  const userId = req.userId;
+  const stats = fastingService.getFastingStats(userId);
+  return res.json(success(stats));
+}
+
 module.exports = {
   getToday,
   getDiet,
@@ -596,6 +830,9 @@ module.exports = {
   getHabits,
   saveHabit,
   deleteHabit,
+  getFasting,
+  saveFasting,
+  getFastingStats,
   getRecordDates,
   getMilestoneData
 };

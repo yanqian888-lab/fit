@@ -41,6 +41,7 @@ export const cmsAppUserApi = {
   list: (params) => request.get('/cms/app-users', { params }),
   create: (data) => request.post('/cms/app-users', data),
   detail: (id) => request.get(`/cms/app-users/${id}`),
+  records: (id) => request.get(`/cms/app-users/${id}/records`),
   updateStatus: (id, status) => request.put(`/cms/app-users/${id}/status`, { status }),
   deleteUser: (id) => request.delete(`/cms/app-users/${id}`)
 }
@@ -108,7 +109,7 @@ export const cmsLogApi = {
 export const cmsTrialApi = {
   dashboard: () => request.get('/cms/trial/dashboard'),
   getConfig: () => request.get('/cms/trial/config'),
-  updateConfig: (data) => request.put('/cms/trial/config', data),
+  updateConfig: (data) => request.post('/cms/trial/config', data),
   auditMode: (appVersion) => request.post('/cms/trial/audit-mode', { app_version: appVersion }),
   listWhitelist: (params) => request.get('/cms/trial/whitelist', { params }),
   createWhitelist: (data) => request.post('/cms/trial/whitelist', data),
@@ -152,4 +153,120 @@ export const cmsPopupStatsApi = {
 export const cmsPopupGlobalApi = {
   get: () => request.get('/cms/popup-global'),
   update: (data) => request.put('/cms/popup-global', data)
+}
+
+export const cmsAnnouncementApi = {
+  list: (params) => request.get('/cms/announcements', { params }),
+  detail: (id) => request.get(`/cms/announcements/${id}`),
+  create: (data) => request.post('/cms/announcements', data),
+  update: (id, data) => request.put(`/cms/announcements/${id}`, data),
+  remove: (id) => request.delete(`/cms/announcements/${id}`),
+  batchStatus: (data) => request.post('/cms/announcements/batch-status', data),
+  batchDelete: (data) => request.post('/cms/announcements/batch-delete', data)
+}
+
+export const cmsNotificationChannelApi = {
+  list: () => request.get('/cms/notification-channels'),
+  update: (id, data) => request.put(`/cms/notification-channels/${id}`, data)
+}
+
+export const cmsOperationStatsApi = {
+  dashboard: (params) => request.get('/cms/operation-stats/dashboard', { params }),
+  announcements: (params) => request.get('/cms/operation-stats/announcements', { params }),
+  popups: (params) => request.get('/cms/operation-stats/popups', { params }),
+  templates: (params) => request.get('/cms/operation-stats/templates', { params })
+}
+
+// 陪伴系统 - 宠物配置
+export const cmsPetConfigApi = {
+  getGlobal: () => request.get('/cms/pet-config/global'),
+  updateGlobal: (data) => request.put('/cms/pet-config/global', data),
+  getSchedules: () => request.get('/cms/pet-config/schedules'),
+  updateSchedules: (data) => request.put('/cms/pet-config/schedules', data),
+  getSprite: () => request.get('/cms/pet-config/sprite'),
+  updateSprite: (data) => request.put('/cms/pet-config/sprite', data),
+  getScenes: () => request.get('/cms/pet-config/scenes'),
+  updateScenes: (data) => request.put('/cms/pet-config/scenes', data),
+  listSkins: (params) => request.get('/cms/pet-config/skins', { params }),
+  createSkin: (data) => request.post('/cms/pet-config/skins', data),
+  updateSkin: (id, data) => request.put(`/cms/pet-config/skins/${id}`, data),
+  removeSkin: (id) => request.delete(`/cms/pet-config/skins/${id}`),
+  listStates: (params) => request.get('/cms/pet-config/states', { params }),
+  createState: (data) => request.post('/cms/pet-config/states', data),
+  updateState: (id, data) => request.put(`/cms/pet-config/states/${id}`, data),
+  removeState: (id) => request.delete(`/cms/pet-config/states/${id}`),
+  listDialogues: (params) => request.get('/cms/pet-config/dialogues', { params }),
+  createDialogue: (data) => request.post('/cms/pet-config/dialogues', data),
+  updateDialogue: (id, data) => request.put(`/cms/pet-config/dialogues/${id}`, data),
+  removeDialogue: (id) => request.delete(`/cms/pet-config/dialogues/${id}`),
+  listExercises: (params) => request.get('/cms/pet-config/exercises', { params }),
+  createExercise: (data) => request.post('/cms/pet-config/exercises', data),
+  updateExercise: (id, data) => request.put(`/cms/pet-config/exercises/${id}`, data),
+  removeExercise: (id) => request.delete(`/cms/pet-config/exercises/${id}`)
+}
+
+// 陪伴系统 - 货币配置
+export const cmsCurrencyConfigApi = {
+  getRules: () => request.get('/cms/currency-config/rules'),
+  updateRules: (data) => request.put('/cms/currency-config/rules', data),
+  getAnalysisCost: () => request.get('/cms/currency-config/analysis-cost'),
+  updateAnalysisCost: (data) => request.put('/cms/currency-config/analysis-cost', data),
+  listTransactions: (params) => request.get('/cms/currency-config/transactions', { params }),
+  adjust: (data) => request.post('/cms/currency-config/adjust', data)
+}
+
+// 陪伴系统 - 商店配置
+export const cmsShopConfigApi = {
+  list: (params) => request.get('/cms/shop/items', { params }),
+  create: (data) => request.post('/cms/shop/items', data),
+  update: (id, data) => request.put(`/cms/shop/items/${id}`, data),
+  remove: (id) => request.delete(`/cms/shop/items/${id}`)
+}
+
+// 陪伴系统 - 事件配置
+export const cmsEventConfigApi = {
+  list: (params) => request.get('/cms/events', { params }),
+  getById: (id) => request.get(`/cms/events/${id}`),
+  create: (data) => request.post('/cms/events', data),
+  update: (id, data) => request.put(`/cms/events/${id}`, data),
+  remove: (id) => request.delete(`/cms/events/${id}`),
+  // 事件集 CRUD
+  getCollections: () => request.get('/cms/events/collections'),
+  createCollection: (data) => request.post('/cms/events/collections', data),
+  updateCollection: (id, data) => request.put(`/cms/events/collections/${id}`, data),
+  removeCollection: (id) => request.delete(`/cms/events/collections/${id}`),
+}
+
+// 陪伴系统 - 任务配置
+export const cmsTaskConfigApi = {
+  list: (params) => request.get('/cms/tasks', { params }),
+  create: (data) => request.post('/cms/tasks', data),
+  update: (id, data) => request.put(`/cms/tasks/${id}`, data),
+  remove: (id) => request.delete(`/cms/tasks/${id}`)
+}
+
+// 陪伴系统 - 成就配置
+export const cmsAchievementConfigApi = {
+  list: (params) => request.get('/cms/achievements', { params }),
+  create: (data) => request.post('/cms/achievements', data),
+  update: (id, data) => request.put(`/cms/achievements/${id}`, data),
+  remove: (id) => request.delete(`/cms/achievements/${id}`)
+}
+
+// 陪伴系统 - 对话配置
+export const cmsDialogueConfigApi = {
+  list: (params) => request.get('/cms/dialogues', { params }),
+  create: (data) => request.post('/cms/dialogues', data),
+  update: (id, data) => request.put(`/cms/dialogues/${id}`, data),
+  remove: (id) => request.delete(`/cms/dialogues/${id}`)
+}
+
+// 陪伴系统 - 陪你动课程库配置
+export const cmsWorkoutConfigApi = {
+  list: (params) => request.get('/cms/workouts', { params }),
+  detail: (id) => request.get(`/cms/workouts/${id}`),
+  create: (data) => request.post('/cms/workouts', data),
+  update: (id, data) => request.put(`/cms/workouts/${id}`, data),
+  toggleStatus: (id) => request.put(`/cms/workouts/${id}/status`),
+  remove: (id) => request.delete(`/cms/workouts/${id}`)
 }

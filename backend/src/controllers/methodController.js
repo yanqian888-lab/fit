@@ -3,6 +3,7 @@
  */
 const { db } = require('../db');
 const { success, error } = require('../utils/response');
+const { safeJsonParse } = require('../utils/safeJson');
 
 /**
  * 获取方法列表
@@ -11,7 +12,7 @@ function getMethods(req, res) {
   const userId = req.userId;
   const effectiveness = req.query.effectiveness !== undefined ? parseInt(req.query.effectiveness) : null;
   const page = parseInt(req.query.page) || 1;
-  const size = parseInt(req.query.size) || 20;
+  const size = Math.min(100, Math.max(1, parseInt(req.query.size) || 20));
   const offset = (page - 1) * size;
 
   let sql = 'SELECT * FROM user_methods WHERE user_id = ? AND status = 1';
@@ -29,7 +30,7 @@ function getMethods(req, res) {
 
   const list = db.prepare(sql).all(...params).map(item => ({
     ...item,
-    tags: item.tags ? JSON.parse(item.tags) : null
+    tags: safeJsonParse(item.tags, null)
   }));
 
   return res.json(success({ list, pagination: { page, size, total, has_more: total > page * size } }));

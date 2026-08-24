@@ -142,6 +142,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { recordApi, systemApi } from '../../api';
+import { showRewardToast } from '../../utils/rewardToast.js';
 import AppButton from '../../components/AppButton.vue';
 import AppEmpty from '../../components/AppEmpty.vue';
 import { getToday } from '../../utils/date';
@@ -383,7 +384,7 @@ async function submit() {
     const exercises = selectedExercises.value.map(e => ({
       name: e.name,
       duration: parseFloat(e.duration) || 30,
-      intensity: e.intensity,
+      intensity: e.intensity || 'moderate',
       calorie: parseFloat(e.calorie) || 0,
       distance: e.distance || null,
       sets: e.sets || null,
@@ -412,9 +413,16 @@ async function submit() {
     if (isEdit.value && pageQuery.value.id) {
       data.id = parseInt(pageQuery.value.id);
     }
-    await recordApi.saveExercise(data);
-    uni.showToast({ title: '保存成功', icon: 'success' });
-    setTimeout(() => uni.navigateBack(), 800);
+    const res = await recordApi.saveExercise(data);
+    showRewardToast(res.data?.reward_messages || [], '保存成功');
+    setTimeout(() => {
+      const pages = getCurrentPages();
+      if (pages.length > 1) {
+        uni.navigateBack();
+      } else {
+        uni.switchTab({ url: '/pages/record/index' });
+      }
+    }, 800);
   } catch (err) {
     console.error(err);
     uni.showToast({ title: '保存失败', icon: 'none' });
@@ -653,7 +661,7 @@ async function submit() {
   right: 0;
   bottom: 0;
   padding: 24rpx 32rpx calc(24rpx + env(safe-area-inset-bottom));
-  background: #F0F0F0;
+  background: #F7FbF4;
   z-index: 100;
 }
 

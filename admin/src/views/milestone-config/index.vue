@@ -3,9 +3,7 @@
     <div class="card">
       <div class="search-bar">
         <el-select v-model="query.type" placeholder="类型" clearable style="width:160px;">
-          <el-option label="减重" value="weight_loss" />
-          <el-option label="坚持天数" value="duration" />
-          <el-option label="累计打卡" value="checkin" />
+          <el-option v-for="(def, key) in typeDefs" :key="key" :label="def.label" :value="key" />
         </el-select>
         <el-button type="primary" @click="load">查询</el-button>
         <el-button @click="reset">重置</el-button>
@@ -16,7 +14,7 @@
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="type" label="类型" width="120">
           <template #default="{ row }">
-            {{ typeLabel[row.type] || row.type }}
+            {{ typeLabel(row.type) }}
           </template>
         </el-table-column>
         <el-table-column label="适用值" width="120">
@@ -44,18 +42,16 @@
       <el-form :model="form" label-width="80px">
         <el-form-item label="类型" required>
           <el-select v-model="form.type" style="width:100%;" :disabled="!!form.id" @change="onTypeChange">
-            <el-option label="减重" value="weight_loss" />
-            <el-option label="坚持天数" value="duration" />
-            <el-option label="累计打卡" value="checkin" />
+            <el-option v-for="(def, key) in typeDefs" :key="key" :label="def.label" :value="key" />
           </el-select>
         </el-form-item>
         <el-form-item label="适用值">
           <el-select v-model="form.value" style="width:100%;" clearable placeholder="通用（所有该类型里程碑）">
             <el-option label="通用（所有该类型里程碑）" :value="null" />
             <el-option
-              v-for="v in allowedValues[form.type] || []"
+              v-for="v in (typeDefs[form.type] || {}).values || []"
               :key="v"
-              :label="v + (form.type === 'weight_loss' ? 'kg' : '天')"
+              :label="valueLabel(form.type, v)"
               :value="v"
             />
           </el-select>
@@ -95,15 +91,19 @@ const loading = ref(false)
 const list = ref([])
 const query = ref({ type: '' })
 const dialogVisible = ref(false)
-const typeLabel = {
-  weight_loss: '减重',
-  duration: '坚持天数',
-  checkin: '累计打卡'
-}
-const allowedValues = {
-  weight_loss: [2.5, 5, 10, 15, 20, 30],
-  duration: [7, 30, 60, 100, 180, 365],
-  checkin: [7, 30, 60, 100]
+// 里程碑类型定义：中文名、单位、可选适用值（与后端 DEFAULT_TEMPLATES 对齐）
+const typeDefs = {
+  weight_loss: { label: '减重', unit: 'kg', values: [2.5, 5, 10, 15, 20, 30] },
+  duration: { label: '坚持天数', unit: '天', values: [7, 30, 60, 100, 180, 365] },
+  checkin: { label: '累计打卡', unit: '天', values: [7, 30, 60, 100] },
+  chat: { label: '对话轮数', unit: '轮', values: [10, 100, 300, 500, 1000, 1500] },
+  exercise_count: { label: '运动次数', unit: '次', values: [10, 30, 50, 100, 200] },
+  exercise_duration: { label: '运动时长', unit: '分钟', values: [300, 600, 1200, 2400, 3600] },
+  exercise_calorie: { label: '运动消耗', unit: '千卡', values: [3000, 6000, 12000, 24000, 36000] },
+  diet_days: { label: '饮食记录', unit: '天', values: [7, 14, 30, 60, 100] },
+  weight_goal: { label: '目标体重', unit: '', values: [1] },
+  event_collection: { label: '事件收集', unit: '个', values: [200, 300] },
+  recipe_collection: { label: '食谱收集', unit: '个', values: [50, 100, 150, 200] }
 }
 const defaultForm = {
   type: 'weight_loss',
@@ -123,10 +123,21 @@ onMounted(() => {
   load()
 })
 
+function typeLabel(key) {
+  return (typeDefs[key] || {}).label || key
+}
+
+function valueLabel(type, v) {
+  if (type === 'weight_goal') return '达成目标体重'
+  const unit = (typeDefs[type] || {}).unit || ''
+  return `${v}${unit}`
+}
+
 function formatValue(row) {
   if (row.value === null || row.value === undefined || row.value === '') return '通用'
-  const unit = row.type === 'weight_loss' ? 'kg' : '天'
-  return row.value + unit
+  // 防御：非数值的脏数据不拼接单位，直接原样展示
+  if (typeof row.value !== 'number' && isNaN(Number(row.value))) return String(row.value)
+  return valueLabel(row.type, row.value)
 }
 
 function onTypeChange() {

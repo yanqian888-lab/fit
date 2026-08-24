@@ -38,18 +38,33 @@
         </view>
       </view>
     </scroll-view>
+
+    <!-- 退出登录确认弹框 -->
+    <AppModal
+      v-model:visible="showLogoutModal"
+      icon="none"
+      title="确认退出"
+      text="确定要退出登录吗？"
+      confirmText="确认"
+      cancelText="取消"
+      @confirm="confirmLogout"
+    />
   </AppPage>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue';
 import AppPage from '../../components/AppPage.vue';
+import AppModal from '../../components/AppModal.vue';
 import { useUserStore } from '../../store';
 import popupManager from '../../utils/popupManager';
 import { goBack } from '../../utils/navigate';
 
 const userStore = useUserStore();
 const userInfo = computed(() => userStore.userInfo);
+
+// 退出登录确认弹框
+const showLogoutModal = ref(false);
 
 const statusBarHeight = ref(44);
 try {
@@ -67,17 +82,17 @@ function goToDeleteAccount() {
 }
 
 function logout() {
-  uni.showModal({
-    title: '确认退出',
-    content: '确定要退出登录吗？',
-    success: (res) => {
-      if (res.confirm) {
-        userStore.logout();
-        popupManager.clearCache();
-        uni.reLaunch({ url: '/pages/login/index' });
-      }
-    }
-  });
+  showLogoutModal.value = true;
+}
+
+/**
+ * 确认执行退出登录
+ */
+function confirmLogout() {
+  showLogoutModal.value = false;
+  userStore.logout();
+  popupManager.clearCache();
+  uni.reLaunch({ url: '/pages/login/index' });
 }
 </script>
 

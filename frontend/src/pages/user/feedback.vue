@@ -31,14 +31,11 @@
         <text class="card-title">反馈内容</text>
         <textarea v-model="form.content" :placeholder="activeTab === 'report' ? '请描述你要举报的 AI 内容问题...' : '请描述你遇到的问题或建议...'" :maxlength="500" />
 
-        <text class="card-title">图片（选填，最多5张）</text>
-        <view class="image-list">
+        <!-- 提审阶段先隐藏上传截图（相机/相册读取权限暂不声明） -->
+        <view class="image-list hidden-permission">
           <view v-for="(img, idx) in form.images" :key="img" class="image-item" @click="previewImage(idx)">
             <image :src="fullImageUrl(img)" mode="aspectFill" />
             <view class="image-delete" @click.stop="removeImage(idx)">×</view>
-          </view>
-          <view v-if="form.images.length < 5" class="image-add" @click="chooseImage">
-            <text class="add-icon">+</text>
           </view>
         </view>
 
@@ -171,7 +168,13 @@ function fullImageUrl(url) {
   return url.startsWith('http') ? url : `${serverUrl}${url}`;
 }
 
+/**
+ * 反馈上传图片：提审阶段相机/相册读取权限暂不声明，入口已隐藏
+ * 后续开放时恢复下面的 uni.chooseImage 调用（原 chooseImage 函数体保留在注释里）
+ */
 function chooseImage() {
+  uni.showToast({ title: '该功能暂未开放', icon: 'none' });
+  /*
   const remain = 5 - form.value.images.length;
   if (remain <= 0) {
     uni.showToast({ title: '最多上传5张图片', icon: 'none' });
@@ -198,6 +201,7 @@ function chooseImage() {
       }
     }
   });
+  */
 }
 
 function removeImage(index) {

@@ -13,9 +13,22 @@
       </div>
       <el-table :data="list" v-loading="loading" border empty-text="暂无内容">
         <el-table-column prop="user_id" label="用户ID" width="110" />
-        <el-table-column prop="username" label="账号" width="110" />
-        <el-table-column prop="nickname" label="昵称" />
-        <el-table-column prop="phone" label="手机号" width="130" />
+        <el-table-column prop="username" label="账号" width="110">
+          <template #default="{ row }">
+            {{ row.username || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="nickname" label="昵称" width="120" />
+        <el-table-column prop="openid" label="OpenID" width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.openid || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="phone" label="手机号" width="130">
+          <template #default="{ row }">
+            {{ row.phone || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="gender_text" label="性别" width="80" />
         <el-table-column prop="age" label="年龄" width="80" />
         <el-table-column prop="height" label="身高(cm)" width="100" />
@@ -24,7 +37,13 @@
         <el-table-column prop="bmi" label="BMI" width="90" />
         <el-table-column prop="partner_name" label="搭子名称" width="120" />
         <el-table-column prop="mode_text" label="搭子模式" width="90" />
-        <el-table-column prop="source_text" label="来源" width="100" />
+        <el-table-column prop="source_text" label="注册方式" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.source === 'wechat' ? 'success' : row.source === 'cms' ? 'warning' : 'info'">
+              {{ row.source_text }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="created_at" label="注册时间" width="160" />
         <el-table-column prop="last_login_at" label="最近登录" width="160" />
         <el-table-column prop="status" label="状态" width="90">
@@ -32,8 +51,9 @@
             <el-tag :type="row.status ? 'success' : 'danger'">{{ row.status ? '正常' : '禁用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180">
+        <el-table-column label="操作" width="220">
           <template #default="{ row }">
+            <el-button link type="primary" @click="$router.push(`/app-users/${row.id}`)">详情</el-button>
             <el-button link :type="row.status ? 'danger' : 'success'" @click="toggleStatus(row)" v-perm="'app_user:write'">
               {{ row.status ? '禁用' : '启用' }}
             </el-button>
@@ -57,7 +77,7 @@
           <el-input v-model="createForm.phone" maxlength="11" placeholder="11位手机号" />
         </el-form-item>
         <el-form-item label="昵称">
-          <el-input v-model="createForm.nickname" placeholder="选填，默认“减肥搭子用户”" />
+          <el-input v-model="createForm.nickname" placeholder="选填，默认“掉秤搭搭用户”" />
         </el-form-item>
       </el-form>
       <template #footer>

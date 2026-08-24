@@ -22,6 +22,18 @@
       <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" />
     </view>
 
+    <view class="category-tabs">
+      <view
+        v-for="tab in tabs"
+        :key="tab.value"
+        class="tab-item"
+        :class="{ active: activeTab === tab.value }"
+        @click="activeTab = tab.value"
+      >
+        <text>{{ tab.label }}</text>
+      </view>
+    </view>
+
     <scroll-view class="list-scroll" scroll-y>
       <view class="list-content">
         <view v-if="displayList.length > 0" class="recipes-list">
@@ -31,8 +43,9 @@
               <image :src="item.extracted_data.image" mode="aspectFill" />
             </view>
             <view class="recipe-main">
-              <text class="recipe-title">{{ item.sub_type || '健康食谱' }}</text>
+              <text class="recipe-title">{{ item.title || '健康食谱' }}</text>
               <text class="recipe-desc">{{ item.content }}</text>
+              <text v-if="recipeTotalsText(item)" class="recipe-totals">{{ recipeTotalsText(item) }}</text>
               <text v-if="item.tags" class="recipe-tags">{{ formatTags(item.tags) }}</text>
             </view>
           </view>
@@ -52,6 +65,18 @@
 
     <view v-if="list.length === 0" class="empty-action-btn" @click="addRecipe">添加食谱</view>
     <view v-else class="add-recipe-btn" @click="addRecipe">添加食谱</view>
+
+    <!-- 删除确认弹框 -->
+    <AppModal
+      v-model:visible="showDeleteModal"
+      icon="none"
+      title="确认删除"
+      text="删除后无法恢复哦"
+      confirmText="删除"
+      confirmDanger
+      cancelText="取消"
+      @confirm="confirmDelete"
+    />
   </view>
 </template>
 
@@ -63,8 +88,13 @@ import { formatDate } from '../../utils/date';
 import { goBack as navigateBack } from '../../utils/navigate';
 import AppEmpty from '../../components/AppEmpty.vue';
 import AppLoadMore from '../../components/AppLoadMore.vue';
+import AppModal from '../../components/AppModal.vue';
 
 const statusBarHeight = ref(44);
+
+// 删除确认弹框状态
+const showDeleteModal = ref(false);
+let pendingDeleteItem = null;
 
 function goBack() {
   navigateBack('/pages/museum/index');
@@ -75,11 +105,23 @@ const page = ref(1);
 const hasMore = ref(true);
 const keyword = ref('');
 
+const activeTab = ref('all');
+const tabs = [
+  { label: '全部', value: 'all' },
+  { label: '搭搭食谱', value: 'dada_recipe' },
+  { label: '聊聊食谱', value: 'precipitation_recipe' },
+  { label: '自定义食谱', value: 'custom_recipe' }
+];
+
 const displayList = computed(() => {
-  if (!keyword.value.trim()) return list.value;
+  let filtered = list.value;
+  if (activeTab.value !== 'all') {
+    filtered = filtered.filter(item => item.sub_type === activeTab.value);
+  }
+  if (!keyword.value.trim()) return filtered;
   const k = keyword.value.trim().toLowerCase();
-  return list.value.filter(item => {
-    const title = (item.sub_type || '').toLowerCase();
+  return filtered.filter(item => {
+    const title = (item.title || item.sub_type || '').toLowerCase();
     return title.includes(k);
   });
 });
@@ -89,6 +131,15 @@ const emptySubtitle = computed(() => keyword.value.trim() ? '换个关键词试�
 
 function formatTags(tags) {
   return Array.isArray(tags) ? tags.join(' · ') : tags;
+}
+
+// 食谱总克数/总热量展示文案（有数据才显示）
+function recipeTotalsText(item) {
+  const d = item.extracted_data || {};
+  const parts = [];
+  if (d.total_weight > 0) parts.push(`约 ${d.total_weight}g`);
+  if (d.total_calorie > 0) parts.push(`约 ${d.total_calorie} 千卡`);
+  return parts.join(' · ');
 }
 
 function goDetail(id) {
@@ -104,21 +155,25 @@ function editItem(item) {
 }
 
 function deleteItem(item) {
-  uni.showModal({
-    title: '确认删除',
-    content: '删除后无法恢复哦',
-    confirmColor: '#E57373',
-    success: async (res) => {
-      if (!res.confirm) return;
-      try {
-        await museumApi.deleteItem(item.id);
-        uni.showToast({ title: '已删除', icon: 'success' });
-        load();
-      } catch (err) {
-        uni.showToast({ title: '删除失败', icon: 'none' });
-      }
-    }
-  });
+  pendingDeleteItem = item;
+  showDeleteModal.value = true;
+}
+
+/**
+ * 确认删除食谱
+ */
+async function confirmDelete() {
+  showDeleteModal.value = false;
+  const item = pendingDeleteItem;
+  pendingDeleteItem = null;
+  if (!item) return;
+  try {
+    await museumApi.deleteItem(item.id);
+    uni.showToast({ title: '已删除', icon: 'success' });
+    load();
+  } catch (err) {
+    uni.showToast({ title: '删除失败', icon: 'none' });
+  }
 }
 
 async function load(more = false) {
@@ -251,6 +306,31 @@ onReachBottom(() => {
   height: 40rpx;
 }
 
+.category-tabs {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 0 48rpx 24rpx;
+  position: relative;
+  z-index: 1;
+}
+
+.tab-item {
+  padding: 12rpx 24rpx;
+  border-radius: 32rpx;
+  background: #FFFFFF;
+  font-size: 26rpx;
+  color: #666666;
+  border: 2rpx solid #E5E7EB;
+}
+
+.tab-item.active {
+  background: #DDF3D2;
+  color: #563E22;
+  border-color: #8DBB77;
+  font-weight: 600;
+}
+
 .list-scroll {
   position: relative;
   z-index: 1;
@@ -328,6 +408,13 @@ onReachBottom(() => {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.recipe-totals {
+  font-size: $text-xs;
+  color: #E8A65C;
+  font-weight: 600;
+  margin-top: 8rpx;
 }
 
 .recipe-tags {

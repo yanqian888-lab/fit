@@ -26,6 +26,127 @@ function parseChinaTime(str) {
   return new Date(s.replace(' ', 'T') + '+08:00').getTime();
 }
 
+function getIdentifier(userId, deviceId) {
+  if (userId) {
+    return { identifier: `u${userId}`, identifier_type: 'user' };
+  }
+  if (deviceId) {
+    return { identifier: deviceId, identifier_type: 'device' };
+  }
+  return null;
+}
+
+function getStat(popupId, identifier, identifierType) {
+  return db.prepare(`
+    SELECT * FROM popup_user_stats
+    WHERE popup_id = ? AND identifier = ? AND identifier_type = ?
+  `).get(popupId, identifier, identifierType);
+}
+
+function getPeriodShowCount(popupId, identifier, identifierType, period) {
+  if (period === 'forever') {
+    const stat = getStat(popupId, identifier, identifierType);
+    return stat ? stat.show_count : 0;
+  }
+
+  let timeFilter;
+  if (period === 'day') {
+    timeFilter = `date(event_time, '+8 hours') = date('now', '+8 hours')`;
+  } else if (period === 'week') {
+    timeFilter = `datetime(event_time, '+8 hours') >= datetime('now', '+8 hours', '-7 days')`;
+  } else {
+    return 0;
+  }
+
+  // popup_events 表没有 identifier 列，按 identifier_type 分别查询 user_id 或 device_id
+  let sql;
+  let param;
+  if (identifierType === 'user') {
+    const userId = String(identifier).replace(/^u/, '');
+    sql = `
+      SELECT COUNT(*) as count FROM popup_events
+      WHERE popup_id = ? AND user_id = ? AND event_type = 'show' AND ${timeFilter}
+    `;
+    param = userId;
+  } else {
+    sql = `
+      SELECT COUNT(*) as count FROM popup_events
+      WHERE popup_id = ? AND device_id = ? AND event_type = 'show' AND ${timeFilter}
+    `;
+    param = identifier;
+  }
+  const row = db.prepare(sql).get(popupId, param);
+  return row ? row.count : 0;
+}
+
+function filterByFrequency(popups, identifier, identifierType) {
+  if (!identifier) return popups;
+  return popups.filter(p => {
+    if (p.one_time) {
+      const stat = getStat(p.id, identifier, identifierType);
+      if (stat && stat.show_count > 0) return false;
+    }
+    if (p.frequency_max > 0) {
+      const count = getPeriodShowCount(p.id, identifier, identifierType, p.frequency_period || 'day');
+      if (count >= p.frequency_max) return false;
+    }
+    return true;
+  });
+}
+
+function upsertStat(popupId, identifier, identifierType, eventType) {
+  if (!identifier || !identifierType) return;
+  const now = getNow();
+  const stat = getStat(popupId, identifier, identifierType);
+  if (stat) {
+    const updates = [];
+    const params = [];
+    if (eventType === 'show') {
+      updates.push('show_count = show_count + 1');
+      updates.push('last_show_at = ?');
+      params.push(now);
+      if (!stat.first_show_at) {
+        updates.push('first_show_at = ?');
+        params.push(now);
+      }
+    } else if (eventType === 'click') {
+      updates.push('click_count = click_count + 1');
+      updates.push('last_click_at = ?');
+      params.push(now);
+    } else if (eventType === 'close') {
+      updates.push('close_count = close_count + 1');
+      updates.push('last_close_at = ?');
+      params.push(now);
+    }
+    if (updates.length === 0) return;
+    params.push(now, stat.id);
+    db.prepare(`UPDATE popup_user_stats SET ${updates.join(', ')}, updated_at = ? WHERE id = ?`).run(...params);
+  } else {
+    const insert = db.prepare(`
+      INSERT INTO popup_user_stats (popup_id, identifier, identifier_type, show_count, click_count, close_count,
+        first_show_at, last_show_at, last_click_at, last_close_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const showCount = eventType === 'show' ? 1 : 0;
+    const clickCount = eventType === 'click' ? 1 : 0;
+    const closeCount = eventType === 'close' ? 1 : 0;
+    insert.run(
+      popupId,
+      identifier,
+      identifierType,
+      showCount,
+      clickCount,
+      closeCount,
+      eventType === 'show' ? now : null,
+      eventType === 'show' ? now : null,
+      eventType === 'click' ? now : null,
+      eventType === 'close' ? now : null,
+      now,
+      now
+    );
+  }
+}
+
 // 语义化版本号比较
 function compareVersion(a, b) {
   const pa = String(a).split('.').map(Number);
@@ -155,6 +276,10 @@ function getConfigList(req, res) {
     popups.push(item);
   }
 
+  // 服务端频次过滤（按用户/设备）
+  const { identifier, identifier_type } = getIdentifier(userId, device_id) || {};
+  const filteredPopups = filterByFrequency(popups, identifier, identifier_type);
+
   // 下发启用状态的白名单域名，供客户端二次校验
   const whitelist = db.prepare(`SELECT domain FROM h5_whitelist WHERE status = 'enabled' ORDER BY id DESC`).all().map(r => r.domain);
 
@@ -164,7 +289,7 @@ function getConfigList(req, res) {
       daily_limit: dailyLimit,
       block_pages: ['pages/pay/index', 'pages/pay/checkout', 'pages/user/realname', 'pages/user/privacy']
     },
-    popups,
+    popups: filteredPopups,
     whitelist
   }));
 }
@@ -189,6 +314,7 @@ function reportEvents(req, res) {
   const validCloseWays = ['close_btn', 'mask', 'back', 'swipe'];
   const now = getNow();
   const date = now.slice(0, 10);
+  const { identifier, identifier_type } = getIdentifier(userId, device_id) || {};
 
   const insertEvent = db.prepare(`
     INSERT INTO popup_events
@@ -196,7 +322,7 @@ function reportEvents(req, res) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  const upsertStat = db.prepare(`
+  const initDailyStatStmt = db.prepare(`
     INSERT INTO popup_daily_stats
       (date, popup_id, shows, clicks, closes, close_btn, mask, back, swipe, updated_at)
     VALUES (?, ?, 0, 0, 0, 0, 0, 0, 0, ?)
@@ -224,7 +350,7 @@ function reportEvents(req, res) {
         now
       );
 
-      upsertStat.run(date, popupId, now);
+      initDailyStatStmt.run(date, popupId, now);
 
       const field = type === 'show' ? 'shows' : type === 'click' ? 'clicks' : 'closes';
       db.prepare(`UPDATE popup_daily_stats SET ${field} = ${field} + 1, updated_at = ? WHERE date = ? AND popup_id = ?`)
@@ -242,6 +368,8 @@ function reportEvents(req, res) {
             .run(now, date, popupId);
         }
       }
+
+      upsertStat(popupId, identifier, identifier_type, type);
     }
   });
 

@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const config = require('../config');
 const { db } = require('../db');
 const { success, error } = require('../utils/response');
+const { safeJsonParse } = require('../utils/safeJson');
 
 function generateCmsToken(user, permissions) {
   return jwt.sign(
@@ -18,11 +19,7 @@ function generateCmsToken(user, permissions) {
 function getRolePermissions(roleId) {
   const role = db.prepare('SELECT permissions FROM cms_roles WHERE id = ?').get(roleId);
   if (!role) return [];
-  try {
-    return JSON.parse(role.permissions || '[]');
-  } catch (e) {
-    return [];
-  }
+  return safeJsonParse(role.permissions, [])
 }
 
 function login(req, res) {

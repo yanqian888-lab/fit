@@ -75,3 +75,9 @@ backend/public/uploads/*
 
 # Local dev database at project root
 data/
+
+# 本地调试/审计临时文件（含 token，不入库）
+tmp/
+
+# 含真实密钥，不入库（参考 .env.example）
+backend/.env.development

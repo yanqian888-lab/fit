@@ -108,17 +108,7 @@
 
           <view v-else class="empty-state">
             <view class="empty-icon">
-              <svg viewBox="0 0 66 66" class="empty-svg">
-                <rect x="12" y="18" width="34" height="42" rx="3" fill="#F6F6F6"/>
-                <rect x="17" y="23" width="24" height="4" rx="2" fill="#D5D5D5"/>
-                <rect x="17" y="31" width="18" height="4" rx="2" fill="#D5D5D5"/>
-                <rect x="17" y="39" width="22" height="4" rx="2" fill="#D5D5D5"/>
-                <circle cx="48" cy="46" r="10" fill="#F6F6F6" stroke="#D5D5D5" stroke-width="2"/>
-                <line x1="44" y1="46" x2="52" y2="46" stroke="#D5D5D5" stroke-width="2" stroke-linecap="round"/>
-                <line x1="48" y1="42" x2="48" y2="50" stroke="#D5D5D5" stroke-width="2" stroke-linecap="round"/>
-                <circle cx="56" cy="28" r="4" fill="#D5D5D5"/>
-                <circle cx="8" cy="50" r="2" fill="#F6F6F6"/>
-              </svg>
+              <image class="empty-svg" src="/static/image/icon/empty_dish.svg" mode="aspectFit" />
             </view>
             <text class="empty-text">暂无记录</text>
           </view>
@@ -160,6 +150,18 @@
         <text>添加饮食</text>
       </view>
     </view>
+
+    <!-- 删除食物确认弹框 -->
+    <AppModal
+      v-model:visible="showDeleteModal"
+      icon="none"
+      title="提示"
+      text="确定删除这条记录吗？"
+      confirmText="删除"
+      confirmDanger
+      cancelText="取消"
+      @confirm="confirmDeleteFood"
+    />
   </view>
 </template>
 
@@ -170,8 +172,13 @@ import { recordApi } from '../../api';
 import { MEAL_OPTIONS, isDescriptiveUnit } from '../../utils/constants';
 import { getToday, formatDate } from '../../utils/date';
 import { goBack as navigateBack } from '../../utils/navigate';
+import AppModal from '../../components/AppModal.vue';
 
 const statusBarHeight = ref(44);
+
+// 删除食物确认弹框
+const showDeleteModal = ref(false);
+let pendingDeleteFood = null;
 
 // 日期相关
 const today = getToday();
@@ -460,48 +467,54 @@ async function confirmEdit() {
 }
 
 function deleteFood(meal, food) {
-  uni.showModal({
-    title: '提示',
-    content: '确定删除这条记录吗？',
-    success: async (res) => {
-      if (res.confirm && food.recordId !== undefined) {
-        try {
-          const record = (dietData.value.meals[meal] || []).find(item => item.id === food.recordId);
-          if (!record) {
-            uni.showToast({ title: '记录不存在', icon: 'none' });
-            return;
-          }
+  pendingDeleteFood = { meal, food };
+  showDeleteModal.value = true;
+}
 
-          const index = typeof food.foodIndex === 'number' ? food.foodIndex : -1;
-          const newFoods = [...record.foods];
-          if (index >= 0 && index < newFoods.length) {
-            newFoods.splice(index, 1);
-          } else {
-            uni.showToast({ title: '食物不存在', icon: 'none' });
-            return;
-          }
-
-          if (newFoods.length === 0) {
-            await recordApi.deleteDiet(food.recordId);
-          } else {
-            await recordApi.saveDiet({
-              id: record.id,
-              record_date: selectedDate.value,
-              meal_time: record.meal_time,
-              foods: newFoods
-            });
-          }
-
-          uni.showToast({ title: '删除成功', icon: 'success' });
-          load();
-          loadRecordDates();
-        } catch (err) {
-          console.error(err);
-          uni.showToast({ title: '删除失败', icon: 'none' });
-        }
-      }
+/**
+ * 确认删除食物记录
+ */
+async function confirmDeleteFood() {
+  showDeleteModal.value = false;
+  const ctx = pendingDeleteFood;
+  pendingDeleteFood = null;
+  if (!ctx) return;
+  const { meal, food } = ctx;
+  if (food.recordId === undefined) return;
+  try {
+    const record = (dietData.value.meals[meal] || []).find(item => item.id === food.recordId);
+    if (!record) {
+      uni.showToast({ title: '记录不存在', icon: 'none' });
+      return;
     }
-  });
+
+    const index = typeof food.foodIndex === 'number' ? food.foodIndex : -1;
+    const newFoods = [...record.foods];
+    if (index >= 0 && index < newFoods.length) {
+      newFoods.splice(index, 1);
+    } else {
+      uni.showToast({ title: '食物不存在', icon: 'none' });
+      return;
+    }
+
+    if (newFoods.length === 0) {
+      await recordApi.deleteDiet(food.recordId);
+    } else {
+      await recordApi.saveDiet({
+        id: record.id,
+        record_date: selectedDate.value,
+        meal_time: record.meal_time,
+        foods: newFoods
+      });
+    }
+
+    uni.showToast({ title: '删除成功', icon: 'success' });
+    load();
+    loadRecordDates();
+  } catch (err) {
+    console.error(err);
+    uni.showToast({ title: '删除失败', icon: 'none' });
+  }
 }
 
 onMounted(() => {

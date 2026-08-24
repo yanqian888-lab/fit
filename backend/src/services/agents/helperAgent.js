@@ -1,13 +1,16 @@
 /**
  * 全能助手 Agent（理性层 + 执行层）
  * 职责：身体指标计算、营养评估、运动方案、专业问题解答
- * 模型：豆包 doubao-seed-2.0-lite（备用：fit-Backup）
+ * 模型：腾讯混元 Hy3（备用：fit-Backup）
  */
 const { db } = require('../../db');
 const { callWithPrompt } = require('../aiClient');
 const promptService = require('../promptService');
+const petService = require('../petService');
 const webSearchService = require('../webSearchService');
 const nutritionService = require('../nutritionService');
+const { safeJsonParse } = require('../../utils/safeJson');
+const { getChinaDateStr } = require('../../utils/chinaTime');
 
 /**
  * 调用全能助手 Agent
@@ -81,7 +84,17 @@ async function callHelperAgent(question, userInfo = {}, partnerInfo = {}) {
             if ((f.carb || 0) > 0) macros.push(`碳水${Math.round(f.carb)}g`);
             if ((f.fat || 0) > 0) macros.push(`脂肪${Math.round(f.fat)}g`);
             const macroStr = macros.length > 0 ? `（${macros.join(' / ')}）` : '';
-            return `- ${f.name} ${f.weight || ''}${f.unit || 'g'}：约${Math.round(f.calorie || 0)}千卡${macroStr}`;
+            // weight 字段固定是克数，unit 属于 quantity（如 1袋）；拼接时必须分开，避免把 100g 误读成 100袋
+            const weightNum = parseFloat(f.weight) || 0;
+            const qtyNum = parseFloat(f.quantity) || 0;
+            const unitStr = f.unit || '';
+            let amount = '';
+            if (qtyNum > 0 && unitStr && unitStr !== 'g' && unitStr !== '克') {
+              amount = weightNum > 0 ? `${qtyNum}${unitStr}（${weightNum}g）` : `${qtyNum}${unitStr}`;
+            } else if (weightNum > 0) {
+              amount = `${weightNum}g`;
+            }
+            return `- ${f.name}${amount ? ' ' + amount : ''}：约${Math.round(f.calorie || 0)}千卡${macroStr}`;
           }).join('\n')
         : '今日暂无食物记录。';
       const hasMacros = (todayNutrition.protein || 0) > 0 || (todayNutrition.carb || 0) > 0 || (todayNutrition.fat || 0) > 0;
@@ -126,7 +139,12 @@ ${lowIntakeWarningRule}
 今天已记录的食物明细（食物名后面的 g/个 是该食物的重量/数量，冒号后是热量）：
 ${foodList}
 ${webSearchBlock}
-请基于以上实际记录数据回答。注意：总摄入热量的单位是千卡，不是克数，不要把总热量数字错当成某种食物的重量。不要自行估算食物热量，也不要把用户说的重量（如"100克"）直接当成热量。单个食物的热量必须与上方明细中的数值一致，禁止把今日总摄入 ${Math.round(todayNutrition.intake)} 千卡错填成某个食物的热量。如果用户提到的食物已在上方记录中，可直接引用记录里的热量；如果不在记录中但上方附有【网络检索参考】，可基于检索参考给出估算热量（需区分有糖/无糖，并说明是估算）；如果不在记录中且没有检索参考，只给出营养成分/减脂建议等专业结论，不要给出具体热量数字。`;
+请基于以上实际记录数据回答，并严格遵守以下规则：
+1. 总摄入热量的单位是千卡，不是克数，不要把总热量数字错当成某种食物的重量；也不要把用户说的重量（如"100克"）直接当成热量。
+2. 如果用户提到的食物已在上方记录中，必须直接引用记录里的热量，禁止自行改数。
+3. 如果不在记录中但上方附有【网络检索参考】，可基于检索参考给出估算热量（需区分有糖/无糖，并明确说明是估算）。
+4. 如果不在记录中且没有检索参考，必须基于你的营养学知识和公开营养资料给出合理估算，明确标注"估算值"及简要依据；禁止回答"不知道""无法给出""无权威数据""无法估算"。
+5. 同一条回复中严禁前后矛盾：禁止先说"无数据/无法估算"紧接着又给出具体热量数字。要么只给建议不给出数字，要么给出估算并明确标注估算。`;
     }
   }
 
@@ -157,7 +175,8 @@ ${exerciseList}
   if (needsBodyContext && userId) {
     try {
       const bodyContext = getRecentBodyContext(userId, 7);
-      enhancedQuestion = `${question}\n\n${bodyContext}`;
+      // 基于已拼好的饮食/运动上下文追加，不能覆盖丢弃
+      enhancedQuestion = `${enhancedQuestion}\n\n${bodyContext}`;
     } catch (e) {
       console.error('获取近期身体数据失败:', e.message);
     }
@@ -170,9 +189,15 @@ ${exerciseList}
   };
   const partnerMode = modeMap[partnerInfo.mode] || '温柔鼓励型';
 
+  const pet = userId ? petService.getPet(userId) : null;
+  const petPersona = pet
+    ? `你同时以宠物形象出现在用户的小窝里，宠物名叫${pet.name || '搭搭'}，是一只${pet.species === 'red_panda' ? '小熊猫' : (pet.species || '小熊猫')}。你和小窝里的宠物是同一只搭搭，专业回复中同样以"我"自称，禁止把它说成另一个角色。`
+    : '你同时以宠物形象出现在用户的小窝里，是一只陪伴用户减肥的小熊猫。你和小窝里的宠物是同一只搭搭，专业回复中同样以"我"自称，禁止把它说成另一个角色。';
+
   const systemPrompt = promptService.getPrompt('helper_agent', {
     user_info: userInfoStr,
-    partner_mode: partnerMode
+    partner_mode: partnerMode,
+    pet_persona: petPersona
   });
 
   try {
@@ -184,7 +209,7 @@ ${exerciseList}
           { role: 'system', content: systemPrompt },
           {
             role: 'system',
-            content: '补充规则：1）当用户询问的饮品/食品不在今日记录和食物库中时，你可以使用用户消息中附带的【网络检索参考】数据给出估算热量，并区分有糖/无糖版本；如果没有附带检索参考，仍禁止编造具体热量，只给出营养成分/减脂建议等专业结论。2）APP 目前没有睡眠、盐分摄入、水肿记录功能，回答中不要建议用户记录或分析睡眠、盐分、水肿相关内容。3）当前用户信息中已提供 BMR、TDEE、每日热量目标等数据时，请直接基于这些数据进行分析和建议，不要再要求用户补充性别、年龄、活动水平等基础信息。'
+            content: '补充规则：1）当用户询问的饮品/食品不在今日记录和食物库中时，优先使用用户消息中附带的【网络检索参考】数据给出估算热量，并区分有糖/无糖版本；如果没有附带检索参考，必须基于你的营养学知识和公开营养资料给出合理估算，明确标注"估算值"，禁止回答"不知道""无法给出""无数据"。2）同一条回复中严禁前后矛盾：禁止先说"无数据/无法估算"紧接着又给出具体热量数字；要么只给建议不给出数字，要么给出估算并明确标注估算。3）APP 目前没有睡眠、盐分摄入、水肿记录功能，回答中不要建议用户记录或分析睡眠、盐分、水肿相关内容。4）当前用户信息中已提供 BMR、TDEE、每日热量目标等数据时，请直接基于这些数据进行分析和建议，不要再要求用户补充性别、年龄、活动水平等基础信息。'
           },
           { role: 'user', content: enhancedQuestion }
         ],
@@ -231,7 +256,7 @@ function stripThinkingTags(content) {
     // 标准 think/thinking 标签对
     .replace(/<think(?:ing)?[^>]*>[\s\S]*?<\/think(?:ing)?[^>]*>/gi, '');
 
-  // 豆包 Seed 等模型可能只输出 </think_xxx> 结束标记，取标记之后的内容
+  // 混元等模型可能只输出 </think_xxx> 结束标记，取标记之后的内容
   const thinkEndMatch = result.match(/<\/think_[^>]+>/);
   if (thinkEndMatch && thinkEndMatch.index !== undefined) {
     result = result.slice(thinkEndMatch.index + thinkEndMatch[0].length);
@@ -413,8 +438,12 @@ function shouldUseWebSearch(question, unknownFood) {
   if (drinkRe.test(f)) return true;
 
   // 3. 常见连锁/品牌关键词（茶饮、咖啡、便利店、快餐品牌）
-  const brandRe = /喜茶|瑞幸|星巴克|霸王茶姬|蜜雪冰城|茶百道|奈雪|乐乐茶|沪上阿姨|书亦|古茗|茶颜悦色|益禾堂|CoCo|一点点|蜜雪|瑞幸|星巴克|肯德基|麦当劳|汉堡王|赛百味|便利店|罗森|全家|7-11|喜市多|美宜佳/;
+  const brandRe = /喜茶|瑞幸|星巴克|霸王茶姬|蜜雪冰城|茶百道|奈雪|乐乐茶|沪上阿姨|书亦|古茗|茶颜悦色|益禾堂|CoCo|一点点|肯德基|麦当劳|汉堡王|赛百味|便利店|罗森|全家|7-11|喜市多|美宜佳/;
   if (brandRe.test(q)) return true;
+
+  // 4. 兜底：用户明显在问热量/营养/能不能吃/减脂相关，且该食物不在库中，一律尝试联网检索
+  const asksCalorieOrDiet = /(热量|卡路里|千卡|大卡|含糖|无糖|有糖|低糖|能喝|能吃|可以喝|可以吃|多少卡|胖不胖|减肥|减脂|热量高|营养|脂肪|蛋白质|碳水)/.test(q);
+  if (asksCalorieOrDiet) return true;
 
   return false;
 }
@@ -432,12 +461,15 @@ function extractUnknownFoodQuery(question, todayFoods = []) {
   const unitAfterRe = /(\d+(?:\.\d+)?)\s*(ml|mL|毫升|L|升|g|克|kg|千克|个|杯|瓶|罐|份|碗|袋|包|盒|只|片|支|根|条|粒|颗|口)\s*([\u4e00-\u9fa5a-zA-Z]{2,})/g;
   // 名称+数量+单位（如：羽衣甘蓝汁500ml）
   const unitBeforeRe = /([\u4e00-\u9fa5a-zA-Z]{2,})\s*(\d+(?:\.\d+)?)\s*(ml|mL|毫升|L|升|g|克|kg|千克|个|杯|瓶|罐|份|碗|袋|包|盒|只|片|支|根|条|粒|颗|口)/g;
+  // 量词+名称（如：一大碗卤煮、一份黄焖鸡、一只烤鸡；注意不含数字）
+  const portionRe = /(?:一|两|几|半|大|小|中)?\s*(?:份|碗|盘|个|只|杯|瓶|罐|袋|包|盒|根|条|片|块|勺)\s*([\u4e00-\u9fa5a-zA-Z]{2,})/g;
   // 常见饮品/食品关键词（无数量时也尝试）
   const drinkRe = /([\u4e00-\u9fa5]{2,}(?:汁|饮|茶|奶|酸奶|咖啡|酒|水|汽水|苏打|气泡|美式|拿铁|摩卡|果汁|奶茶))/g;
 
   let m;
   while ((m = unitAfterRe.exec(normalized)) !== null) candidates.add(m[3]);
   while ((m = unitBeforeRe.exec(normalized)) !== null) candidates.add(m[1]);
+  while ((m = portionRe.exec(normalized)) !== null) candidates.add(m[1]);
   while ((m = drinkRe.exec(normalized)) !== null) candidates.add(m[1]);
 
   const stopWords = new Set([
@@ -491,13 +523,18 @@ function tryLocalCalculation(question, userInfo, todayExercises = []) {
   // 基础代谢 BMR
   if (q.includes('基础代谢') || q.includes('bmr')) {
     if (!weight || !height || !age || !gender) return null;
-    let bmr;
-    if (gender === 1) {
-      bmr = 10 * weight + 6.25 * height - 5 * age + 5;
-    } else {
-      bmr = 10 * weight + 6.25 * height - 5 * age - 161;
-    }
-    return `你的基础代谢（BMR）大约是 ${Math.round(bmr)} 千卡/天。这是维持生命活动最低需要的热量。`;
+    const genderText = gender === 1 ? '男' : '女';
+    const genderOffset = gender === 1 ? 5 : -161;
+    const bmr = 10 * weight + 6.25 * height - 5 * age + genderOffset;
+    const roundedBmr = Math.round(bmr);
+    return `你的基础代谢（BMR）计算过程如下：\n\n` +
+      `采用 Mifflin-St Jeor 公式（目前国际上最常用的 BMR 估算公式）：\n` +
+      `${genderText}性：BMR = 10×体重(kg) + 6.25×身高(cm) - 5×年龄 + ${genderOffset > 0 ? '+' : ''}${genderOffset}\n\n` +
+      `代入你的数据：\n` +
+      `= 10×${weight} + 6.25×${height} - 5×${age} ${genderOffset > 0 ? '+' : ''}${genderOffset}\n` +
+      `= ${10 * weight} + ${(6.25 * height).toFixed(2)} - ${5 * age} ${genderOffset > 0 ? '+' : ''}${genderOffset}\n` +
+      `≈ ${roundedBmr} 千卡/天\n\n` +
+      `所以你的基础代谢大约是 ${roundedBmr} 千卡/天。这是维持生命活动最低需要的热量，实际摄入不建议长期低于这个数值。`;
   }
 
   // 热量缺口 / 每天吃多少：只回答“应该吃多少/摄入目标”类问题，不拦截“能减多少体重/脂肪”类问题
@@ -773,7 +810,7 @@ function tryLocalCalculation(question, userInfo, todayExercises = []) {
  * 获取今日已记录的食物明细
  */
 function getTodayFoods(userId) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getChinaDateStr();
 
   const rows = db.prepare(`
     SELECT meal_time, foods
@@ -783,12 +820,13 @@ function getTodayFoods(userId) {
 
   const foods = [];
   for (const row of rows) {
-    const list = JSON.parse(row.foods || '[]');
+    const list = safeJsonParse(row.foods, []);
     for (const food of list) {
       if (food && food.name) {
         foods.push({
           name: food.name,
           weight: food.weight || 0,
+          quantity: food.quantity || 0,
           unit: food.unit || 'g',
           calorie: food.calorie || 0,
           protein: food.protein || 0,
@@ -806,7 +844,7 @@ function getTodayFoods(userId) {
  * 获取今日已记录的运动明细
  */
 function getTodayExercises(userId) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getChinaDateStr();
   const rows = db.prepare(`
     SELECT exercises
     FROM exercise_records
@@ -815,7 +853,7 @@ function getTodayExercises(userId) {
 
   const exercises = [];
   for (const row of rows) {
-    const list = JSON.parse(row.exercises || '[]');
+    const list = safeJsonParse(row.exercises, []);
     for (const ex of list) {
       if (ex && ex.name) {
         exercises.push({
@@ -857,7 +895,7 @@ function getExerciseFromDb(name) {
  * 计算今日营养摄入
  */
 function getTodayNutrition(userId) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getChinaDateStr();
 
   const dietRows = db.prepare(`
     SELECT total_calorie, total_protein, total_carb, total_fat

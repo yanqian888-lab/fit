@@ -1,4 +1,4 @@
-import { get, post, put, del } from '../utils/request';
+import { get, post, put, del, uploadFile } from '../utils/request';
 
 // 认证
 export const authApi = {
@@ -10,7 +10,7 @@ export const authApi = {
 
 // 用户
 export const userApi = {
-  getMe: () => get('/users/me'),
+  getMe: (options = {}) => get('/users/me', options),
   updateMe: (data) => put('/users/me', data),
   updateProfile: (data) => put('/users/profile', data),
   exportData: () => post('/users/export'),
@@ -32,9 +32,9 @@ export const chatApi = {
   getMessages: (params) => get('/chat/messages', params),
   getPendingAssets: (messageIds) => get('/chat/pending-assets', { message_ids: messageIds.join(',') }),
   confirmPrecipitation: (data) => post('/chat/confirm-precipitation', data),
-  searchMessages: (params) => get('/chat/messages', params),
   getChatStats: () => get('/chat/stats'),
-  sendWakeupMessage: () => post('/chat/wakeup')
+  sendWakeupMessage: () => post('/chat/wakeup'),
+  getAdvice: () => post('/chat/advice')
 };
 
 // 记录
@@ -51,6 +51,10 @@ export const recordApi = {
   deleteBody: (id) => del(`/records/body/${id}`),
   getHabits: (params) => get('/records/habit', params),
   saveHabit: (data) => data.id ? put(`/records/habit/${data.id}`, data) : post('/records/habit', data),
+  deleteHabit: (id) => del(`/records/habit/${id}`),
+  getFasting: (date) => get('/records/fasting', { date }),
+  getFastingStats: () => get('/records/fasting/stats'),
+  saveFasting: (data) => post('/records/fasting', data),
   getRecordDates: (params) => get('/records/dates', params),
   getMilestoneData: () => get('/records/milestone-data')
 };
@@ -66,7 +70,11 @@ export const museumApi = {
   deleteItem: (id) => del(`/museum/items/${id}`),
   confirmItem: (id, data) => post(`/museum/items/${id}/confirm`, data),
   discardItem: (id) => post(`/museum/items/${id}/discard`),
-  toggleFavorite: (id) => post(`/museum/items/${id}/favorite`)
+  toggleFavorite: (id) => post(`/museum/items/${id}/favorite`),
+  shareItem: (id) => post(`/museum/items/${id}/share`),
+  saveMood: (data) => post('/museum/mood', data),
+  getMoods: (params) => get('/museum/moods', params),
+  getMoodStats: (params) => get('/museum/moods/stats', params)
 };
 
 // 沉淀记录
@@ -77,9 +85,18 @@ export const precipitationApi = {
   delete: (id) => del(`/precipitations/${id}`)
 };
 
+// 语音
+export const voiceApi = {
+  transcribe: (filePath) => uploadFile('/voice/transcribe', filePath, 'audio')
+};
+
 // AI P1 功能
 export const aiApi = {
   generateDiary: (date, params = {}) => get('/ai/diary', { date, ...params }),
+  getDiaryHistory: (params) => get('/ai/diary/history', params),
+  getDiaryDetail: (id) => get(`/ai/diary/${id}`),
+  deleteDiary: (id) => del(`/ai/diary/${id}`),
+  toggleDiaryFavorite: (id) => post(`/ai/diary/${id}/favorite`),
   generateMonthlyDiary: (month) => get('/ai/diary/monthly', { month }),
   checkMilestones: () => post('/ai/milestones/check'),
   getMilestones: () => get('/ai/milestones'),
@@ -128,6 +145,24 @@ export const popupApi = {
   report: (data) => post('/app/popup/report', data)
 };
 
+// 公告/消息中心
+export const noticeApi = {
+  getUnreadCount: () => get('/app/notifications/unread-count'),
+  getAnnouncements: (params) => get('/app/announcements', params),
+  getAnnouncement: (id) => get(`/app/announcements/${id}`),
+  markRead: (id) => post(`/app/announcements/${id}/read`),
+  recordShow: (id) => post(`/app/announcements/${id}/show`),
+  getChannels: () => get('/app/notifications/channels')
+};
+
+// 陪你动
+export const workoutApi = {
+  getList: () => get('/workouts'),
+  getDetail: (key) => get(`/workouts/${key}`),
+  start: (key) => post(`/workouts/${key}/start`),
+  complete: (key, data) => post(`/workouts/${key}/complete`, data)
+};
+
 // 方法库
 export const methodApi = {
   getList: (params) => get('/methods', params),
@@ -141,4 +176,35 @@ export const photoApi = {
   getList: (params) => get('/photos', params),
   upload: (data) => post('/photos', data),
   delete: (id) => del(`/photos/${id}`)
+};
+
+// 新手任务
+export const newbieTaskApi = {
+  list: () => get('/newbie-tasks'),
+  claim: (key) => post(`/newbie-tasks/${key}/claim`)
+};
+
+// 宠物陪伴系统（搭搭）
+export const petApi = {
+  getPet: (params) => get('/pet', params),
+  feed: (inventoryItemIds) => post('/pet/feed', { inventory_item_ids: Array.isArray(inventoryItemIds) ? inventoryItemIds : [inventoryItemIds] }),
+  exercise: (optionKey) => post('/pet/exercise', { option_key: optionKey }),
+  startExplore: () => post('/pet/explore'),
+  completeExplore: (id) => post('/pet/explore/complete', { id }),
+  getDialogues: (scene) => get('/pet/dialogues', { scene }),
+  getEvents: () => get('/pet/events'),
+  getEventAlbum: () => get('/pet/events/album'),
+  markEventRead: (id) => put(`/pet/events/${id}/read`),
+  getCurrency: () => get('/currency'),
+  getCurrencyTransactions: (params) => get('/currency/transactions', params),
+  getShopItems: (params) => get('/shop/items', params),
+  buyShopItem: (itemId) => post('/shop/buy', { item_id: itemId }),
+  getInventory: (params) => get('/inventory', params),
+  useInventoryItem: (itemId) => post('/inventory/use', { item_id: itemId }),
+  getEquipmentWorkouts: (itemId) => get('/inventory/equipment-workouts', { item_id: itemId }),
+  getTasks: () => get('/tasks'),
+  claimTaskReward: (id) => post(`/tasks/${id}/claim`),
+  getCheckinStatus: () => get('/checkin/status'),
+  checkin: () => post('/checkin'),
+  getAchievements: () => get('/achievements')
 };

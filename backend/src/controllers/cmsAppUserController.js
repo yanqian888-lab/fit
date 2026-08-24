@@ -1,7 +1,7 @@
 /**
  * CMS C 端用户管理
  */
-const { db } = require('../db');
+const { db, withTransaction } = require('../db');
 const bcrypt = require('bcryptjs');
 const { success, error } = require('../utils/response');
 const cmsLogService = require('../services/cmsLogService');
@@ -10,10 +10,17 @@ const { deleteUserLocalFiles } = require('../utils/deleteUserFiles');
 
 const GENDER_MAP = { 0: '未知', 1: '男', 2: '女' };
 const MODE_MAP = { gentle: '温柔', strict: '严格', tease: '毒舌' };
-const SOURCE_MAP = { app: 'App注册', cms: '后台创建' };
+const SOURCE_MAP = { app: 'App注册', cms: '后台创建', wechat: '微信登录' };
 const USERNAME_REGEX = /^[a-zA-Z0-9]{6,10}$/;
 function validateUsernameCombo(username) {
   return USERNAME_REGEX.test(username) && /[a-zA-Z]/.test(username) && /[0-9]/.test(username);
+}
+
+// 用户密码：6-12位字母+数字组合，且需同时包含字母和数字
+function validatePassword(password) {
+  if (!password || typeof password !== 'string') return false;
+  if (!/^[a-zA-Z0-9]{6,12}$/.test(password)) return false;
+  return /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
 }
 
 /**
@@ -21,7 +28,7 @@ function validateUsernameCombo(username) {
  */
 function list(req, res) {
   const page = parseInt(req.query.page) || 1;
-  const size = parseInt(req.query.size) || 20;
+  const size = Math.min(100, Math.max(1, parseInt(req.query.size) || 20));
   const offset = (page - 1) * size;
   const keyword = req.query.keyword || '';
   const status = req.query.status;
@@ -86,8 +93,8 @@ function create(req, res) {
   if (!validateUsernameCombo(username)) {
     return res.status(400).json(error('账号需同时包含字母和数字', 400));
   }
-  if (!password || password.length !== 6) {
-    return res.status(400).json(error('请输入6位密码', 400));
+  if (!validatePassword(password)) {
+    return res.status(400).json(error('请输入6-12位字母+数字密码，且需同时包含字母和数字', 400));
   }
   if (!phone || phone.length !== 11) {
     return res.status(400).json(error('请输入11位手机号', 400));
@@ -103,7 +110,7 @@ function create(req, res) {
   }
 
   const passwordHash = bcrypt.hashSync(password, 10);
-  const user = createUserWithInit(username, passwordHash, phone, nickname || '减肥搭子用户', 'cms', password);
+  const user = createUserWithInit(username, passwordHash, phone, nickname || '掉秤搭搭用户', 'cms');
 
 
   cmsLogService.log(req, 'create', 'app_user', String(user.id), `后台创建C端用户：${username}`);
@@ -119,7 +126,7 @@ function getById(req, res) {
   const user = db.prepare(`
     SELECT
       u.id, u.user_id, u.openid, u.username, u.nickname, u.avatar_url, u.phone,
-      u.gender, u.age, u.birth_date, u.height, u.role, u.status,
+      u.gender, u.age, u.birth_date, u.height, u.role, u.status, u.source,
       u.created_at, u.last_login_at,
       p.*,
       pt.name as partner_name, pt.mode as partner_mode, pt.gender as partner_gender,
@@ -167,24 +174,34 @@ function updateStatus(req, res) {
  */
 function deleteUser(req, res) {
   const { id } = req.params;
+  const userId = parseInt(id);
+  if (isNaN(userId) || userId <= 0) {
+    return res.status(400).json(error('用户 ID 不合法', 400));
+  }
 
-  const user = db.prepare('SELECT id, username, phone, openid FROM users WHERE id = ?').get(id);
+  const user = db.prepare('SELECT id, username, phone, openid FROM users WHERE id = ?').get(userId);
   if (!user) {
     return res.status(404).json(error('用户不存在', 404));
   }
 
   try {
-    db.prepare(`
-      INSERT INTO deleted_users (original_user_id, username, phone, openid, reason, deleted_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now'))
-    `).run(user.id, user.username || null, user.phone || null, user.openid || null, '后台管理员注销');
+    withTransaction(() => {
+      db.prepare(`
+        INSERT INTO deleted_users (original_user_id, username, phone, openid, reason, deleted_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run(user.id, user.username || null, user.phone || null, user.openid || null, '后台管理员注销');
 
-    // 删除用户上传的本地文件（头像、反馈配图等）
-    deleteUserLocalFiles(id);
+      db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    });
 
-    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    // 事务提交后再删除本地文件，避免回滚后文件已删
+    try {
+      deleteUserLocalFiles(userId);
+    } catch (fileErr) {
+      console.error('删除用户本地文件失败:', fileErr.message);
+    }
 
-    cmsLogService.log(req, 'delete', 'app_user', String(id), `后台注销C端用户：${user.username}`);
+    cmsLogService.log(req, 'delete', 'app_user', String(userId), `后台注销C端用户：${user.username}`);
     return res.json(success(null, '账号已注销'));
   } catch (err) {
     console.error('后台注销用户失败:', err.message);

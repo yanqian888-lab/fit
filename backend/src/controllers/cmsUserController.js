@@ -4,6 +4,7 @@
 const bcrypt = require('bcryptjs');
 const { db } = require('../db');
 const { success, error } = require('../utils/response');
+const { safeJsonParse } = require('../utils/safeJson');
 
 function parsePermissions(permissions) {
   if (Array.isArray(permissions)) return JSON.stringify(permissions);
@@ -21,7 +22,7 @@ function getRoles(req, res) {
   const list = db.prepare('SELECT * FROM cms_roles ORDER BY created_at ASC').all();
   return res.json(success(list.map(item => ({
     ...item,
-    permissions: JSON.parse(item.permissions || '[]')
+    permissions: safeJsonParse(item.permissions, [])
   }))));
 }
 
@@ -80,7 +81,7 @@ function deleteRole(req, res) {
 // ========== 管理员账号 ==========
 function getUsers(req, res) {
   const page = parseInt(req.query.page) || 1;
-  const size = parseInt(req.query.size) || 20;
+  const size = Math.min(100, Math.max(1, parseInt(req.query.size) || 20));
   const offset = (page - 1) * size;
 
   const total = db.prepare('SELECT COUNT(*) as count FROM cms_users').get().count;
@@ -178,8 +179,10 @@ function deleteUser(req, res) {
 
   const superRole = db.prepare("SELECT id FROM cms_roles WHERE name = 'superadmin'").get();
   if (superRole && user.role_id === superRole.id) {
-    const superCount = db.prepare('SELECT COUNT(*) as count FROM cms_users WHERE role_id = ?').get(superRole.id).count;
-    if (superCount <= 1) return res.status(400).json(error('不能删除最后一个超级管理员', 400));
+    const activeSuperCount = db.prepare('SELECT COUNT(*) as count FROM cms_users WHERE role_id = ? AND status = 1').get(superRole.id).count;
+    if (activeSuperCount <= 1) {
+      return res.status(400).json(error('不能删除最后一个启用的超级管理员', 400));
+    }
   }
 
   db.prepare('DELETE FROM cms_users WHERE id = ?').run(id);

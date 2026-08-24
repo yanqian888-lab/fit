@@ -5,12 +5,12 @@
     </view>
     <view class="profile-page">
       <view class="avatar-card">
-        <view class="avatar" @click="chooseAvatar">
+        <view class="avatar">
           <image v-if="user.avatar_url && !avatarError" :src="avatarFullUrl" class="avatar-img" mode="aspectFill" @error="avatarError = true" />
           <text v-else>{{ user.nickname?.[0] || 'U' }}</text>
         </view>
         <text class="nickname">{{ user.nickname || '未设置昵称' }}</text>
-        <text class="avatar-tip">点击更换头像</text>
+        <!-- 点击上传头像功能暂未开放（提审阶段先隐藏相册读取权限声明） -->
       </view>
       <view class="form-card">
         <view class="form-item">
@@ -139,7 +139,12 @@ function goBack() {
   }
   // #endif
   // #ifndef H5
-  uni.navigateBack({ delta: 1 });
+  const pages = getCurrentPages();
+  if (pages.length > 1) {
+    uni.navigateBack({ delta: 1 });
+  } else {
+    uni.switchTab({ url: '/pages/record/index' });
+  }
   // #endif
 }
 
@@ -161,7 +166,13 @@ function onBirthDateChange(e) {
   form.value.birth_date = selected;
 }
 
+/**
+ * 头像上传：提审阶段相机/相册读取权限暂不声明，入口点击已移除
+ * 后续开放时恢复下面的 uni.chooseImage 调用（原 chooseAvatar 函数体保留在注释里）
+ */
 async function chooseAvatar() {
+  uni.showToast({ title: '该功能暂未开放', icon: 'none' });
+  /*
   uni.chooseImage({
     count: 1,
     sizeType: ['compressed'],
@@ -181,13 +192,15 @@ async function chooseAvatar() {
       }
     },
     fail: (err) => {
-      if (err.errMsg && (err.errMsg.includes('cancel') || err.errMsg.includes('用户取消'))) {
+      const msg = err?.errMsg || '';
+      if (msg.includes('cancel') || msg.includes('用户取消')) {
         return;
       }
       console.error('选择图片失败:', err);
       uni.showToast({ title: '无法访问相册，请检查权限', icon: 'none' });
     }
   });
+  */
 }
 
 async function save() {
@@ -208,6 +221,8 @@ async function save() {
       target_date: form.value.target_date
     });
     uni.showToast({ title: '保存成功', icon: 'success' });
+    // 保存成功后自动返回上一级
+    setTimeout(() => uni.navigateBack({ delta: 1 }), 800);
   } catch (err) {
     uni.showToast({ title: '保存失败', icon: 'none' });
   }

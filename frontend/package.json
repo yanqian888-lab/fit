@@ -1,29 +1,33 @@
 {
-  "name": "jianfeidazi-frontend",
+  "name": "jianfeidazi-miniprogram",
   "version": "1.0.0",
-  "description": "减肥搭子 APP 前端",
+  "description": "掉秤搭搭 微信小程序前端（uni-app 构建，目标端仅 mp-weixin）",
   "scripts": {
     "dev:h5": "uni",
     "dev:mp-weixin": "uni -p mp-weixin",
     "dev:app": "uni -p app",
     "dev:app-android": "uni -p app-android",
     "dev:app-ios": "uni -p app-ios",
+    "build:h5:local": "VITE_H5_BASE=/ uni build --mode test -p h5 && rm -rf dist/build/h5/static && cp -r static dist/build/h5/static",
     "build:h5:test": "UNI_H5_BASE=/test-h5/ VITE_H5_BASE=/test-h5/ uni build --mode test -p h5 && rm -rf dist/build/h5/static && cp -r static dist/build/h5/static",
     "build:h5:prod": "UNI_H5_BASE=/h5/ VITE_H5_BASE=/h5/ uni build --mode production -p h5 && rm -rf dist/build/h5/static && cp -r static dist/build/h5/static",
-    "build:mp-weixin:test": "uni build --mode test -p mp-weixin",
-    "build:mp-weixin:prod": "uni build --mode production -p mp-weixin",
+    "build:mp-weixin:test": "uni build --mode test -p mp-weixin && mkdir -p dist/build/mp-weixin/static && cp -r static/tabbar dist/build/mp-weixin/static/",
+    "build:mp-weixin:prod": "uni build --mode production -p mp-weixin && mkdir -p dist/build/mp-weixin/static && cp -r static/tabbar dist/build/mp-weixin/static/",
     "build:app:test": "uni build --mode test -p app",
     "build:app:prod": "uni build --mode production -p app",
     "build:app-android:test": "uni build --mode test -p app-android",
     "build:app-android:prod": "uni build --mode production -p app-android",
     "build:app-ios:test": "uni build --mode test -p app-ios",
-    "build:app-ios:prod": "uni build --mode production -p app-ios"
+    "build:app-ios:prod": "uni build --mode production -p app-ios",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@dcloudio/uni-app": "3.0.0-alpha-1000920260615733",
-    "@dcloudio/uni-app-plus": "3.0.0-alpha-1000920260615733",
-    "@dcloudio/uni-h5": "3.0.0-alpha-1000920260615733",
-    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-1000920260615733",
+    "@dcloudio/uni-app": "3.0.0-alpha-5020520260821001",
+    "@dcloudio/uni-app-plus": "3.0.0-alpha-5020520260821001",
+    "@dcloudio/uni-h5": "3.0.0-alpha-5020520260821001",
+    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-5020520260821001",
     "pinia": "^2.1.7",
     "uview-plus": "^3.2.24",
     "vue": "^3.4.21",
@@ -31,12 +35,16 @@
   },
   "devDependencies": {
     "@dcloudio/types": "^3.4.8",
-    "@dcloudio/uni-automator": "3.0.0-alpha-1000920260615733",
-    "@dcloudio/uni-cli-shared": "3.0.0-alpha-1000920260615733",
-    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-1000920260615733",
+    "@dcloudio/uni-automator": "3.0.0-alpha-5020520260821001",
+    "@dcloudio/uni-cli-shared": "3.0.0-alpha-5020520260821001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5020520260821001",
+    "@vitest/coverage-v8": "^3.2.7",
+    "@vue/test-utils": "^2.4.5",
+    "jsdom": "^24.0.0",
     "playwright-core": "^1.61.0",
     "sass": "^1.72.0",
     "sass-loader": "^14.1.1",
-    "vite": "^7.3.3"
+    "vite": "^7.3.3",
+    "vitest": "^3.2.7"
   }
 }

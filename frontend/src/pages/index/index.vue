@@ -6,36 +6,21 @@
     <!-- 顶部搭子信息 -->
     <view class="header">
       <view class="header-inner">
-        <view class="avatar-wrap">
-          <image
-            class="avatar"
-            :class="{ 'avatar-visible': avatarLoaded }"
-            :src="partnerAvatarUrl"
-            mode="aspectFill"
-            @load="onAvatarLoad"
-            @error="onAvatarError"
-          />
-          <view v-if="!avatarLoaded" class="avatar-placeholder">
-            <text class="avatar-placeholder-text">搭</text>
-          </view>
-          <view class="ai-badge">AI</view>
+        <image class="header-avatar" src="/static/image/icon/liaoliao01@3x.png" mode="aspectFit" />
+        <view class="header-title-wrap">
+          <text class="header-title">搭搭</text>
+          <text class="header-subtitle">👋 我是你的掉秤搭搭～</text>
         </view>
-        <view class="partner-info">
-          <text class="partner-name">{{ partnerName }}</text>
-          <view class="tags-wrap">
-            <view class="tags-inner">
-              <view class="tag status-tag">
-                <image class="status-dot" src="/static/image/icon/zhuangtai.png" />
-                <text>{{ partnerStatusText }}</text>
-              </view>
-              <view class="tag mood-tag">
-                <text>{{ partnerMoodEmoji }}{{ partnerMoodText }}</text>
-              </view>
-            </view>
+        <view class="header-actions">
+          <view class="header-setting" @click="goUser">
+            <image class="header-setting-icon" src="/static/image/icon/setting@3x.png" mode="aspectFit" />
           </view>
         </view>
       </view>
     </view>
+
+    <!-- 顶部公告栏 -->
+    <AnnouncementBar position="home" :max="2" />
 
     <!-- 消息列表 -->
     <scroll-view
@@ -46,6 +31,7 @@
       scroll-with-animation
       @scrolltoupper="loadMore"
       :upper-threshold="50"
+      @scroll="onListScroll"
     >
       <view class="date-wrap">
         <view class="date-pill">
@@ -60,16 +46,33 @@
         class="message-row"
         :class="msg.role"
       >
-        <view
-          v-if="msg.role === 'partner'"
-          class="bubble partner-bubble"
-          @touchstart="handleTouchStart($event, msg)"
-          @touchmove="handleTouchMove"
-          @touchend="handleTouchEnd"
-          @touchcancel="handleTouchEnd"
-        >
-          <text class="ai-generated-label">AI 生成</text>
-          <text class="bubble-text">{{ msg.displayContent !== undefined ? msg.displayContent : msg.content }}</text>
+        <view v-if="msg.role === 'partner'" class="user-column partner-column">
+          <view
+            class="bubble partner-bubble"
+            @touchstart="handleTouchStart($event, msg)"
+            @touchmove="handleTouchMove"
+            @touchend="handleTouchEnd"
+            @touchcancel="handleTouchEnd"
+          >
+            <text class="ai-generated-label">AI 生成</text>
+            <text class="bubble-text">{{ msg.displayContent !== undefined ? msg.displayContent : msg.content }}</text>
+          </view>
+          <!-- 搭搭回复沉淀出的内容（如食谱）也走「待确认/已记录」标签 -->
+          <view
+            v-if="showRecordTag(msg)"
+            class="record-tag"
+            @click="onConfirmedTag(msg)"
+          >
+            <text class="record-tag-text">已记录</text>
+            <image class="record-tag-icon" src="/static/image/icon/xiugai.png" />
+          </view>
+          <view
+            v-else-if="showPendingTag(msg)"
+            class="record-tag pending"
+            @click="onPendingTag(msg)"
+          >
+            <text class="record-tag-text">待确认 · 点我查看</text>
+          </view>
         </view>
 
         <view v-else class="user-column">
@@ -123,11 +126,13 @@
           v-model="inputText"
           class="chat-input"
           type="text"
-          placeholder="和搭子聊聊今天吃了什么吧～"
+          placeholder="和搭子聊聊今天吃了什么..."
           confirm-type="send"
           @confirm="sendMessage"
         />
-        <image class="send-btn" src="/static/image/icon/send.png" @click="sendMessage" />
+        <view class="send-btn-wrap" @click="sendMessage">
+          <image class="send-btn" src="/static/image/icon/send@3x.png" />
+        </view>
       </view>
     </view>
 
@@ -357,6 +362,16 @@
         </view>
       </view>
     </view>
+
+    <!-- 已自动记录提示弹框（单按钮） -->
+    <AppModal
+      v-model:visible="showAutoRecordedModal"
+      icon="none"
+      title="已自动记录"
+      text="这条消息已帮你记入今日记录，可以在「今日记录」中查看或修改哦～"
+      confirmText="知道了"
+      :showCancel="false"
+    />
   </view>
 </template>
 
@@ -364,14 +379,20 @@
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { useUserStore } from '../../store';
-import { chatApi, partnerApi, recordApi, precipitationApi, systemApi } from '../../api';
+import { chatApi, partnerApi, recordApi, precipitationApi, systemApi, voiceApi } from '../../api';
+import { showRewardToast } from '../../utils/rewardToast.js';
 import { formatDate } from '../../utils/date';
 import { checkPermission, reportCount } from '../../utils/trial.js';
 import AuthPopup from '../../components/AuthPopup.vue';
 import PendingAssetCard from '../../components/PendingAssetCard.vue';
+import AnnouncementBar from '../../components/AnnouncementBar.vue';
 import CustomTabBar from '../../custom-tab-bar/index.vue';
+import AppModal from '../../components/AppModal.vue';
 
 const userStore = useUserStore();
+
+// 已自动记录提示弹框
+const showAutoRecordedModal = ref(false);
 
 const messages = ref([]);
 const pendingAssetsMap = ref({}); // key: chat_message_id, value: pending museum_items
@@ -380,7 +401,7 @@ const welcomeMessage = computed(() => {
   return {
     id: 'welcome',
     role: 'partner',
-    content: '你好呀，我是你的专属减肥搭子～\n从今天开始，我会陪你一起记录饮食、运动、体重，一起瘦下来！有什么想聊的，随时告诉我吧～',
+    content: '你好呀，我是你的专属掉秤搭搭～\n从今天开始，我会陪你一起记录饮食、运动、体重，一起瘦下来！有什么想聊的，随时告诉我吧～',
     precipitation_status: 0,
     precipitation_type: null
   };
@@ -389,6 +410,14 @@ const displayMessages = computed(() => welcomeMessage.value ? [welcomeMessage.va
 const inputText = ref('');
 const loading = ref(false);
 const scrollTop = ref(0);
+// 用户是否停留在消息列表底部附近：false 时不再强制滚到底，避免打断翻看历史
+const userNearBottom = ref(true);
+// 历史消息加载中标记，防止 scrolltoupper 连续触发重复加载
+const loadingMore = ref(false);
+
+// 消息队列：支持用户在搭搭回复时继续发送消息
+const pendingMessages = ref([]); // 待发送消息队列
+const isProcessing = ref(false); // 是否正在处理消息
 const scrollIntoView = ref('');
 const page = ref(1);
 const avatarLoaded = ref(false);
@@ -411,6 +440,13 @@ const hasMore = ref(true);
 const todayStats = ref({ intake: 0, burned: 0, remaining: 0, status: 'green' });
 const authPopupRef = ref(null);
 
+// 语音输入状态
+const recording = ref(false);
+const recordingSeconds = ref(0);
+let recorderManager = null;
+let voiceTimer = null;
+let voiceTempFilePath = '';
+
 // 编辑弹窗状态
 const showEditModal = ref(false);
 const editRecord = ref(null);
@@ -418,6 +454,8 @@ const editMealTime = ref('lunch');
 const editFoods = ref([]);
 const editMode = ref('edit'); // 'edit' | 'confirm'
 const editTargetMsg = ref(null);
+// 待确认记录队列：同一条消息可能沉淀多条（如一条回复含多个食谱），逐个确认
+const pendingQueue = ref([]);
 const showFoodPicker = ref(false);
 const foodKeyword = ref('');
 const foodSearchResults = ref([]);
@@ -490,7 +528,8 @@ const modes = [
   { label: '毒舌', value: 'tease' }
 ];
 
-const partnerName = computed(() => userStore.userInfo?.partner?.name || '瘦瘦');
+// 搭子名字固定为「搭搭」，不可修改
+const partnerName = computed(() => '搭搭');
 const currentMode = computed(() => userStore.userInfo?.partner?.mode || 'gentle');
 const partnerAvatarUrl = computed(() => {
   if (avatarLoadError.value) {
@@ -576,6 +615,14 @@ function openMsgActionMenu(msg) {
 function closeMsgActionMenu() {
   showMsgActions.value = false;
   actionMsg.value = null;
+}
+
+function goSettings() {
+  uni.navigateTo({ url: '/pages/chat/settings' });
+}
+
+function goUser() {
+  uni.navigateTo({ url: '/pages/user/index' });
 }
 
 function onMenuCopy() {
@@ -739,6 +786,8 @@ onMounted(() => {
   loadMessages(true);
   loadTodayStats();
   checkWakeupMessage();
+  // 量取列表可视高度（判断用户是否在底部附近用，小程序无 DOM 走 SelectorQuery）
+  nextTick(() => setTimeout(initScrollMetrics, 300));
   uni.$emit('tabbar-select', 0);
   uni.hideTabBar({ animation: false }).catch(() => {});
 });
@@ -765,9 +814,41 @@ onShow(() => {
       }
     }, delay);
   });
+  // 首次填写完身体信息/更新身体信息后，生成减重建议
+  checkAdviceMessage();
   uni.$emit('tabbar-select', 0);
   uni.hideTabBar({ animation: false }).catch(() => {});
 });
+
+// 检查减重建议（后端通过 advice_pending 标记幂等，无待生成时返回空）
+let checkingAdvice = false;
+async function checkAdviceMessage() {
+  if (checkingAdvice) return;
+  checkingAdvice = true;
+  try {
+    const res = await chatApi.getAdvice();
+    const msg = res.code === 0 && res.data ? res.data.message : null;
+    if (msg && !messages.value.some(m => m.id === msg.id)) {
+      const chatMsg = {
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        content_type: msg.content_type,
+        created_at: msg.created_at,
+        precipitation_status: 0
+      };
+      messages.value.push(chatMsg);
+      if (msg.content && msg.content.length > 60) {
+        startTypeWriter(chatMsg);
+      }
+      scrollToBottom();
+    }
+  } catch (err) {
+    console.error('获取减重建议失败:', err);
+  } finally {
+    checkingAdvice = false;
+  }
+}
 
 // 检查冷启动唤醒消息
 async function checkWakeupMessage() {
@@ -818,9 +899,9 @@ async function loadMessages(reset = false) {
 
     if (reset) {
       messages.value = list;
-      scrollToBottom();
+      scrollToBottom(true);
       // 图片/气泡布局可能还没完成，延迟再滚几次兜底
-      [500, 1500, 2500].forEach(delay => setTimeout(scrollToBottom, delay));
+      [500, 1500, 2500].forEach(delay => setTimeout(() => scrollToBottom(true), delay));
     } else {
       const oldHeight = await getScrollHeight();
       messages.value = [...list, ...messages.value];
@@ -871,29 +952,65 @@ async function loadPendingAssets(messageIds) {
   }
 }
 
+// H5 专用：uni-app H5 中 scroll-view 的可滚动区域是内部的 .uni-scroll-view（小程序无 DOM，返回 null）
 function getScrollContainer() {
-  // uni-app H5 中 scroll-view 的可滚动区域是内部的 .uni-scroll-view
+  // #ifdef H5
   return document.querySelector('.message-list .uni-scroll-view') ||
          document.querySelector('.message-list') ||
          document.querySelector('uni-scroll-view .uni-scroll-view');
+  // #endif
+  return null;
+}
+
+// 列表可视高度：H5 读 DOM；小程序用 SelectorQuery 量一次缓存（用于判断是否在底部附近）
+const listClientHeight = ref(0);
+function initScrollMetrics() {
+  // #ifdef H5
+  const el = getScrollContainer();
+  if (el) listClientHeight.value = el.clientHeight;
+  // #endif
+  // #ifndef H5
+  uni.createSelectorQuery().select('.message-list').boundingClientRect((rect) => {
+    if (rect && rect.height) listClientHeight.value = rect.height;
+  }).exec();
+  // #endif
 }
 
 // 获取 scroll-view 滚动高度
 function getScrollHeight() {
   return new Promise((resolve) => {
     nextTick(() => {
+      // #ifdef H5
       const scrollView = getScrollContainer();
-      if (scrollView) {
-        resolve(scrollView.scrollHeight);
-      } else {
-        resolve(0);
-      }
+      resolve(scrollView ? scrollView.scrollHeight : 0);
+      // #endif
+      // #ifndef H5
+      uni.createSelectorQuery().select('.message-list').fields({ scrollOffset: true }, (res) => {
+        resolve(res && typeof res.scrollHeight === 'number' ? res.scrollHeight : 0);
+      }).exec();
+      // #endif
     });
   });
 }
 
-function loadMore() {
-  loadMessages(false);
+async function loadMore() {
+  if (loadingMore.value) return;
+  loadingMore.value = true;
+  try {
+    await loadMessages(false);
+  } finally {
+    loadingMore.value = false;
+  }
+}
+
+// 跟踪用户滚动位置：离开底部超过阈值后，新消息/打字机不再强制拉回底部
+function onListScroll(e) {
+  const d = e.detail || {};
+  if (typeof d.scrollTop !== 'number' || typeof d.scrollHeight !== 'number') return;
+  // 小程序滚动事件 detail 自带 scrollHeight；可视高度用 initScrollMetrics 的缓存
+  const clientH = listClientHeight.value;
+  if (!clientH) return;
+  userNearBottom.value = (d.scrollHeight - d.scrollTop - clientH) < 200;
 }
 
 // 加载今日概览
@@ -906,23 +1023,33 @@ async function loadTodayStats() {
   }
 }
 
-// 发送消息
+/**
+ * 发送消息（支持消息队列，允许用户在搭搭回复时继续发送）
+ * 核心逻辑：
+ * 1. 用户消息立即显示到UI，不等待AI回复
+ * 2. 所有待发送消息进入队列，顺序处理
+ * 3. 当前消息处理完成后，自动处理队列中的下一条
+ */
 async function sendMessage() {
   const content = inputText.value.trim();
   if (!content) return;
 
-  // 试用权限校验
-  const perm = await checkPermission('ai_chat');
-  if (!perm.allow_use) {
-    if (perm.show_popup && authPopupRef.value) {
-      authPopupRef.value.show(perm.popup_config);
+  // 立即清空输入框，让用户可以继续输入
+  inputText.value = '';
+
+  // 试用权限校验（只在第一条消息或首次使用时校验）
+  if (!isProcessing.value && pendingMessages.value.length === 0) {
+    const perm = await checkPermission('ai_chat');
+    if (!perm.allow_use) {
+      if (perm.show_popup && authPopupRef.value) {
+        authPopupRef.value.show(perm.popup_config);
+      }
+      inputText.value = content; // 恢复用户输入
+      return;
     }
-    return;
   }
 
-  inputText.value = '';
-  loading.value = true;
-
+  // 立即在UI上显示用户消息
   const tempId = Date.now();
   messages.value.push({
     id: tempId,
@@ -931,127 +1058,194 @@ async function sendMessage() {
     precipitation_status: 0,
     created_at: new Date().toISOString()
   });
-  scrollToBottom();
+  scrollToBottom(true);
 
-  try {
-    const res = await chatApi.send(content);
-    const data = res.data;
-    console.log('[sendMessage] 后端返回:', data.user_message.id, '沉淀状态:', data.user_message.precipitation_status);
+  // 将消息加入待处理队列
+  pendingMessages.value.push({
+    content,
+    tempId,
+    status: 'pending' // pending, processing, done, failed
+  });
 
-    const userMsgIndex = messages.value.findIndex(m => m.id === tempId);
-    if (userMsgIndex > -1) {
-      const userMsg = {
-        ...data.user_message,
-        precipitation_status: Number(data.user_message.precipitation_status) || 0,
-        precipitation_id: data.user_message.precipitation_id || null,
-        precipitation_type: data.user_message.precipitation_type || null
-      };
-      messages.value[userMsgIndex] = userMsg;
-      console.log('[sendMessage] 已替换用户消息，新ID:', userMsg.id, '沉淀状态:', userMsg.precipitation_status);
-    }
+  console.log(`[sendMessage] 消息已加入队列，当前队列长度: ${pendingMessages.value.length}`);
 
-    messages.value.push(data.partner_message);
-    if (data.partner_message?.role === 'partner' && data.partner_message?.content?.length > 60) {
-      startTypeWriter(data.partner_message);
-    }
-    // 沉淀食谱/方法需要后端异步提取，延迟拉取待确认资产
-    setTimeout(() => {
-      if (data.partner_message?.id) {
-        loadPendingAssets([data.partner_message.id]);
-      }
-    }, 2500);
-    // 部分提取较慢，再延迟拉取一次兜底
-    setTimeout(() => {
-      if (data.partner_message?.id) {
-        loadPendingAssets([data.partner_message.id]);
-      }
-    }, 6000);
-
-    if (data.async_helper) {
-      console.log('[sendMessage] 异步 helper 已启动，开始轮询');
-      loading.value = true;
-
-      let pollCount = 0;
-      const maxPolls = 120;
-      const pollInterval = setInterval(async () => {
-        pollCount++;
-        try {
-          const res = await chatApi.getMessages({ page: 1, size: 20 });
-          const list = res.data.list || [];
-          console.log('[轮询] 获取消息数:', list.length, '最后一条ID:', list[list.length - 1]?.id);
-
-          const newMessages = list.filter(m =>
-            m.role === 'partner' &&
-            m.id > data.partner_message.id &&
-            !messages.value.some(existing => existing.id === m.id)
-          );
-
-          console.log('[轮询] 新消息数:', newMessages.length, '已有消息IDs:', messages.value.map(m => m.id).slice(-5));
-
-          if (newMessages.length > 0) {
-            newMessages.forEach(msg => {
-              messages.value.push(msg);
-              if (msg.role === 'partner' && msg.content && msg.content.length > 60) {
-                startTypeWriter(msg);
-              }
-            });
-            console.log('[sendMessage] 异步 helper 结果已获取，添加消息数:', newMessages.length, '消息IDs:', newMessages.map(m => m.id));
-            // 拉取异步 helper 消息关联的待确认资产
-            loadPendingAssets(newMessages.map(m => m.id));
-            // 沉淀提取可能还在进行，延迟再拉取一次，避免卡片漏显示
-            setTimeout(() => {
-              loadPendingAssets(newMessages.map(m => m.id));
-            }, 5000);
-            loading.value = false;
-            clearInterval(pollInterval);
-            nextTick(() => {
-              setTimeout(() => scrollToBottom(), 100);
-            });
-          }
-
-          const userMsgIndex = messages.value.findIndex(m => m.id === data.user_message.id);
-          if (userMsgIndex > -1) {
-            const latestUserMsg = list.find(m => m.id === data.user_message.id);
-            if (latestUserMsg && latestUserMsg.precipitation_status > 0) {
-              messages.value[userMsgIndex].precipitation_status = latestUserMsg.precipitation_status;
-              messages.value[userMsgIndex].precipitation_id = latestUserMsg.precipitation_id;
-              messages.value[userMsgIndex].precipitation_type = latestUserMsg.precipitation_type;
-              console.log('[sendMessage] 沉淀状态已更新:', latestUserMsg.precipitation_status);
-            }
-          }
-
-          if (pollCount >= maxPolls) {
-            console.log('[sendMessage] 异步 helper 轮询超时');
-            loading.value = false;
-            clearInterval(pollInterval);
-          }
-        } catch (e) {
-          console.error('[sendMessage] 轮询失败:', e);
-        }
-      }, 1000);
-    } else {
-      loading.value = false;
-    }
-
-    loadTodayStats();
-
-    // 成功后上报 AI 对话使用次数
-    reportCount('ai_chat');
-
-    setTimeout(() => {
-      refreshMessages();
-    }, 3000);
-  } catch (err) {
-    messages.value.push({
-      id: Date.now() + 1,
-      role: 'partner',
-      content: '哎呀，我这边网络有点卡，你再说一遍好不？',
-      created_at: new Date().toISOString()
-    });
-    loading.value = false;
-  } finally {
-    scrollToBottom();
+  // 如果当前没有正在处理的消息，开始处理队列
+  if (!isProcessing.value) {
+    processMessageQueue();
   }
+}
+
+/**
+ * 顺序处理消息队列
+ * 确保同一时间只有一条消息在进行API调用和轮询
+ */
+async function processMessageQueue() {
+  if (isProcessing.value) return; // 已经在处理队列
+  if (pendingMessages.value.length === 0) return; // 队列为空
+
+  isProcessing.value = true;
+  loading.value = true; // 显示"搭子正在输入..."
+
+  while (pendingMessages.value.length > 0) {
+    const currentMsg = pendingMessages.value[0];
+    currentMsg.status = 'processing';
+
+    console.log(`[processMessageQueue] 处理第 ${pendingMessages.value.indexOf(currentMsg) + 1} 条消息: ${currentMsg.content.substring(0, 20)}...`);
+
+    try {
+      await processOneMessage(currentMsg.content, currentMsg.tempId);
+      currentMsg.status = 'done';
+    } catch (err) {
+      console.error('[processMessageQueue] 消息处理失败:', err);
+      currentMsg.status = 'failed';
+      // 失败时恢复用户输入
+      const idx = messages.value.findIndex(m => m.id === currentMsg.tempId);
+      if (idx > -1) messages.value.splice(idx, 1);
+      inputText.value = currentMsg.content;
+      uni.showToast({ title: '发送失败，请重试', icon: 'none' });
+    }
+
+    // 从队列中移除已处理的消息
+    pendingMessages.value.shift();
+  }
+
+  // 队列处理完成
+  isProcessing.value = false;
+  loading.value = false;
+  console.log('[processMessageQueue] 消息队列处理完成');
+}
+
+/**
+ * 处理单条消息的API调用和轮询逻辑
+ * @param {string} content - 消息内容
+ * @param {number} tempId - 临时消息ID
+ */
+async function processOneMessage(content, tempId) {
+  const res = await chatApi.send(content);
+  const data = res.data;
+
+  if (!data || !data.user_message || !data.partner_message) {
+    console.error('[processOneMessage] 后端返回结构异常:', data);
+    throw new Error('后端返回结构异常');
+  }
+
+  console.log('[processOneMessage] 后端返回:', data.user_message.id, '沉淀状态:', data.user_message.precipitation_status);
+
+  // 替换用户临时消息为服务器确认的消息
+  const userMsgIndex = messages.value.findIndex(m => m.id === tempId);
+  if (userMsgIndex > -1) {
+    const userMsg = {
+      ...data.user_message,
+      precipitation_status: Number(data.user_message.precipitation_status) || 0,
+      precipitation_id: data.user_message.precipitation_id || null,
+      precipitation_type: data.user_message.precipitation_type || null
+    };
+    messages.value[userMsgIndex] = userMsg;
+    console.log('[processOneMessage] 已替换用户消息，新ID:', userMsg.id);
+  }
+
+  // 添加搭搭的回复
+  messages.value.push(data.partner_message);
+  if (data.partner_message?.role === 'partner' && data.partner_message?.content?.length > 60) {
+    startTypeWriter(data.partner_message);
+  }
+
+  // 延迟拉取待确认资产
+  setTimeout(() => {
+    if (data.partner_message?.id) {
+      loadPendingAssets([data.partner_message.id]);
+    }
+  }, 2500);
+  setTimeout(() => {
+    if (data.partner_message?.id) {
+      loadPendingAssets([data.partner_message.id]);
+    }
+  }, 6000);
+
+  // 如果需要异步helper，等待其回复完成
+  if (data.async_helper) {
+    await waitForAsyncHelper(data.partner_message.id, data.user_message.id);
+  }
+
+  loadTodayStats();
+  reportCount('ai_chat');
+
+  setTimeout(() => {
+    refreshMessages();
+  }, 3000);
+}
+
+/**
+ * 等待异步helper回复完成
+ * @param {number} partnerMessageId - 搭搭第一条回复ID（轮询基线）
+ * @param {number} userMessageId - 用户消息ID（用于更新沉淀状态）
+ */
+function waitForAsyncHelper(partnerMessageId, userMessageId) {
+  return new Promise((resolve, reject) => {
+    console.log('[waitForAsyncHelper] 开始轮询异步helper，基线消息ID:', partnerMessageId);
+
+    let pollCount = 0;
+    let pollErrors = 0;
+    const maxPolls = 120;
+    const maxPollErrors = 5;
+
+    const pollInterval = setInterval(async () => {
+      pollCount++;
+      try {
+        const res = await chatApi.getMessages({ page: 1, size: 20 });
+        const list = res.data.list || [];
+
+        // 查找新的partner消息（排除基线）
+        const newMessages = list.filter(m =>
+          m.role === 'partner' &&
+          m.id > partnerMessageId &&
+          !messages.value.some(existing => existing.id === m.id)
+        );
+
+        if (newMessages.length > 0) {
+          newMessages.forEach(msg => {
+            messages.value.push(msg);
+            if (msg.role === 'partner' && msg.content && msg.content.length > 60) {
+              startTypeWriter(msg);
+            }
+          });
+          console.log('[waitForAsyncHelper] 获取到新消息:', newMessages.length);
+          loadPendingAssets(newMessages.map(m => m.id));
+          setTimeout(() => {
+            loadPendingAssets(newMessages.map(m => m.id));
+          }, 5000);
+          clearInterval(pollInterval);
+          resolve();
+          return;
+        }
+
+        // 更新用户消息的沉淀状态
+        const userMsgIndex = messages.value.findIndex(m => m.id === userMessageId);
+        if (userMsgIndex > -1) {
+          const latestUserMsg = list.find(m => m.id === userMessageId);
+          if (latestUserMsg && latestUserMsg.precipitation_status > 0) {
+            messages.value[userMsgIndex].precipitation_status = latestUserMsg.precipitation_status;
+            messages.value[userMsgIndex].precipitation_id = latestUserMsg.precipitation_id;
+            messages.value[userMsgIndex].precipitation_type = latestUserMsg.precipitation_type;
+          }
+        }
+
+        // 轮询超时
+        if (pollCount >= maxPolls) {
+          console.log('[waitForAsyncHelper] 轮询超时');
+          clearInterval(pollInterval);
+          resolve(); // 超时也继续，不阻塞后续消息
+        }
+      } catch (e) {
+        pollErrors++;
+        if (pollErrors >= maxPollErrors) {
+          console.log('[waitForAsyncHelper] 轮询连续失败过多');
+          clearInterval(pollInterval);
+          resolve();
+        }
+      }
+    }, 1000);
+  });
 }
 
 // 打字机效果：长回复逐字显示，避免内容一下子全部弹出
@@ -1059,8 +1253,15 @@ function startTypeWriter(msg, speed) {
   if (!msg || !msg.content) return;
   const full = msg.content;
   // 根据长度动态调整速度，长文更快、短文更自然
+  // #ifdef MP-WEIXIN
+  // 小程序端降低 setData 频率（每次数据更新都要过 JS↔Native 桥）：约 40 次更新完成
+  const step = Math.max(1, Math.ceil(full.length / 40));
+  const interval = speed ?? 60;
+  // #endif
+  // #ifndef MP-WEIXIN
   const step = full.length > 500 ? 3 : full.length > 200 ? 2 : 1;
   const interval = speed ?? (full.length > 400 ? 10 : full.length > 150 ? 15 : 20);
+  // #endif
   msg.displayContent = '';
   let i = 0;
   const timer = setInterval(() => {
@@ -1131,6 +1332,86 @@ async function refreshMessages() {
   }
 }
 
+// 语音输入
+function initRecorder() {
+  try {
+    recorderManager = uni.getRecorderManager();
+    recorderManager.onStop((res) => {
+      voiceTempFilePath = res.tempFilePath;
+      if (recording.value) {
+        uploadVoice(voiceTempFilePath);
+      }
+      recording.value = false;
+      stopVoiceTimer();
+    });
+    recorderManager.onError((err) => {
+      console.error('录音失败:', err);
+      recording.value = false;
+      stopVoiceTimer();
+      uni.showToast({ title: '录音失败', icon: 'none' });
+    });
+  } catch (e) {
+    console.error('初始化录音失败:', e);
+  }
+}
+
+function startVoiceRecord() {
+  if (!recorderManager) initRecorder();
+  if (!recorderManager) {
+    uni.showToast({ title: '当前环境不支持录音', icon: 'none' });
+    return;
+  }
+  recording.value = true;
+  recordingSeconds.value = 0;
+  voiceTimer = setInterval(() => {
+    recordingSeconds.value++;
+    if (recordingSeconds.value >= 60) stopVoiceRecord();
+  }, 1000);
+  try {
+    recorderManager.start({ duration: 60000, format: 'mp3' });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function stopVoiceRecord() {
+  if (!recording.value) return;
+  if (recorderManager) {
+    try {
+      recorderManager.stop();
+    } catch (e) {
+      recording.value = false;
+      stopVoiceTimer();
+    }
+  }
+}
+
+function stopVoiceTimer() {
+  if (voiceTimer) {
+    clearInterval(voiceTimer);
+    voiceTimer = null;
+  }
+}
+
+async function uploadVoice(filePath) {
+  if (!filePath) return;
+  try {
+    uni.showLoading({ title: '识别中...' });
+    const res = await voiceApi.transcribe(filePath);
+    uni.hideLoading();
+    const text = res.data?.text || '';
+    if (text) {
+      inputText.value = text;
+      sendMessage();
+    } else {
+      uni.showToast({ title: '未识别到语音，请重试', icon: 'none' });
+    }
+  } catch (e) {
+    uni.hideLoading();
+    uni.showToast({ title: e.message || '识别失败', icon: 'none' });
+  }
+}
+
 // 跳转到记录页面
 function goToRecord(type) {
   const urls = {
@@ -1142,10 +1423,14 @@ function goToRecord(type) {
   uni.navigateTo({ url: urls[type] || '/pages/record/index' });
 }
 
-// 滚动到底部
-function scrollToBottom() {
+// 滚动到底部；force=false 时若用户已上翻阅读历史则不打断
+function scrollToBottom(force = false) {
+  if (!force && !userNearBottom.value) return;
+  userNearBottom.value = true;
   nextTick(() => {
+    // scroll-into-view 各端通用（H5/小程序/App 的 scroll-view 都支持）
     scrollIntoView.value = 'msg-bottom-spacer';
+    // #ifdef H5
     nextTick(() => {
       // 关键：uni-app H5 的可滚动容器是 .message-list 内部的 .uni-scroll-view，
       // 必须把 scrollTop 同步到这个容器上，否则页面会停留在顶部。
@@ -1154,6 +1439,7 @@ function scrollToBottom() {
         scrollTop.value = scrollView.scrollHeight + 9999;
       }
     });
+    // #endif
     setTimeout(() => {
       scrollIntoView.value = '';
     }, 300);
@@ -1286,6 +1572,17 @@ function closeEditModal() {
   editTargetMsg.value = null;
   editRecordType.value = 'diet';
   editAssetData.value = { type: '', title: '', content: '', ingredients: '', steps: '', tip: '' };
+  pendingQueue.value = [];
+}
+
+// 同一条消息可能沉淀多条记录（如一条回复含多个食谱），确认/忽略后推进到下一条
+// 返回 true 表示还有下一条并已直接打开（调用方不再关闭弹窗）
+function advancePendingQueue() {
+  if (pendingQueue.value.length === 0) return false;
+  pendingQueue.value.shift();
+  if (pendingQueue.value.length === 0) return false;
+  openEditModal(pendingQueue.value[0], 'confirm', editTargetMsg.value);
+  return true;
 }
 
 // 忽略/取消编辑弹窗
@@ -1293,10 +1590,13 @@ async function rejectEdit() {
   if (editMode.value === 'confirm' && editRecord.value) {
     try {
       await chatApi.confirmPrecipitation({ precipitation_id: editRecord.value.id, confirmed: false });
+      uni.showToast({ title: '已忽略', icon: 'none' });
+      // 同一条消息还有下一条待确认记录时直接继续
+      if (advancePendingQueue()) return;
       if (editTargetMsg.value) {
         editTargetMsg.value.precipitation_status = 3;
       }
-      uni.showToast({ title: '已忽略', icon: 'none' });
+      refreshMessages();
     } catch (err) {
       console.error(err);
       uni.showToast({ title: '操作失败', icon: 'none' });
@@ -1545,16 +1845,21 @@ async function saveEdit() {
     }
 
     if (editMode.value === 'confirm') {
-      await precipitationApi.update(editRecord.value.id, {
-        type: updateType,
-        sub_type: updateSubType,
-        extracted_data: extractedData,
-        status: 1
+      // 统一走确认沉淀接口，确保奖励、任务、聊天消息状态同步更新
+      const res = await chatApi.confirmPrecipitation({
+        precipitation_id: editRecord.value.id,
+        confirmed: true,
+        modified_data: extractedData
       });
+      showRewardToast(res.data?.reward_messages || [], '已确认记录');
+      // 同一条消息还有下一条待确认记录（如多个食谱）时直接继续，不翻转消息状态
+      if (advancePendingQueue()) {
+        loadTodayStats();
+        return;
+      }
       if (editTargetMsg.value) {
         editTargetMsg.value.precipitation_status = 1;
       }
-      uni.showToast({ title: '已确认记录', icon: 'success' });
     } else {
       await precipitationApi.update(editRecord.value.id, {
         type: updateType,
@@ -1575,12 +1880,7 @@ async function saveEdit() {
 // 已记录标签点击
 async function onConfirmedTag(msg) {
   if (!msg.precipitation_id) {
-    uni.showModal({
-      title: '已自动记录',
-      content: '这条消息已帮你记入今日记录，可以在「今日记录」中查看或修改哦～',
-      showCancel: false,
-      confirmText: '知道了'
-    });
+    showAutoRecordedModal.value = true;
     return;
   }
 
@@ -1602,7 +1902,7 @@ async function onConfirmedTag(msg) {
 // 待确认标签点击
 async function onPendingTag(msg) {
   try {
-    let record = null;
+    let queue = [];
     if (!msg.precipitation_id) {
       //  preliminary 标签还没有沉淀记录，先创建一条待确认记录
       const createRes = await precipitationApi.create({
@@ -1610,18 +1910,25 @@ async function onPendingTag(msg) {
         content: msg.content,
         type: msg.precipitation_type
       });
-      record = createRes.data;
+      const record = createRes.data;
       msg.precipitation_id = record.id;
+      queue = [record];
     } else {
       const res = await precipitationApi.getList({ page: 1, size: 50 });
       const list = res.data.list || [];
-      record = list.find(r => r.id === msg.precipitation_id);
+      // 同一消息的所有待确认记录一起排入队列（如一条回复提取出多个食谱）
+      queue = list.filter(r => r.chat_id === msg.id && Number(r.status) === 0);
+      if (queue.length === 0) {
+        const record = list.find(r => r.id === msg.precipitation_id);
+        if (record) queue = [record];
+      }
     }
-    if (!record) {
+    if (queue.length === 0) {
       uni.showToast({ title: '记录未找到', icon: 'none' });
       return;
     }
-    openEditModal(record, 'confirm', msg);
+    pendingQueue.value = queue;
+    openEditModal(queue[0], 'confirm', msg);
   } catch (err) {
     console.error(err);
     uni.showToast({ title: '加载失败', icon: 'none' });
@@ -1634,186 +1941,146 @@ async function onPendingTag(msg) {
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: #F7FbF4;
+  background: #F8FAF7;
   overflow: hidden;
 }
 
 .status-bar {
   height: var(--status-bar-height);
+  /* #ifdef MP-WEIXIN */
+  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
+  height: calc(var(--status-bar-height) + 88rpx);
+  /* #endif */
   flex-shrink: 0;
 }
 
-/* 顶部搭子信息 */
 .header {
   flex-shrink: 0;
-  background: #FFFFFF;
-  padding: 20rpx 32rpx 24rpx;
+  background: #E8F6D7;
+  padding: 20rpx 28rpx 24rpx;
+  margin-top: -48rpx;
 }
 
 .header-inner {
   display: flex;
   align-items: center;
+  transform: translateY(32rpx);
 }
 
-.avatar-wrap {
-  position: relative;
-  width: 96rpx;
-  height: 96rpx;
+.header-avatar {
+  width: 220rpx;
+  height: 126rpx;
   margin-right: 24rpx;
+  margin-top: 20rpx;
   flex-shrink: 0;
 }
 
-.avatar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: #CFE9BF;
-  opacity: 0;
-  transition: opacity 0.2s ease;
+.header-title-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin-top: 20rpx;
+  min-width: 0;
 }
 
-.avatar.avatar-visible {
-  opacity: 1;
+.header-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #563E22;
+  line-height: 1.3;
 }
 
-.avatar-placeholder {
-  width: 100%;
-  height: 100%;
+.header-subtitle {
+  font-size: 26rpx;
+  color: #8DBB77;
+  margin-top: 6rpx;
+  line-height: 1.3;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.header-setting {
+  width: 72rpx;
+  height: 72rpx;
   border-radius: 50%;
-  background: #CFE9BF;
+  background: #8DBB77;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.avatar-placeholder-text {
-  font-size: 40rpx;
-  color: #8DBB77;
-  font-weight: 600;
-}
-
-.ai-badge {
-  position: absolute;
-  right: -4rpx;
-  bottom: -4rpx;
-  min-width: 32rpx;
-  height: 32rpx;
-  padding: 0 6rpx;
-  background: #8DBB77;
-  color: #fff;
-  font-size: 18rpx;
-  font-weight: 600;
-  line-height: 28rpx;
-  text-align: center;
-  border-radius: 16rpx;
-  border: 2rpx solid #fff;
-  box-sizing: border-box;
-}
-
-.partner-info {
-  flex: 1;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.partner-name {
-  font-size: 40rpx;
-  font-weight: 700;
-  color: #1F2937;
-  line-height: 1.2;
-  margin-right: 16rpx;
-  flex: 1;
-  min-width: 0;
-}
-
-.tags-wrap {
-  display: inline-flex;
   flex-shrink: 0;
 }
 
-.tags-inner {
-  display: flex;
-  align-items: center;
-  background: #E8F4FC;
-  border-radius: 28rpx;
-  padding: 4rpx 6rpx;
-}
-
-.tag {
-  display: flex;
-  align-items: center;
-  font-size: 24rpx;
-  color: #6B7280;
-  line-height: 1;
-}
-
-.status-tag {
-  padding: 4rpx 10rpx;
-}
-
-.status-dot {
-  width: 18rpx;
-  height: 18rpx;
-  margin-right: 8rpx;
-}
-
-.mood-tag {
-  background: #FFFFFF;
-  border-radius: 18rpx;
-  padding: 4rpx 10rpx;
-  margin-left: 6rpx;
+.header-setting-icon {
+  width: 40rpx;
+  height: 40rpx;
 }
 
 /* 消息列表 */
 .message-list {
   flex: 1;
   min-height: 0;
-  padding: 32rpx;
+  padding: 20rpx 40rpx;
   padding-bottom: calc(284rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  background: #F7FBF4;
 }
 
 .date-wrap {
   display: flex;
   justify-content: center;
-  margin-bottom: 40rpx;
+  margin-bottom: 32rpx;
 }
 
 .date-pill {
   display: inline-flex;
-  background: #FFFFFF;
-  border-radius: 28rpx;
-  padding: 10rpx 28rpx;
+  align-items: center;
+  background: transparent;
+  padding: 0;
   font-size: 24rpx;
-  color: #9CA3AF;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.03);
+  color: #999999;
+}
+
+.date-pill::before,
+.date-pill::after {
+  content: '';
+  display: inline-block;
+  width: 100rpx;
+  height: 1rpx;
+  background: #E5E7EB;
+}
+
+.date-pill::before {
+  margin-right: 24rpx;
+}
+
+.date-pill::after {
+  margin-left: 24rpx;
 }
 
 .message-row {
   display: flex;
-  margin-bottom: 32rpx;
+  flex-direction: column;
+  margin-bottom: 24rpx;
+  gap: 20rpx;
 }
 
 .message-row.partner {
-  justify-content: flex-start;
+  align-items: flex-start;
 }
 
 .message-row.user {
-  justify-content: flex-end;
+  align-items: flex-end;
 }
 
 .bubble {
-  max-width: 72%;
-  border-radius: 32rpx;
-  padding: 24rpx;
+  max-width: 84%;
+  border-radius: 20rpx;
+  padding: 24rpx 28rpx;
   line-height: 1.6;
   word-break: break-word;
   white-space: pre-wrap;
@@ -1821,11 +2088,14 @@ async function onPendingTag(msg) {
 
 .partner-bubble {
   background: #FFFFFF;
-  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.03);
+  border-radius: 20rpx;
+  box-shadow: 0 8rpx 40rpx rgba(0, 0, 0, 0.04);
 }
 
 .user-bubble {
-  background: #BFE8B0;
+  background: #B2EBF2;
+  border-radius: 20rpx;
+  box-shadow: 0 4rpx 24rpx rgba(178, 235, 242, 0.4);
 }
 
 .ai-generated-label {
@@ -1845,7 +2115,11 @@ async function onPendingTag(msg) {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  max-width: calc(72% + 100rpx);
+  max-width: calc(84% + 100rpx);
+}
+
+.partner-column {
+  align-items: flex-start;
 }
 
 .user-column .bubble {
@@ -1888,9 +2162,9 @@ async function onPendingTag(msg) {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(144rpx + env(safe-area-inset-bottom));
-  padding: 16rpx 32rpx 20rpx;
-  background: #F7FAF5;
+  bottom: calc(156rpx + env(safe-area-inset-bottom));
+  padding: 12rpx 32rpx 16rpx;
+  background: #F7FBF4;
   z-index: 10;
 }
 
@@ -1898,23 +2172,59 @@ async function onPendingTag(msg) {
   display: flex;
   align-items: center;
   background: #FFFFFF;
-  border-radius: 48rpx;
-  padding: 12rpx 12rpx 12rpx 28rpx;
-  box-shadow: 0 4rpx 24rpx rgba(0, 0, 0, 0.05);
+  border-radius: 88rpx;
+  padding: 8rpx 8rpx 8rpx 28rpx;
+  box-shadow: 0 4rpx 8rpx rgba(0, 0, 0, 0.05);
 }
 
 .chat-input {
   flex: 1;
   height: 56rpx;
   font-size: 28rpx;
-  color: #1F2937;
+  color: #1A1A1A;
+}
+
+.send-btn-wrap {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: #8DBB77;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 12rpx;
 }
 
 .send-btn {
-  width: 80rpx;
-  height: 80rpx;
-  margin-left: 12rpx;
+  width: 40rpx;
+  height: 40rpx;
+}
+
+.voice-btn {
+  width: 64rpx;
+  height: 64rpx;
+  margin-left: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
   flex-shrink: 0;
+}
+
+.voice-btn.recording {
+  background: #FEE2E2;
+}
+
+.voice-icon {
+  font-size: 36rpx;
+}
+
+.voice-recording-tip {
+  text-align: center;
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #8DBB77;
 }
 
 /* 编辑弹窗 */

@@ -4,12 +4,15 @@
  */
 const crypto = require('crypto');
 const { db } = require('../db');
+const LRUCache = require('../utils/lruCache');
+const { CONFIG_KEYS, POPUP_KEYS, FEATURE_TYPES, DEFAULT_CONFIG_VALUES } = require('../constants/configKeys');
 
 const CONFIG_CACHE_TTL_MS = 60 * 1000;
-let configCache = null;
-let configCacheAt = 0;
+const configLRUCache = new LRUCache(50, CONFIG_CACHE_TTL_MS);
+let configCacheLock = false;
+let configCachePromise = null;
 
-const VALID_FEATURES = ['ai_chat', 'diary'];
+const VALID_FEATURES = Object.values(FEATURE_TYPES);
 
 function getNow() {
   return new Date().toISOString();
@@ -22,28 +25,49 @@ function isExpired(expireAt) {
 
 /**
  * 获取全量后台配置（带1分钟内存缓存）
+ * 修复：使用LRU缓存优化性能，改进缓存锁机制
  */
 function getConfig() {
-  const now = Date.now();
-  if (configCache && configCacheAt + CONFIG_CACHE_TTL_MS > now) {
-    return configCache;
+  const cachedConfig = configLRUCache.get('trial_config');
+  if (cachedConfig) {
+    return cachedConfig;
   }
-  const rows = db.prepare('SELECT config_key, config_value FROM trial_system_config').all();
-  const config = {};
-  rows.forEach(row => {
-    config[row.config_key] = row.config_value;
-  });
-  configCache = config;
-  configCacheAt = now;
-  return config;
+  
+  if (configCacheLock && configCachePromise) {
+    return DEFAULT_CONFIG_VALUES;
+  }
+  
+  configCacheLock = true;
+  
+  try {
+    const rows = db.prepare('SELECT config_key, config_value FROM trial_system_config').all();
+    const config = { ...DEFAULT_CONFIG_VALUES };
+    rows.forEach(row => {
+      config[row.config_key] = row.config_value;
+    });
+    
+    configLRUCache.set('trial_config', config);
+    
+    console.log('[Config] 配置已加载，缓存统计:', configLRUCache.getStats());
+    
+    return config;
+  } catch (e) {
+    console.error('[Config] 加载配置失败:', e);
+    return DEFAULT_CONFIG_VALUES;
+  } finally {
+    configCacheLock = false;
+  }
 }
 
 /**
  * 刷新配置缓存（后台修改后调用）
+ * 修复：使用LRU缓存失效机制
  */
 function invalidateConfigCache() {
-  configCache = null;
-  configCacheAt = 0;
+  const stats = configLRUCache.getStats();
+  configLRUCache.clear();
+  
+  console.log(`[Config] 缓存已失效，旧缓存命中率: ${stats.hitRate}`);
 }
 
 /**
@@ -63,30 +87,48 @@ function setConfig(key, value) {
 
 /**
  * 批量更新配置
+ * 修复：添加变更日志记录
  */
 function setConfigs(configs) {
+  const oldConfig = getConfig();
+  const changes = [];
+  
   const insert = db.prepare('INSERT OR REPLACE INTO trial_system_config (config_key, config_value, updated_at) VALUES (?, ?, ?)');
   const transaction = db.transaction((items) => {
     const now = getNow();
     for (const [key, value] of Object.entries(items)) {
+      const oldValue = oldConfig[key];
+      if (oldValue !== String(value)) {
+        changes.push({ key, oldValue, newValue: String(value) });
+      }
       insert.run(key, String(value), now);
     }
   });
   transaction(configs);
+  
+  if (changes.length > 0) {
+    console.log(`[Config] 配置已更新，共 ${changes.length} 项变更:`, 
+      changes.map(c => `${c.key}: ${c.oldValue} -> ${c.newValue}`).join(', '));
+  }
+  
   invalidateConfigCache();
 }
 
 /**
  * 获取某个 feature 的弹窗配置
+ * 修复：使用配置键常量，添加优先级
  */
 function getPopupConfig(featureType, globalConfig) {
-  const prefix = featureType === 'ai_chat' ? 'popup_ai' : 'popup_diary';
+  const prefix = featureType === FEATURE_TYPES.AI_CHAT ? 'POPUP_AI' : 'POPUP_DIARY';
+  const keys = CONFIG_KEYS[prefix];
+  
   return {
-    title: globalConfig[`${prefix}_title`] || '试用权限已用尽',
-    content: globalConfig[`${prefix}_content`] || '您的免费试用次数已使用完毕，如需继续使用该功能，可联系客服获取正式使用授权。',
-    primary_btn: globalConfig[`${prefix}_primary_btn`] || '联系客服获取授权',
-    secondary_btn: globalConfig[`${prefix}_secondary_btn`] || '取消',
-    contact: globalConfig[`${prefix}_contact`] || ''
+    title: globalConfig[keys.TITLE] || DEFAULT_CONFIG_VALUES[keys.TITLE],
+    content: globalConfig[keys.CONTENT] || DEFAULT_CONFIG_VALUES[keys.CONTENT],
+    primary_btn: globalConfig[keys.PRIMARY_BTN] || DEFAULT_CONFIG_VALUES[keys.PRIMARY_BTN],
+    secondary_btn: globalConfig[keys.SECONDARY_BTN] || DEFAULT_CONFIG_VALUES[keys.SECONDARY_BTN],
+    contact: globalConfig[keys.CONTACT] || DEFAULT_CONFIG_VALUES[keys.CONTACT],
+    priority: featureType === FEATURE_TYPES.AI_CHAT ? 1 : 2
   };
 }
 

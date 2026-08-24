@@ -21,8 +21,8 @@
           :filters="categoryFilters"
           :filter-multiple="false"
         />
-        <el-table-column prop="met_value" label="MET" width="90" />
-        <el-table-column prop="calorie_per_hour" label="小时消耗" width="110" />
+        <el-table-column prop="intensity_desc" label="强度" width="110" />
+        <el-table-column prop="calorie_per_hour" label="每小时消耗（千卡）" width="150" />
         <el-table-column label="操作" width="160">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDialog(row)" v-perm="'exercise_lib:write'">编辑</el-button>
@@ -36,11 +36,25 @@
     <el-dialog v-model="dialogVisible" :title="form.id ? '编辑运动' : '新增运动'" width="600px">
       <el-form :model="form" label-width="100px">
         <el-form-item label="名称"><el-input v-model="form.exercise_name" /></el-form-item>
-        <el-form-item label="分类"><el-input v-model="form.category" /></el-form-item>
-        <el-form-item label="子分类"><el-input v-model="form.sub_category" /></el-form-item>
-        <el-form-item label="MET"><el-input-number v-model="form.met_value" :precision="2" /></el-form-item>
-        <el-form-item label="小时消耗"><el-input-number v-model="form.calorie_per_hour" :precision="2" /></el-form-item>
-        <el-form-item label="强度描述"><el-input v-model="form.intensity_desc" /></el-form-item>
+        <el-form-item label="分类">
+          <el-select v-model="form.category" placeholder="请选择分类" filterable allow-create style="width:100%;" @change="onCategoryChange">
+            <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="子分类">
+          <el-select v-model="form.sub_category" placeholder="请选择子分类" filterable allow-create clearable style="width:100%;">
+            <el-option v-for="s in subCategoryOptions" :key="s" :label="s" :value="s" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="强度">
+          <el-select v-model="form.intensity_desc" placeholder="请选择强度" style="width:100%;">
+            <el-option v-for="s in INTENSITY_OPTIONS" :key="s" :label="s" :value="s" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="每小时消耗">
+          <el-input-number v-model="form.calorie_per_hour" :precision="2" :min="0" />
+          <span style="margin-left:8px;color:#909399;font-size:12px;">（千卡）</span>
+        </el-form-item>
         <el-form-item label="备注"><el-input v-model="form.remark" type="textarea" :rows="3" /></el-form-item>
       </el-form>
       <template #footer>
@@ -68,9 +82,22 @@ const loading = ref(false)
 const list = ref([])
 const total = ref(0)
 const categories = ref([])
+const subCategories = ref({})
+// 强度固定档位（下拉选择，不再手填）
+const INTENSITY_OPTIONS = ['极低强度', '低强度', '中低强度', '中等强度', '中高强度', '高强度', '极高强度']
 const query = ref({ keyword: '', category: '', page: 1, size: 20 })
 const dialogVisible = ref(false)
-const form = ref({ exercise_name: '', category: '', sub_category: '', met_value: 0, calorie_per_hour: 0, intensity_desc: '', remark: '' })
+const form = ref({ exercise_name: '', category: '', sub_category: '', calorie_per_hour: 0, intensity_desc: '', remark: '' })
+
+// 子分类下拉随分类联动
+const subCategoryOptions = computed(() => subCategories.value[form.value.category] || [])
+
+function onCategoryChange() {
+  // 切换分类后，当前子分类不属于新分类时清空
+  if (form.value.sub_category && !subCategoryOptions.value.includes(form.value.sub_category)) {
+    form.value.sub_category = ''
+  }
+}
 
 onMounted(load)
 
@@ -83,6 +110,7 @@ async function load() {
     list.value = res.data.list
     total.value = res.data.pagination.total
     categories.value = res.data.categories || []
+    subCategories.value = res.data.subCategories || {}
   } finally {
     loading.value = false
   }
@@ -102,7 +130,7 @@ function reset() {
 }
 
 function openDialog(row = null) {
-  form.value = row ? { ...row } : { exercise_name: '', category: '', sub_category: '', met_value: 0, calorie_per_hour: 0, intensity_desc: '', remark: '' }
+  form.value = row ? { ...row } : { exercise_name: '', category: '', sub_category: '', calorie_per_hour: 0, intensity_desc: '', remark: '' }
   dialogVisible.value = true
 }
 

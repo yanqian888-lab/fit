@@ -43,7 +43,18 @@ const SYSTEM_ROLES = [
       'popup_whitelist:read', 'popup_whitelist:write',
       'popup_route:read', 'popup_route:write',
       'popup_global:read', 'popup_global:write',
-      'popup_stats:read'
+      'popup_stats:read',
+      'announcement:read', 'announcement:write',
+      'notification_channel:read', 'notification_channel:write',
+      'operation_stats:read',
+      'pet_config:read', 'pet_config:write',
+      'currency_config:read', 'currency_config:write',
+      'shop_config:read', 'shop_config:write',
+      'event_config:read', 'event_config:write',
+      'task_config:read', 'task_config:write',
+      'achievement_config:read', 'achievement_config:write',
+      'dialogue_config:read', 'dialogue_config:write',
+      'workout_config:read', 'workout_config:write'
     ]),
     is_system: 1
   },
@@ -68,7 +79,18 @@ const SYSTEM_ROLES = [
       'popup_whitelist:read', 'popup_whitelist:write',
       'popup_route:read', 'popup_route:write',
       'popup_global:read', 'popup_global:write',
-      'popup_stats:read'
+      'popup_stats:read',
+      'announcement:read', 'announcement:write',
+      'notification_channel:read', 'notification_channel:write',
+      'operation_stats:read',
+      'pet_config:read', 'pet_config:write',
+      'currency_config:read', 'currency_config:write',
+      'shop_config:read', 'shop_config:write',
+      'event_config:read', 'event_config:write',
+      'task_config:read', 'task_config:write',
+      'achievement_config:read', 'achievement_config:write',
+      'dialogue_config:read', 'dialogue_config:write',
+      'workout_config:read', 'workout_config:write'
     ]),
     is_system: 1
   },
@@ -86,7 +108,10 @@ const SYSTEM_ROLES = [
       'popup_whitelist:read',
       'popup_route:read',
       'popup_global:read',
-      'popup_stats:read'
+      'popup_stats:read',
+      'announcement:read',
+      'notification_channel:read',
+      'operation_stats:read'
     ]),
     is_system: 1
   }

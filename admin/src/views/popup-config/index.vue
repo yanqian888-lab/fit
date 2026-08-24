@@ -49,7 +49,9 @@
                 {{ row.start_time }} ~ {{ row.end_time }}
               </template>
             </el-table-column>
-            <el-table-column prop="created_at" label="创建时间" width="180" />
+            <el-table-column label="创建时间" width="180">
+              <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+            </el-table-column>
             <el-table-column prop="priority" label="优先级" width="80" />
             <el-table-column prop="target_user_count" label="定向用户" width="100">
               <template #default="{ row }">
@@ -273,6 +275,7 @@
           <el-radio-group v-model="popupForm.status">
             <el-radio label="enabled">直接启用</el-radio>
             <el-radio label="draft">保存草稿</el-radio>
+            <el-radio label="disabled">停用</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="定向用户">
@@ -326,9 +329,6 @@
           <el-select v-model="popupForm.jump_route_id" filterable style="width: 300px;">
             <el-option v-for="r in routeListAll" :key="r.id" :label="r.route_name" :value="r.id" />
           </el-select>
-        </el-form-item>
-        <el-form-item v-if="popupForm.jump_type === 'internal'" label="跳转参数">
-          <el-input v-model="jumpParamsText" type="textarea" :rows="3" style="width: 400px;" placeholder='{"id": 1}' />
         </el-form-item>
         <el-form-item v-if="popupForm.jump_type === 'h5'" label="H5 链接" prop="jump_url">
           <el-input v-model="popupForm.jump_url" style="width: 400px;" placeholder="https://" />
@@ -420,9 +420,6 @@
         <el-form-item label="页面路径">
           <el-input v-model="routeForm.path" placeholder="/pages/index/index" />
         </el-form-item>
-        <el-form-item label="参数 Schema">
-          <el-input v-model="routeForm.params_schema_text" type="textarea" :rows="3" placeholder='{"id": "number"}' />
-        </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="routeForm.status">
             <el-radio label="enabled">启用</el-radio>
@@ -460,6 +457,15 @@ const vPerm = {
 }
 
 const activeTab = ref('popup')
+
+// ISO 时间转本地可读格式（2026-07-07T05:54:52.070Z → 2026-07-07 13:54:52）
+function formatTime(val) {
+  if (!val) return '-'
+  const d = new Date(val)
+  if (isNaN(d.getTime())) return val
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
 
 // ==================== 弹窗管理 ====================
 const popupQuery = reactive({ page: 1, size: 20, keyword: '', type: '', status: '' })
@@ -511,16 +517,6 @@ const targetUsersText = computed({
       .filter(Boolean);
   }
 })
-const jumpParamsText = computed({
-  get: () => JSON.stringify(popupForm.jump_params || {}, null, 2),
-  set: (val) => {
-    try {
-      popupForm.jump_params = JSON.parse(val || '{}')
-    } catch (e) {
-      popupForm.jump_params = {}
-    }
-  }
-})
 
 const popupRules = {
   name: [{ required: true, message: '请输入弹窗名称', trigger: 'blur' }],
@@ -563,18 +559,23 @@ async function loadAllPopups() {
   } catch (e) {}
 }
 
-function openPopupDialog(row = null) {
+async function openPopupDialog(row = null) {
   if (row && row.id) {
+    let detail = row
+    try {
+      const res = await cmsPopupApi.detail(row.id)
+      detail = res.data || row
+    } catch (e) {}
     Object.assign(popupForm, {
-      ...row,
-      timeRange: [row.start_time, row.end_time],
-      show_close_button: row.show_close_button === 1 || row.show_close_button === true,
-      mask_closeable: row.mask_closeable === 1 || row.mask_closeable === true,
-      one_time: row.one_time === 1 || row.one_time === true,
-      wifi_only: row.wifi_only === 1 || row.wifi_only === true,
-      jump_params: row.jump_params || {},
-      scope_pages: Array.isArray(row.scope_pages) ? row.scope_pages : [],
-      excluded_pages: Array.isArray(row.excluded_pages) ? row.excluded_pages : []
+      ...detail,
+      timeRange: [detail.start_time, detail.end_time],
+      show_close_button: detail.show_close_button === 1 || detail.show_close_button === true,
+      mask_closeable: detail.mask_closeable === 1 || detail.mask_closeable === true,
+      one_time: detail.one_time === 1 || detail.one_time === true,
+      wifi_only: detail.wifi_only === 1 || detail.wifi_only === true,
+      jump_params: detail.jump_params || {},
+      scope_pages: Array.isArray(detail.scope_pages) ? detail.scope_pages : [],
+      excluded_pages: Array.isArray(detail.excluded_pages) ? detail.excluded_pages : []
     })
   } else {
     Object.assign(popupForm, {
@@ -599,6 +600,7 @@ async function submitPopup() {
       start_time: popupForm.timeRange[0],
       end_time: popupForm.timeRange[1]
     }
+    delete payload.timeRange
     try {
       if (popupForm.id) {
         await cmsPopupApi.update(popupForm.id, payload)
@@ -657,7 +659,7 @@ async function uploadImage({ file }) {
   const data = new FormData()
   data.append('image', file)
   try {
-    const res = await request.post('/upload/image', data, {
+    const res = await request.post('/cms/upload/image', data, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     popupForm.image_url = res.data.url
@@ -726,7 +728,7 @@ const routeList = ref([])
 const routeTotal = ref(0)
 const routeLoading = ref(false)
 const routeDialogVisible = ref(false)
-const routeForm = reactive({ id: null, route_key: '', route_name: '', path: '', params_schema_text: '{}', status: 'enabled' })
+const routeForm = reactive({ id: null, route_key: '', route_name: '', path: '', params_schema: {}, status: 'enabled' })
 
 async function loadRoutes() {
   routeLoading.value = true
@@ -742,17 +744,17 @@ function openRouteDialog(row = null) {
   if (row && row.id) {
     Object.assign(routeForm, {
       ...row,
-      params_schema_text: JSON.stringify(row.params_schema || {}, null, 2)
+      params_schema: row.params_schema || {}
     })
   } else {
-    Object.assign(routeForm, { id: null, route_key: '', route_name: '', path: '', params_schema_text: '{}', status: 'enabled' })
+    Object.assign(routeForm, { id: null, route_key: '', route_name: '', path: '', params_schema: {}, status: 'enabled' })
   }
   routeDialogVisible.value = true
 }
 
 async function submitRoute() {
   try {
-    const payload = { ...routeForm, params_schema: JSON.parse(routeForm.params_schema_text || '{}') }
+    const payload = { ...routeForm, params_schema: routeForm.params_schema || {} }
     if (routeForm.id) {
       await cmsPopupRouteApi.update(routeForm.id, payload)
     } else {

@@ -14,6 +14,9 @@ function parseImages(images) {
   }
 }
 
+const URL_REGEX = /^https?:\/\/.+/;
+const VALID_FEEDBACK_TYPES = ['bug', 'feature', 'complaint', 'other', 'content'];
+
 /**
  * 提交反馈
  */
@@ -21,14 +24,41 @@ function createFeedback(req, res) {
   const userId = req.userId;
   const { type, content, images, contact, score } = req.body;
 
-  if (!content) {
+  if (!content || typeof content !== 'string' || content.trim().length === 0) {
     return res.status(400).json(error('反馈内容不能为空', 400));
+  }
+  if (content.length > 2000) {
+    return res.status(400).json(error('反馈内容不能超过 2000 字', 400));
+  }
+  if (type && !VALID_FEEDBACK_TYPES.includes(type)) {
+    return res.status(400).json(error('反馈类型不合法', 400));
+  }
+
+  let imageList = [];
+  if (images !== undefined && images !== null) {
+    imageList = Array.isArray(images) ? images : parseImages(images);
+    if (!Array.isArray(imageList)) {
+      return res.status(400).json(error('图片格式不正确', 400));
+    }
+    if (imageList.length > 6) {
+      return res.status(400).json(error('反馈图片最多 6 张', 400));
+    }
+    for (const img of imageList) {
+      if (typeof img !== 'string' || !URL_REGEX.test(img)) {
+        return res.status(400).json(error('图片链接格式不正确', 400));
+      }
+    }
+  }
+
+  const scoreNum = score !== undefined && score !== null ? parseInt(score) : null;
+  if (scoreNum !== null && (isNaN(scoreNum) || scoreNum < 1 || scoreNum > 5)) {
+    return res.status(400).json(error('评分需在 1-5 之间', 400));
   }
 
   const insertId = db.prepare(`
     INSERT INTO feedback (user_id, type, content, images, contact, score)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(userId, type || 'other', content, images ? JSON.stringify(images) : null, contact || null, score || null).lastInsertRowid;
+  `).run(userId, type || 'other', content.trim(), imageList.length > 0 ? JSON.stringify(imageList) : null, contact || null, scoreNum).lastInsertRowid;
 
   return res.json(success({ id: insertId }, '提交成功'));
 }
@@ -39,7 +69,7 @@ function createFeedback(req, res) {
 function getFeedbacks(req, res) {
   const userId = req.userId;
   const page = parseInt(req.query.page) || 1;
-  const size = parseInt(req.query.size) || 20;
+  const size = Math.min(100, Math.max(1, parseInt(req.query.size) || 20));
   const offset = (page - 1) * size;
 
   const list = db.prepare(`
@@ -65,7 +95,7 @@ function getFeedbacks(req, res) {
  */
 function getAllFeedbacks(req, res) {
   const page = parseInt(req.query.page) || 1;
-  const size = parseInt(req.query.size) || 20;
+  const size = Math.min(100, Math.max(1, parseInt(req.query.size) || 20));
   const offset = (page - 1) * size;
   const status = req.query.status || '';
 

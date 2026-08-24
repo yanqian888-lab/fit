@@ -1,229 +1,357 @@
 {
   "pages": [
     {
+      "path": "pages/login/index",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/splash/index",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/onboarding/index",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/onboarding/tasks",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/profile/setup",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/partner/select-mode",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/partner/settings",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/guide/feature",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/index/index",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
-      "path": "pages/chat/quick-record",
-      "style": { "navigationStyle": "custom" }
+      "path": "pages/pet/index",
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
-      "path": "pages/chat/pending-list",
-      "style": { "navigationStyle": "custom" }
-    },
-    {
-      "path": "pages/chat/search",
-      "style": { "navigationStyle": "custom" }
+      "path": "pages/pet/currency-detail",
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/chat/settings",
-      "style": { "navigationStyle": "custom" }
-    },
-    {
-      "path": "pages/chat/precipitation",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/record/index",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/record/diet-detail",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/record/add-food",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/record/create-food",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/record/food-detail",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/record/habit",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/record/mood",
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/record/exercise-detail",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/record/add-exercise",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/record/body-data",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/museum/index",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/museum/diary",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/museum/diary-generate",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/museum/diary-detail",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/workout/session",
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/museum/milestones",
-      "style": { "navigationStyle": "custom" }
-    },
-    {
-      "path": "pages/museum/timeline",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/museum/recipes",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/museum/insights",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/museum/item-edit",
-      "style": { "navigationStyle": "custom" }
-    },
-    {
-      "path": "pages/museum/event-detail",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/museum/compare",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/museum/photo-upload",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/museum/recipe-detail",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/museum/methods",
-      "style": { "navigationStyle": "custom" }
-    },
-    {
-      "path": "pages/login/index",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/register/index",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/index",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/profile",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/data-manage",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/achievement",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/tasks/index",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/shop/index",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/inventory/index",
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/notifications",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/user/messages",
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/about",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/privacy",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/agreement",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/help",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/help-detail",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/feedback",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/account-settings",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/user/delete-account-agreement",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/admin/feedback",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/admin/privacy",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/blank/index",
-      "style": { "navigationStyle": "custom" }
+      "style": {
+        "navigationStyle": "custom"
+      }
     },
     {
       "path": "pages/webview/index",
-      "style": { "navigationStyle": "custom", "navigationBarTitleText": "详情" }
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "详情"
+      }
     }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "减肥搭子",
+    "navigationBarTitleText": "掉秤搭搭",
     "navigationBarBackgroundColor": "#F5F7FA",
     "backgroundColor": "#F5F7FA"
   },
   "tabBar": {
+    "custom": true,
     "color": "#9CA3AF",
     "selectedColor": "#A8E6CF",
     "borderStyle": "white",
@@ -231,27 +359,27 @@
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "",
+        "text": "聊聊",
         "iconPath": "static/tabbar/chat.png",
         "selectedIconPath": "static/tabbar/chat-active.png"
       },
       {
+        "pagePath": "pages/pet/index",
+        "text": "搭搭",
+        "iconPath": "static/tabbar/pet.png",
+        "selectedIconPath": "static/tabbar/pet-active.png"
+      },
+      {
         "pagePath": "pages/record/index",
-        "text": "",
+        "text": "记录",
         "iconPath": "static/tabbar/record.png",
         "selectedIconPath": "static/tabbar/record-active.png"
       },
       {
         "pagePath": "pages/museum/index",
-        "text": "",
+        "text": "博物馆",
         "iconPath": "static/tabbar/museum.png",
         "selectedIconPath": "static/tabbar/museum-active.png"
-      },
-      {
-        "pagePath": "pages/user/index",
-        "text": "",
-        "iconPath": "static/tabbar/mine.png",
-        "selectedIconPath": "static/tabbar/mine-active.png"
       }
     ]
   }

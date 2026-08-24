@@ -5,47 +5,29 @@
 
     <view class="status-bar"></view>
 
-    <!-- 用户信息 -->
-    <view class="user-header">
-      <view class="avatar">
-        <image v-if="user.avatar_url && !avatarError" :src="avatarFullUrl" class="avatar-img" mode="aspectFill" @error="avatarError = true" />
-        <text v-else>{{ user.nickname?.[0] || 'U' }}</text>
+    <!-- 返回按钮 + 用户信息（同一行，垂直居中） -->
+    <view class="header-row">
+      <view class="back-btn" @click="goBack">
+        <image class="back-icon" src="/static/image/icon/fanhui.png" mode="aspectFit" />
       </view>
-      <view class="user-info">
-        <text class="nickname">{{ user.nickname || '用户昵称' }}</text>
-        <image class="edit-icon" src="/static/image/icon/xiugai.png" mode="aspectFit" @click="goTo('/pages/user/profile')" />
+      <view class="user-header">
+        <view class="avatar">
+          <image v-if="user.avatar_url && !avatarError" :src="avatarFullUrl" class="avatar-img" mode="aspectFill" @error="avatarError = true" />
+          <text v-else>{{ user.nickname?.[0] || 'U' }}</text>
+        </view>
+        <view class="user-info">
+          <text class="nickname">{{ user.nickname || '用户昵称' }}</text>
+          <image class="edit-icon" src="/static/image/icon/xiugai.png" mode="aspectFit" @click="goTo('/pages/user/profile')" />
+        </view>
       </view>
     </view>
 
     <!-- 菜单卡片 -->
     <view class="menu-card">
       <view class="menu-item" v-for="(item, index) in menuList" :key="item.title" @click="goTo(item.url)">
+        <view v-if="item.badge && noticeStore.unreadCount > 0" class="menu-badge">{{ noticeStore.unreadCount > 99 ? '99+' : noticeStore.unreadCount }}</view>
         <view class="menu-icon">
-          <svg viewBox="0 0 48 48" class="menu-icon-svg">
-            <template v-if="item.icon === 'partner'">
-              <path d="M24 42 C24 42 8 30 8 18 C8 12 12 8 18 8 C21 8 24 10 24 13 C24 10 27 8 30 8 C36 8 40 12 40 18 C40 30 24 42 24 42Z" fill="#FBB186"/>
-            </template>
-            <template v-else-if="item.icon === 'feedback'">
-              <rect x="6" y="14" width="36" height="24" rx="4" fill="#8DBB77"/>
-              <path d="M6 18 L24 30 L42 18" stroke="#FFFFFF" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            </template>
-            <template v-else-if="item.icon === 'about'">
-              <circle cx="24" cy="24" r="20" fill="#86C6FB"/>
-              <path d="M24 14 L24 16 M24 22 L24 36" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round"/>
-            </template>
-            <template v-else-if="item.icon === 'agreement'">
-              <rect x="10" y="6" width="28" height="36" rx="4" fill="#A186FB"/>
-              <path d="M16 16 H32 M16 24 H32 M16 32 H26" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
-            </template>
-            <template v-else-if="item.icon === 'privacy'">
-              <rect x="10" y="8" width="28" height="32" rx="4" fill="#FB86A5"/>
-              <path d="M16 8 V 36 M32 8 V 36" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
-            </template>
-            <template v-else-if="item.icon === 'account'">
-              <circle cx="24" cy="18" r="8" fill="#9CA3AF"/>
-              <path d="M10 42 Q24 30 38 42 V44 H10Z" fill="#9CA3AF"/>
-            </template>
-          </svg>
+          <image class="menu-icon-img" :src="item.iconImg" mode="aspectFit" />
         </view>
         <text class="menu-title">{{ item.title }}</text>
         <text class="menu-arrow">›</text>
@@ -57,7 +39,17 @@
       <button class="logout-btn" @click="logout">退出登录</button>
     </view>
 
-    <CustomTabBar />
+    <!-- 退出登录确认弹框 -->
+    <AppModal
+      v-model:visible="showLogoutModal"
+      icon="none"
+      title="确认退出"
+      text="确定要退出登录吗？"
+      confirmText="确认"
+      cancelText="取消"
+      @confirm="confirmLogout"
+    />
+
   </view>
 </template>
 
@@ -67,13 +59,17 @@ import { onShow } from '@dcloudio/uni-app';
 import { userApi } from '../../api';
 import { getServerUrl } from '../../utils/environment.js';
 import { useUserStore } from '../../store';
+import { useNoticeStore } from '../../store/notice';
 import popupManager from '../../utils/popupManager';
-import CustomTabBar from '../../custom-tab-bar/index.vue';
-
+import AppModal from '../../components/AppModal.vue';
 const userStore = useUserStore();
+const noticeStore = useNoticeStore();
 const user = ref({});
 const isLoggedIn = ref(false);
 const avatarError = ref(false);
+
+// 退出登录确认弹框
+const showLogoutModal = ref(false);
 
 const avatarFullUrl = computed(() => {
   if (!user.value.avatar_url) return '';
@@ -82,16 +78,26 @@ const avatarFullUrl = computed(() => {
 });
 
 const menuList = [
-  { title: '搭子设置', icon: 'partner', url: '/pages/partner/settings' },
-  { title: '账户设置', icon: 'account', url: '/pages/user/account-settings' },
-  { title: '意见反馈', icon: 'feedback', url: '/pages/user/feedback' },
-  { title: '关于我们', icon: 'about', url: '/pages/user/about' },
-  { title: '用户协议', icon: 'agreement', url: '/pages/user/agreement' },
-  { title: '隐私协议', icon: 'privacy', url: '/pages/user/privacy' }
+  { title: '消息中心', iconImg: '/static/image/icon/menu_message.svg', url: '/pages/user/messages', badge: true },
+  { title: '搭子设置', iconImg: '/static/image/icon/menu_partner.svg', url: '/pages/partner/settings' },
+  { title: '账户设置', iconImg: '/static/image/icon/menu_account.svg', url: '/pages/user/account-settings' },
+  { title: '意见反馈', iconImg: '/static/image/icon/menu_feedback.svg', url: '/pages/user/feedback' },
+  { title: '关于我们', iconImg: '/static/image/icon/menu_about.svg', url: '/pages/user/about' },
+  { title: '用户协议', iconImg: '/static/image/icon/menu_agreement.svg', url: '/pages/user/agreement' },
+  { title: '隐私协议', iconImg: '/static/image/icon/menu_privacy.svg', url: '/pages/user/privacy' }
 ];
 
 function goTo(url) {
   uni.navigateTo({ url });
+}
+
+function goBack() {
+  const pages = getCurrentPages();
+  if (pages.length > 1) {
+    uni.navigateBack();
+  } else {
+    uni.switchTab({ url: '/pages/index/index' });
+  }
 }
 
 function goToLogin() {
@@ -99,20 +105,20 @@ function goToLogin() {
 }
 
 function logout() {
-  uni.showModal({
-    title: '确认退出',
-    content: '确定要退出登录吗？',
-    success: (res) => {
-      if (res.confirm) {
-        userStore.logout();
-        popupManager.clearCache();
-        isLoggedIn.value = false;
-        user.value = {};
-        // 退出后清空页面栈并跳转到登录页，防止未登录状态下查看原用户数据
-        uni.reLaunch({ url: '/pages/login/index' });
-      }
-    }
-  });
+  showLogoutModal.value = true;
+}
+
+/**
+ * 确认执行退出登录
+ */
+function confirmLogout() {
+  showLogoutModal.value = false;
+  userStore.logout();
+  popupManager.clearCache();
+  isLoggedIn.value = false;
+  user.value = {};
+  // 退出后清空页面栈并跳转到登录页，防止未登录状态下查看原用户数据
+  uni.reLaunch({ url: '/pages/login/index' });
 }
 
 async function fetchUser() {
@@ -138,9 +144,8 @@ async function fetchUser() {
 onMounted(fetchUser);
 
 onShow(() => {
-  uni.$emit('tabbar-select', 3);
-  uni.hideTabBar({ animation: false }).catch(() => {});
   fetchUser();
+  noticeStore.fetchUnreadCount();
 });
 </script>
 
@@ -169,13 +174,32 @@ onShow(() => {
   z-index: 1;
 }
 
+.header-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  padding: 40rpx 32rpx 0;
+  margin-bottom: 48rpx;
+}
+
+.back-btn {
+  padding: 10rpx;
+  margin-right: 32rpx;
+  flex-shrink: 0;
+}
+
+.back-icon {
+  width: 48rpx;
+  height: 48rpx;
+  display: block;
+}
+
 .user-header {
   position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
-  padding-top: 40rpx;
-  margin-bottom: 48rpx;
 }
 
 .avatar {
@@ -228,6 +252,7 @@ onShow(() => {
 }
 
 .menu-item {
+  position: relative;
   display: flex;
   align-items: center;
   padding: 28rpx 32rpx;
@@ -236,6 +261,27 @@ onShow(() => {
 
 .menu-item:last-child {
   border-bottom: none;
+}
+
+.menu-item {
+  position: relative;
+}
+
+.menu-badge {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  right: 80rpx;
+  min-width: 34rpx;
+  height: 34rpx;
+  padding: 0 10rpx;
+  border-radius: 17rpx;
+  background: #FF6B6B;
+  color: #FFFFFF;
+  font-size: 20rpx;
+  line-height: 34rpx;
+  text-align: center;
+  z-index: 2;
 }
 
 .menu-icon {
@@ -249,6 +295,11 @@ onShow(() => {
 }
 
 .menu-icon-svg {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.menu-icon-img {
   width: 48rpx;
   height: 48rpx;
 }

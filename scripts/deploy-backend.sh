@@ -40,10 +40,12 @@ echo "[3/5] 备份数据库..."
 ../scripts/backup-db.sh "$ENV" || true
 
 echo "[4/5] 初始化/迁移数据库..."
+# 避免服务运行时执行写库脚本导致 WAL 损坏，先停止服务
+npm run "pm2:stop:$ENV" 2>/dev/null || pm2 stop "$PM2_NAME" 2>/dev/null || true
 NODE_ENV=$ENV npm run init-db || NODE_ENV=$ENV node src/scripts/init-db.js
 
-echo "[5/5] 重启 PM2 服务..."
-npm run "pm2:restart:$ENV" || pm2 restart "$PM2_NAME"
+echo "[5/5] 启动 PM2 服务..."
+npm run "pm2:$ENV" 2>/dev/null || pm2 start "$PM2_NAME" 2>/dev/null || pm2 restart "$PM2_NAME"
 pm2 save
 
 echo ""

@@ -1,0 +1,212 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  backend-test:
+    name: 后端测试
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v3
+    
+    - name: 设置 Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+    
+    - name: 安装后端依赖
+      run: |
+        cd backend
+        npm ci
+    
+    - name: 运行后端冒烟测试
+      run: |
+        cd backend
+        NODE_ENV=test node scripts/smoke-test.js
+    
+    - name: 运行后端全量测试
+      run: |
+        cd backend
+        NODE_ENV=test node scripts/full-test.js
+    
+    - name: 生成测试数据
+      run: |
+        cd backend
+        NODE_ENV=test node scripts/generate-test-data.js
+    
+    - name: 上传测试报告
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: backend-test-report
+        path: backend/test-report.json
+
+  frontend-test:
+    name: 前端测试
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v3
+    
+    - name: 设置 Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: 安装前端依赖
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: 运行前端单元测试
+      run: |
+        cd frontend
+        npm run test
+    
+    - name: 运行前端测试覆盖率
+      run: |
+        cd frontend
+        npm run test:coverage
+    
+    - name: 上传测试覆盖率报告
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: frontend-coverage-report
+        path: frontend/coverage/
+
+  e2e-test:
+    name: 端到端测试
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-test]
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v3
+    
+    - name: 设置 Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: 安装 Playwright
+      run: |
+        npm install -D @playwright/test
+        npx playwright install --with-deps
+    
+    - name: 运行端到端测试
+      run: |
+        npx playwright test e2e/core-flows.spec.js
+      env:
+        BASE_URL: http://localhost:3000
+    
+    - name: 上传端到端测试报告
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: e2e-test-report
+        path: playwright-report/
+
+  performance-test:
+    name: 性能测试
+    runs-on: ubuntu-latest
+    needs: [backend-test]
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v3
+    
+    - name: 安装 k6
+      run: |
+        sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C547B3958E914C5F9A99AACB8FEBF4C329
+        echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+        sudo apt-get update
+        sudo apt-get install k6
+    
+    - name: 运行性能测试
+      run: |
+        cd backend
+        k6 run scripts/k6-performance-test.js
+      env:
+        BASE_URL: http://localhost:3000
+    
+    - name: 上传性能测试报告
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: performance-test-report
+        path: backend/performance-report.json
+
+  code-quality:
+    name: 代码质量检查
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v3
+    
+    - name: 设置 Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: 运行 ESLint
+      run: |
+        npm install -g eslint
+        cd backend
+        eslint src/ --ext .js || true
+        cd ../frontend
+        eslint src/ --ext .js,.vue || true
+    
+    - name: 运行代码格式检查
+      run: |
+        npm install -g prettier
+        cd backend
+        prettier --check "src/**/*.js" || true
+        cd ../frontend
+        prettier --check "src/**/*.{js,vue}" || true
+
+  security-scan:
+    name: 安全扫描
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v3
+    
+    - name: 运行 npm audit
+      run: |
+        cd backend
+        npm audit --audit-level=moderate || true
+        cd ../frontend
+        npm audit --audit-level=moderate || true
+    
+    - name: 运行依赖检查
+      uses: snyk/actions/nodejs@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+  notify:
+    name: 测试结果通知
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-test, e2e-test]
+    if: always()
+    
+    steps:
+    - name: 发送测试结果
+      run: |
+        echo "测试完成"
+        echo "后端测试: ${{ needs.backend-test.result }}"
+        echo "前端测试: ${{ needs.frontend-test.result }}"
+        echo "端到端测试: ${{ needs.e2e-test.result }}"

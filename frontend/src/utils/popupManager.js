@@ -4,6 +4,8 @@
  */
 import { popupApi } from '@/api/index';
 import { getDeviceId, getAppVersion } from './trial.js';
+import { resolveStaticUrl } from './environment';
+import { normalizeToInternalRoute, isWebViewAllowed } from './h5ToInternalRoute';
 
 const CONFIG_CACHE_KEY = 'popup_config_cache';
 const CONFIG_CACHE_AT_KEY = 'popup_config_cache_at';
@@ -221,15 +223,6 @@ async function findShowablePopup(route, trigger) {
     const key = `${popup.id}:${page}`;
     if (shownSet.has(key)) continue;
 
-    // 周期频次 / 一次性
-    const freqKey = getFreqKey(popup);
-    if (popup.one_time) {
-      if (getStorage(freqKey)) continue;
-    } else {
-      const count = parseInt(getStorage(freqKey) || '0', 10);
-      if (count >= popup.frequency_max) continue;
-    }
-
     // WiFi
     if (popup.wifi_only) {
       const wifi = await isWifi();
@@ -298,7 +291,7 @@ function createNativePopup({ popup, page, trigger }) {
   panel.style.overflow = 'hidden';
 
   const img = document.createElement('img');
-  img.src = popup.image_url;
+  img.src = resolveStaticUrl(popup.image_url);
   img.style.width = '100%';
   img.style.display = 'block';
   img.style.objectFit = 'contain';
@@ -398,15 +391,6 @@ function markShown(popup, page, trigger) {
   const key = `${popup.id}:${page}`;
   if (shownSet.has(key)) return;
   shownSet.add(key);
-
-  // 频次计数
-  const freqKey = getFreqKey(popup);
-  if (popup.one_time) {
-    setStorage(freqKey, '1');
-  } else {
-    const count = parseInt(getStorage(freqKey) || '0', 10);
-    setStorage(freqKey, String(count + 1));
-  }
 
   // 日弹窗上限计数
   const dailyKey = getDailyCountKey();
@@ -519,6 +503,11 @@ function onClick(popup, page, trigger) {
   });
 }
 
+/**
+ * 弹窗点击跳转：
+ * - 小程序端严格优先走内部路由（原生页）；h5 链接先尝试映射为 /pages/xxx 内部路径
+ * - 仅映射失败、通过服务端白名单、且非核心业务的外链才允许走 web-view 兜底（提审合规性）
+ */
 function navigate(popup) {
   if (popup.jump_type === 'internal') {
     const path = popup.jump_route_path || popup.jump_route_key || '';
@@ -532,6 +521,11 @@ function navigate(popup) {
   } else if (popup.jump_type === 'h5') {
     const url = popup.jump_url || '';
     if (!url) return;
+    const internal = normalizeToInternalRoute(url);
+    if (internal) {
+      uni.navigateTo({ url: internal.url, fail: () => {} });
+      return;
+    }
     const config = getConfig();
     const whitelist = config.whitelist || [];
     const domain = extractDomain(url);
@@ -540,6 +534,12 @@ function navigate(popup) {
       console.warn('[popup] H5 域名未在白名单', domain);
       return;
     }
+    // #ifdef MP-WEIXIN
+    if (!isWebViewAllowed(url)) {
+      uni.showToast({ title: '请在小程序内访问对应功能', icon: 'none' });
+      return;
+    }
+    // #endif
     uni.navigateTo({ url: `/pages/webview/index?url=${encodeURIComponent(url)}` });
   }
 }

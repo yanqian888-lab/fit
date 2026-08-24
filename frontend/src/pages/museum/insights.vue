@@ -18,8 +18,9 @@
         class="search-input"
         placeholder="搜索感悟内容"
         confirm-type="search"
+        @confirm="onSearch"
       />
-      <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" />
+      <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" @click="onSearch" />
     </view>
 
     <scroll-view class="list-scroll" scroll-y>
@@ -56,6 +57,18 @@
     </scroll-view>
 
     <view class="add-insight-btn" @click="addInsight">添加感悟</view>
+
+    <!-- 删除确认弹框 -->
+    <AppModal
+      v-model:visible="showDeleteModal"
+      icon="none"
+      title="确认删除"
+      text="删除后无法恢复哦"
+      confirmText="删除"
+      confirmDanger
+      cancelText="取消"
+      @confirm="confirmDelete"
+    />
   </view>
 </template>
 
@@ -67,8 +80,13 @@ import { formatDate } from '../../utils/date';
 import { goBack as navigateBack } from '../../utils/navigate';
 import AppEmpty from '../../components/AppEmpty.vue';
 import AppLoadMore from '../../components/AppLoadMore.vue';
+import AppModal from '../../components/AppModal.vue';
 
 const statusBarHeight = ref(44);
+
+// 删除确认弹框状态
+const showDeleteModal = ref(false);
+let pendingDeleteItem = null;
 
 function goBack() {
   navigateBack('/pages/museum/index');
@@ -76,22 +94,22 @@ function goBack() {
 
 const quoteList = ref([]);
 const insightList = ref([]);
-const page = ref(1);
-const hasMore = ref(true);
+const quotePage = ref(1);
+const insightPage = ref(1);
+const hasMoreQuote = ref(true);
+const hasMoreInsight = ref(true);
+const hasMore = computed(() => hasMoreQuote.value || hasMoreInsight.value);
 const keyword = ref('');
 
-function matchesKeyword(item) {
-  if (!keyword.value.trim()) return true;
-  const k = keyword.value.trim().toLowerCase();
-  const content = (item.content || '').toLowerCase();
-  const title = (item.sub_type || '').toLowerCase();
-  return content.includes(k) || title.includes(k);
+function wrapType(list, type) {
+  return (list || []).map(item => ({ ...item, type })).filter(item => item.author !== 'partner');
 }
 
-const filteredQuoteList = computed(() => quoteList.value.filter(matchesKeyword).map(item => ({ ...item, type: 'quote' })));
-const filteredInsightList = computed(() => insightList.value.filter(matchesKeyword).map(item => ({ ...item, type: 'insight' })));
 const sortedList = computed(() => {
-  const all = [...filteredQuoteList.value, ...filteredInsightList.value];
+  const all = [
+    ...wrapType(quoteList.value, 'quote'),
+    ...wrapType(insightList.value, 'insight')
+  ];
   return all.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 });
 const hasContent = computed(() => quoteList.value.length > 0 || insightList.value.length > 0);
@@ -100,19 +118,22 @@ const emptySubtitle = computed(() => keyword.value.trim() ? '换个关键词试�
 
 async function load(more = false) {
   try {
-    // 同时加载金句和感悟
-    const [quoteRes, insightRes] = await Promise.all([
-      museumApi.getItems({ type: 'quote', page: page.value, size: 999 }),
-      museumApi.getItems({ type: 'insight', page: page.value, size: 999 })
-    ]);
-    
-    let quotes = (quoteRes.data.list || []).filter(item => item.author !== 'partner');
-    let insights = (insightRes.data.list || []).filter(item => item.author !== 'partner');
+    if (!more) {
+      quotePage.value = 1;
+      insightPage.value = 1;
+      hasMoreQuote.value = true;
+      hasMoreInsight.value = true;
+      quoteList.value = [];
+      insightList.value = [];
+    }
 
-    // 按创建时间倒序展示
-    const sortByTime = (a, b) => new Date(b.created_at) - new Date(a.created_at);
-    quotes = quotes.sort(sortByTime);
-    insights = insights.sort(sortByTime);
+    const [quoteRes, insightRes] = await Promise.all([
+      museumApi.getItems({ type: 'quote', page: quotePage.value, size: 20, keyword: keyword.value }),
+      museumApi.getItems({ type: 'insight', page: insightPage.value, size: 20, keyword: keyword.value })
+    ]);
+
+    const quotes = wrapType(quoteRes.data.list || [], 'quote');
+    const insights = wrapType(insightRes.data.list || [], 'insight');
 
     if (more) {
       quoteList.value.push(...quotes);
@@ -121,11 +142,16 @@ async function load(more = false) {
       quoteList.value = quotes;
       insightList.value = insights;
     }
-    
-    hasMore.value = quoteRes.data.pagination.has_more || insightRes.data.pagination.has_more;
+
+    hasMoreQuote.value = quoteRes.data.pagination?.has_more ?? false;
+    hasMoreInsight.value = insightRes.data.pagination?.has_more ?? false;
   } catch (err) {
     console.error(err);
   }
+}
+
+function onSearch() {
+  load();
 }
 
 const EMOTION_MAP = {
@@ -172,22 +198,27 @@ function editItem(item) {
 }
 
 function deleteItem(item) {
-  uni.showModal({
-    title: '确认删除',
-    content: '删除后无法恢复哦',
-    confirmColor: '#E57373',
-    success: async (res) => {
-      if (!res.confirm) return;
-      try {
-        await museumApi.deleteItem(item.id);
-        uni.showToast({ title: '已删除', icon: 'success' });
-        page.value = 1;
-        load();
-      } catch (err) {
-        uni.showToast({ title: '删除失败', icon: 'none' });
-      }
-    }
-  });
+  pendingDeleteItem = item;
+  showDeleteModal.value = true;
+}
+
+/**
+ * 确认删除感悟/金句
+ */
+async function confirmDelete() {
+  showDeleteModal.value = false;
+  const item = pendingDeleteItem;
+  pendingDeleteItem = null;
+  if (!item) return;
+  try {
+    await museumApi.deleteItem(item.id);
+    uni.showToast({ title: '已删除', icon: 'success' });
+    quotePage.value = 1;
+    insightPage.value = 1;
+    load();
+  } catch (err) {
+    uni.showToast({ title: '删除失败', icon: 'none' });
+  }
 }
 
 onMounted(() => {
@@ -202,13 +233,15 @@ onMounted(() => {
   load();
 });
 onShow(() => {
-  page.value = 1;
+  quotePage.value = 1;
+  insightPage.value = 1;
   load();
 });
 
 onReachBottom(() => {
   if (!hasMore.value) return;
-  page.value++;
+  if (hasMoreQuote.value) quotePage.value++;
+  if (hasMoreInsight.value) insightPage.value++;
   load(true);
 });
 </script>

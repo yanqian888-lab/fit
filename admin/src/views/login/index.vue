@@ -1,7 +1,7 @@
 <template>
   <div class="login-page">
     <div class="login-box">
-      <div class="login-title">减肥搭子 CMS</div>
+      <div class="login-title">掉秤搭搭 CMS</div>
       <el-form :model="form" :rules="rules" ref="formRef" @keyup.enter="handleLogin">
         <el-form-item prop="username">
           <el-input v-model="form.username" placeholder="账号" size="large" :prefix-icon="User" />
@@ -44,6 +44,7 @@ async function handleLogin() {
     router.push('/')
   } catch (e) {
     console.error(e)
+    ElMessage.error(e?.message || '登录失败，请检查账号密码')
   } finally {
     loading.value = false
   }

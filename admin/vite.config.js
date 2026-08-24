@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [vue()],
-    base: env.VITE_ADMIN_BASE || (mode === 'development' ? '/' : '/admin/'),
+    base: env.VITE_ADMIN_BASE || '/',
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src')

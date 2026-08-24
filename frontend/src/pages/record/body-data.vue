@@ -106,15 +106,23 @@
             </view>
           </view>
           <view class="trend-chart">
-            <svg v-if="chartPoints.length > 1" class="trend-svg" viewBox="0 0 320 120" preserveAspectRatio="none">
-              <polyline :points="chartLinePoints" fill="none" stroke="#8DBB77" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              <g v-for="(point, idx) in chartPoints" :key="idx">
-                <circle :cx="point.x" :cy="point.y" r="3" fill="#8DBB77" />
-                <foreignObject :x="point.x - 25" :y="point.y - 28" width="50" height="18">
-                  <div xmlns="http://www.w3.org/1999/xhtml" class="chart-value">{{ point.value }}</div>
-                </foreignObject>
-              </g>
-            </svg>
+            <view v-if="chartPoints.length > 1" class="trend-svg">
+              <view
+                v-for="(seg, idx) in chartSegments"
+                :key="'seg'+idx"
+                class="trend-segment"
+                :style="seg.style"
+              ></view>
+              <view
+                v-for="(point, idx) in chartPoints"
+                :key="'pt'+idx"
+                class="trend-point"
+                :style="{ left: (point.x / 320 * 100) + '%', top: (point.y / 120 * 100) + '%' }"
+              >
+                <view class="trend-dot"></view>
+                <text class="chart-value">{{ point.value }}</text>
+              </view>
+            </view>
             <view v-else class="chart-empty">
               <text>记录体重后查看趋势</text>
             </view>
@@ -201,15 +209,23 @@
           <text class="fullscreen-close" @click="closeFullscreenChart">关闭</text>
         </view>
         <view class="fullscreen-chart">
-          <svg v-if="chartPoints.length > 1" class="fullscreen-trend-svg" viewBox="0 0 320 160" preserveAspectRatio="xMidYMid meet">
-            <polyline :points="fullscreenLinePoints" fill="none" stroke="#8DBB77" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-            <g v-for="(point, idx) in fullscreenPoints" :key="idx">
-              <circle :cx="point.x" :cy="point.y" r="4" fill="#8DBB77" />
-              <foreignObject :x="point.x - 28" :y="point.y - 30" width="56" height="20">
-                <div xmlns="http://www.w3.org/1999/xhtml" class="chart-value fullscreen">{{ point.value }}</div>
-              </foreignObject>
-            </g>
-          </svg>
+          <view v-if="chartPoints.length > 1" class="fullscreen-trend-svg">
+            <view
+              v-for="(seg, idx) in fullscreenSegments"
+              :key="'fseg'+idx"
+              class="trend-segment fullscreen"
+              :style="seg.style"
+            ></view>
+            <view
+              v-for="(point, idx) in fullscreenPoints"
+              :key="'fpt'+idx"
+              class="trend-point fullscreen"
+              :style="{ left: (point.x / 320 * 100) + '%', top: (point.y / 160 * 100) + '%' }"
+            >
+              <view class="trend-dot fullscreen"></view>
+              <text class="chart-value fullscreen">{{ point.value }}</text>
+            </view>
+          </view>
           <view class="fullscreen-x-axis">
             <text v-for="(point, idx) in fullscreenPoints" :key="idx" class="fullscreen-x-label">{{ point.date }}</text>
           </view>
@@ -223,6 +239,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi } from '../../api';
+import { showRewardToast } from '../../utils/rewardToast.js';
 import { getToday, formatDate } from '../../utils/date';
 import { goBack as navigateBack } from '../../utils/navigate';
 
@@ -251,6 +268,7 @@ const currentWeight = ref(null);
 const bodyFatRate = ref(null);
 const initialWeight = ref(null);
 const targetWeight = ref(null);
+const userHeight = ref(null);
 const recordDates = ref(new Set());
 
 const measurementTypes = [
@@ -274,8 +292,9 @@ const measureModalForm = ref({ waist: '', hip: '', chest: '', thigh: '', calf: '
 
 const bmi = computed(() => {
   const w = parseFloat(currentWeight.value);
-  if (!w) return '--';
-  const heightM = 1.65;
+  const h = parseFloat(userHeight.value);
+  if (!w || !h || h <= 0) return '--';
+  const heightM = h / 100;
   return (w / (heightM * heightM)).toFixed(1);
 });
 
@@ -304,7 +323,7 @@ const chartPoints = computed(() => {
     const x = padding.left + (list.length === 1 ? chartWidth / 2 : (idx / (list.length - 1)) * chartWidth);
     const y = padding.top + (1 - (parseFloat(item.value) - min) / range) * chartHeight;
     return {
-      date: item.date.slice(5).replace('-', '.'),
+      date: item.date?.slice(5).replace('-', '.') || '',
       value: item.value,
       x: Math.round(x),
       y: Math.round(y)
@@ -312,8 +331,33 @@ const chartPoints = computed(() => {
   });
 });
 
-const chartLinePoints = computed(() => {
-  return chartPoints.value.map(p => `${p.x},${p.y}`).join(' ');
+// 小程序端不支持 svg，用 view + rotate 模拟每段折线
+const chartSegments = computed(() => {
+  const pts = chartPoints.value;
+  if (pts.length < 2) return [];
+  // viewBox 320 x 120，宽高比固定
+  const VB_W = 320;
+  const VB_H = 120;
+  const segs = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    // 角度按 viewBox 坐标系算（容器宽高比与 viewBox 一致时视觉无失真）
+    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    segs.push({
+      style: {
+        left: (p1.x / VB_W * 100) + '%',
+        top: (p1.y / VB_H * 100) + '%',
+        width: (length / VB_W * 100) + '%',
+        transform: `rotate(${angle}deg)`,
+        transformOrigin: '0 50%'
+      }
+    });
+  }
+  return segs;
 });
 
 // 全屏趋势图：展示更多记录，使用更宽松的边距
@@ -335,7 +379,7 @@ const fullscreenPoints = computed(() => {
     const x = padding.left + (list.length === 1 ? chartWidth / 2 : (idx / (list.length - 1)) * chartWidth);
     const y = padding.top + (1 - (parseFloat(item.value) - min) / range) * chartHeight;
     return {
-      date: item.date.slice(5).replace('-', '.'),
+      date: item.date?.slice(5).replace('-', '.') || '',
       value: item.value,
       x: Math.round(x),
       y: Math.round(y)
@@ -343,8 +387,31 @@ const fullscreenPoints = computed(() => {
   });
 });
 
-const fullscreenLinePoints = computed(() => {
-  return fullscreenPoints.value.map(p => `${p.x},${p.y}`).join(' ');
+// 全屏趋势的折线段（viewBox 320 x 160）
+const fullscreenSegments = computed(() => {
+  const pts = fullscreenPoints.value;
+  if (pts.length < 2) return [];
+  const VB_W = 320;
+  const VB_H = 160;
+  const segs = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    segs.push({
+      style: {
+        left: (p1.x / VB_W * 100) + '%',
+        top: (p1.y / VB_H * 100) + '%',
+        width: (length / VB_W * 100) + '%',
+        transform: `rotate(${angle}deg)`,
+        transformOrigin: '0 50%'
+      }
+    });
+  }
+  return segs;
 });
 
 function parseLocalDate(dateStr) {
@@ -498,6 +565,9 @@ async function loadProfile() {
     if (!currentWeight.value && data.current_weight) {
       currentWeight.value = data.current_weight;
     }
+    if (data.height) {
+      userHeight.value = data.height;
+    }
   } catch (err) {
     console.error(err);
   }
@@ -523,14 +593,14 @@ async function saveWeight() {
   }
   try {
     const bodyFat = weightForm.value.bodyFat ? parseFloat(weightForm.value.bodyFat) : null;
-    await recordApi.saveBody({
+    const res = await recordApi.saveBody({
       record_date: selectedDate.value,
       type: 'weight',
       value: parseFloat(weightForm.value.value),
       unit: 'kg',
       body_fat: bodyFat
     });
-    uni.showToast({ title: '保存成功', icon: 'success' });
+    showRewardToast(res.data?.reward_messages || [], '保存成功');
     closeWeightModal();
     loadData();
   } catch (err) {
@@ -567,7 +637,7 @@ async function saveMeasurements() {
       closeMeasureModal();
       loadMeasurements();
     } else {
-      uni.showToast({ title: '请至少填写一项围度', icon: 'none' });
+      uni.showToast({ title: '请输入数据后再保存哦！', icon: 'none' });
     }
   } catch (err) {
     uni.showToast({ title: '保存失败', icon: 'none' });
@@ -990,6 +1060,47 @@ watch(selectedDate, updateCurrentData);
 .trend-svg {
   width: 100%;
   height: 100%;
+  position: relative;
+}
+
+/* 折线段：view + rotate 模拟 */
+.trend-segment {
+  position: absolute;
+  height: 2rpx;
+  background: #8DBB77;
+  transform-origin: 0 50%;
+}
+
+.trend-segment.fullscreen {
+  height: 3rpx;
+}
+
+/* 数据点 */
+.trend-point {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 80rpx;
+}
+
+.trend-point.fullscreen {
+  width: 96rpx;
+}
+
+.trend-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #8DBB77;
+  margin-bottom: 4rpx;
+}
+
+.trend-dot.fullscreen {
+  width: 16rpx;
+  height: 16rpx;
 }
 
 .chart-empty {
@@ -1219,6 +1330,7 @@ watch(selectedDate, updateCurrentData);
   width: 100%;
   height: 100%;
   min-height: 0;
+  position: relative;
 }
 
 .fullscreen-x-axis {

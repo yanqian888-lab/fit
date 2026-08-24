@@ -143,6 +143,24 @@ function updatePartner(req, res) {
   const userId = req.userId;
   const { name, gender, mode, voice_speed, strictness, humor } = req.body;
 
+  if (mode && !['gentle', 'strict', 'tease'].includes(mode)) {
+    return res.status(400).json(error('搭子模式不合法', 400));
+  }
+  if (gender !== undefined && gender !== null && ![0, 1, 2].includes(parseInt(gender))) {
+    return res.status(400).json(error('性别参数不合法', 400));
+  }
+  for (const field of [voice_speed, strictness, humor]) {
+    if (field !== undefined && field !== null) {
+      const val = parseInt(field);
+      if (isNaN(val) || val < 1 || val > 10) {
+        return res.status(400).json(error('语速/严格度/幽默度必须在 1-10 之间', 400));
+      }
+    }
+  }
+  if (name && name.length > 20) {
+    return res.status(400).json(error('搭子昵称不能超过 20 字', 400));
+  }
+
   db.prepare(`
     UPDATE partners
     SET name = COALESCE(?, name),

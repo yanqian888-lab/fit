@@ -23,11 +23,11 @@ fi
 if [[ "$ENV" == "test" ]]; then
   BUILD_SCRIPT="build:test"
   WWW_DIR="/var/www/fit-admin-test"
-  DEFAULT_DOMAIN="test-admin.fitapp.com"
+  DEFAULT_DOMAIN="test.fit.mianyan.xin"
 else
   BUILD_SCRIPT="build:prod"
   WWW_DIR="/var/www/fit-admin"
-  DEFAULT_DOMAIN="admin.fitapp.com"
+  DEFAULT_DOMAIN="fit.mianyan.xin"
 fi
 
 DOMAIN=${2:-$DEFAULT_DOMAIN}

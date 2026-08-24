@@ -55,16 +55,9 @@ async function save() {
   }
 }
 
+// 后端暂未提供清空聊天历史接口，先提示功能开发中
 function clearHistory() {
-  uni.showModal({
-    title: '提示',
-    content: '确定清空所有聊天记录吗？',
-    success: (res) => {
-      if (res.confirm) {
-        uni.showToast({ title: '已清空', icon: 'none' });
-      }
-    }
-  });
+  uni.showToast({ title: '功能开发中', icon: 'none' });
 }
 
 onMounted(load);

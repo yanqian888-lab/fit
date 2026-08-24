@@ -1,7 +1,7 @@
 <template>
   <div class="page-container">
     <div class="card">
-      <h3>欢迎使用减肥搭子 CMS</h3>
+      <h3>欢迎使用掉秤搭搭 CMS</h3>
       <p style="color:#666;margin-top:12px;">当前账号：{{ auth.user.nickname || auth.user.username }}（{{ auth.user.username }}）</p>
       <p style="color:#666;">
         权限：
@@ -44,7 +44,21 @@ const permissionMap = {
   'exercise_lib:write': '运动库编辑',
   'cms_user:read': '管理员/角色查看',
   'cms_user:write': '管理员/角色编辑',
-  'log:read': '操作日志'
+  'log:read': '操作日志',
+  'pet_config:read': '宠物配置查看',
+  'pet_config:write': '宠物配置编辑',
+  'currency_config:read': '货币配置查看',
+  'currency_config:write': '货币配置编辑',
+  'shop_config:read': '商店配置查看',
+  'shop_config:write': '商店配置编辑',
+  'event_config:read': '事件配置查看',
+  'event_config:write': '事件配置编辑',
+  'task_config:read': '任务配置查看',
+  'task_config:write': '任务配置编辑',
+  'achievement_config:read': '成就配置查看',
+  'achievement_config:write': '成就配置编辑',
+  'dialogue_config:read': '对话配置查看',
+  'dialogue_config:write': '对话配置编辑'
 }
 
 onMounted(async () => {

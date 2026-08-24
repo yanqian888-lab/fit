@@ -25,6 +25,55 @@ const DEFAULT_TEMPLATES = {
     { value: 30, content: '{value}天打卡达成！每一次记录都是对自己的承诺！' },
     { value: 60, content: '恭喜打卡{value}天！坚持记录的人，运气都不会太差！' },
     { value: 100, content: '{value}天的打卡记录，见证了你每一天的努力！' }
+  ],
+  chat: [
+    { value: 10, content: '已与搭搭对话{value}轮！你们越来越默契啦～' },
+    { value: 100, content: '累计对话{value}轮！搭搭已经成了你离不开的小伙伴！' },
+    { value: 300, content: '{value}轮深度对话！你们的友谊小船越划越远啦～' },
+    { value: 500, content: '哇！{value}轮对话！搭搭对你的了解越来越深啦！' },
+    { value: 1000, content: '累计{value}轮对话！你和搭搭的默契值爆表！' },
+    { value: 1500, content: '难以置信！{value}轮对话！搭搭已经是你生活的一部分！' }
+  ],
+  exercise_count: [
+    { value: 10, content: '累计运动{value}次！你已经迈出了健康的步伐！' },
+    { value: 30, content: '运动{value}次达成！坚持就是胜利，继续动起来！' },
+    { value: 50, content: '哇！{value}次运动！你的自律让人佩服！' },
+    { value: 100, content: '累计{value}次运动！运动已经成为你生活的一部分！' },
+    { value: 200, content: '{value}次运动达成！你就是传说中的运动达人！' }
+  ],
+  exercise_duration: [
+    { value: 300, content: '累计运动{value}分钟（5小时）！汗水不会白费！' },
+    { value: 600, content: '{value}分钟运动达成！你的坚持正在改变身体！' },
+    { value: 1200, content: '累计{value}分钟（20小时）！你已经超越了大多数人！' },
+    { value: 2400, content: '{value}分钟运动！运动已经融入你的血液！' },
+    { value: 3600, content: '累计{value}分钟（60小时）！你就是自律的代名词！' }
+  ],
+  exercise_calorie: [
+    { value: 3000, content: '累计运动消耗{value}千卡！脂肪正在远离你！' },
+    { value: 6000, content: '{value}千卡消耗达成！你的努力正在开花结果！' },
+    { value: 12000, content: '哇！累计消耗{value}千卡！你真的很拼！' },
+    { value: 24000, content: '{value}千卡消耗！你的身体正在悄悄蜕变！' },
+    { value: 36000, content: '累计{value}千卡消耗！你就是燃烧卡路里的王者！' }
+  ],
+  diet_days: [
+    { value: 7, content: '连续{value}天饮食打卡！你正在养成健康饮食习惯！' },
+    { value: 14, content: '{value}天饮食记录！健康饮食已经成为你的习惯！' },
+    { value: 30, content: '累计{value}天饮食打卡！你的自律让人佩服！' },
+    { value: 60, content: '{value}天饮食记录！你已经是健康饮食达人！' },
+    { value: 100, content: '累计{value}天！健康饮食已经刻进你的DNA！' }
+  ],
+  weight_goal: [
+    { value: 1, content: '恭喜达成目标体重！你的坚持终于收获了最美的果实！' }
+  ],
+  event_collection: [
+    { value: 200, content: '累计收集{value}个事件！你的生活越来越精彩！' },
+    { value: 300, content: '哇！收集{value}个事件！你的记忆库里满是美好！' }
+  ],
+  recipe_collection: [
+    { value: 50, content: '累计收藏{value}个食谱！你的美食库越来越丰富啦！' },
+    { value: 100, content: '{value}个食谱达成！你就是行走的美食达人！' },
+    { value: 150, content: '哇！收藏{value}个食谱！你的厨房已经成了美食殿堂！' },
+    { value: 200, content: '累计{value}个食谱！你的食谱库堪比米其林！' }
   ]
 };
 

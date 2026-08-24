@@ -14,15 +14,8 @@
         <image class="partner-avatar" :src="partnerAvatarUrl" mode="aspectFill" />
         <view class="partner-info">
           <view class="name-edit-row">
-            <input
-              v-model="nameInput"
-              class="partner-name-input"
-              placeholder="请设定你搭子的昵称"
-              confirm-type="done"
-              @blur="saveName"
-              @confirm="saveName"
-            />
-            <image class="edit-icon" src="/static/image/icon/xiugai.png" mode="aspectFit" />
+            <!-- 搭子名字固定为「搭搭」，不提供修改入口 -->
+            <text class="partner-name-text">搭搭</text>
           </view>
           <text class="partner-mode">当前模式：{{ modeLabel }}</text>
         </view>
@@ -66,7 +59,6 @@ try {
 
 const partner = ref({});
 const currentMode = ref('gentle');
-const nameInput = ref('');
 
 const modes = [
   { value: 'gentle', label: '温柔模式', icon: '🌸', avatar: '/static/image/icon/rou.png', desc: '像朋友一样鼓励你，适合需要陪伴感' },
@@ -93,7 +85,6 @@ onMounted(async () => {
     const res = await partnerApi.getPartner();
     partner.value = res.data || {};
     currentMode.value = partner.value.mode || 'gentle';
-    nameInput.value = partner.value.name || '';
   } catch (err) {
     console.error(err);
   }
@@ -107,24 +98,6 @@ async function selectMode(mode) {
     uni.showToast({ title: '切换成功', icon: 'success' });
   } catch (err) {
     uni.showToast({ title: '切换失败', icon: 'none' });
-  }
-}
-
-async function saveName() {
-  const trimmed = (nameInput.value || '').trim();
-  // 如果用户清空后没有输入，恢复为原来的名字或默认昵称
-  if (!trimmed) {
-    nameInput.value = partner.value.name || '你的搭子';
-    return;
-  }
-  if (trimmed === partner.value.name) return;
-
-  try {
-    await partnerApi.updatePartner({ name: trimmed });
-    partner.value.name = trimmed;
-    uni.showToast({ title: '保存成功', icon: 'success' });
-  } catch (err) {
-    uni.showToast({ title: '保存失败', icon: 'none' });
   }
 }
 </script>
@@ -212,26 +185,10 @@ async function saveName() {
   margin-bottom: 8rpx;
 }
 
-.partner-name-input {
+.partner-name-text {
   font-size: $text-xl;
   font-weight: $font-bold;
   color: $text-primary;
-  background: transparent;
-  border: none;
-  padding: 0;
-  width: auto;
-  min-width: 160rpx;
-}
-
-.partner-name-input::placeholder {
-  color: #cccccc;
-}
-
-.edit-icon {
-  width: 32rpx;
-  height: 32rpx;
-  margin-left: 12rpx;
-  flex-shrink: 0;
 }
 
 .partner-mode {

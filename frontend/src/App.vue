@@ -1,28 +1,65 @@
 <template>
+  <!-- H5 端：App.vue 作为根组件，用 slot 承载页面层，并挂载全局 Loading / 弹窗容器 -->
+  <!-- #ifdef H5 -->
   <view class="app-root">
     <slot />
     <GlobalLoading />
     <AppPopup />
   </view>
+  <!-- #endif -->
+
+  <!-- 小程序端：App.vue 的 <template> 不会被渲染（小程序每个 Page 独立渲染）
+       若保留 <slot /> 会导致 Vue3 编译器在 slot children 解构时生成 children.e0 访问，
+       小程序没有 slot，children 为 undefined，抛出 "Cannot read property 'e0' of undefined"
+       全局弹窗 / Loading 在各页面内独立引用，这里不需要挂载 -->
+  <!-- #ifdef MP-WEIXIN -->
+  <view />
+  <!-- #endif -->
 </template>
 
 <script setup>
 import { onLaunch, onShow } from '@dcloudio/uni-app';
 import { useUserStore } from './store';
+import { useNoticeStore } from './store/notice';
+// 全局组件仅在 H5 端 App.vue template 挂载时需要
+// #ifdef H5
 import GlobalLoading from './components/GlobalLoading.vue';
 import AppPopup from './components/AppPopup.vue';
+// #endif
 import popupManager from './utils/popupManager';
 
 const userStore = useUserStore();
+const noticeStore = useNoticeStore();
 
 onLaunch(async () => {
+  try {
+    const sysInfo = uni.getSystemInfoSync();
+    const statusBarHeight = sysInfo.statusBarHeight || 0;
+    // #ifdef H5
+    document.documentElement.style.setProperty('--status-bar-height', statusBarHeight + 'px');
+    // #endif
+    // #ifndef H5
+    // 小程序端 uni-app 自动注入 --status-bar-height，无需手动设置
+    // #endif
+  } catch (e) {}
+
   userStore.init();
   await popupManager.init();
+  // 登录后拉取未读消息与首页公告
+  if (userStore.isLoggedIn) {
+    noticeStore.fetchUnreadCount().catch(() => {});
+    noticeStore.fetchAnnouncements('home').catch(() => {});
+  }
 });
 
 onShow(() => {
   // 切前台刷新弹窗配置
   popupManager.init();
+  // 切前台刷新未读数
+  if (userStore.isLoggedIn) {
+    noticeStore.fetchUnreadCount().catch(() => {});
+    noticeStore.fetchAnnouncements('home').catch(() => {});
+  }
 });
 </script>
 
@@ -32,6 +69,7 @@ onShow(() => {
 }
 
 /* 全局样式 - 治愈系 pastel 风格 */
+/* #ifdef H5 */
 * {
   box-sizing: border-box;
 }
@@ -41,6 +79,14 @@ html, body {
   padding: 0;
   min-height: 100%;
 }
+/* #endif */
+
+/* #ifdef MP-WEIXIN */
+/* 小程序不支持 * / html / body 选择器，用内置组件枚举替代（避免 WXSS 编译报错 unexpected token '*'） */
+page, view, text, input, textarea, button, image, scroll-view, swiper, picker, video, canvas, cover-view, form, label {
+  box-sizing: border-box;
+}
+/* #endif */
 
 page {
   margin: 0;
@@ -233,6 +279,7 @@ button {
 }
 
 /* 强制隐藏 uni-app H5 系统 tabbar 占位，避免底部出现黑线/残留 */
+/* #ifdef H5 */
 .uni-tabbar,
 .uni-tabbar-bottom {
   display: none !important;
@@ -249,5 +296,20 @@ uni-scroll-view {
 
 uni-scroll-view > .uni-scroll-view {
   height: 100% !important;
+}
+/* #endif */
+
+/* #ifdef MP-WEIXIN */
+/* 小程序原生 scroll-view 高度（无 uni-scroll-view 组件） */
+scroll-view {
+  height: 100%;
+}
+/* #endif */
+
+/* toast 默认过窄，长文案（如运动结束提示）换行难看，整体加宽 40px */
+.uni-sample-toast {
+  width: auto !important;
+  min-width: 255px !important;
+  max-width: 86% !important;
 }
 </style>

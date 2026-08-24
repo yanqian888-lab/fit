@@ -100,17 +100,7 @@
 
         <view v-if="todayRecords.length === 0" class="empty-state">
           <view class="empty-icon">
-            <svg viewBox="0 0 66 66" class="empty-svg">
-              <rect x="12" y="18" width="34" height="42" rx="3" fill="#F6F6F6"/>
-              <rect x="17" y="23" width="24" height="4" rx="2" fill="#D5D5D5"/>
-              <rect x="17" y="31" width="18" height="4" rx="2" fill="#D5D5D5"/>
-              <rect x="17" y="39" width="22" height="4" rx="2" fill="#D5D5D5"/>
-              <circle cx="48" cy="46" r="10" fill="#F6F6F6" stroke="#D5D5D5" stroke-width="2"/>
-              <line x1="44" y1="46" x2="52" y2="46" stroke="#D5D5D5" stroke-width="2" stroke-linecap="round"/>
-              <line x1="48" y1="42" x2="48" y2="50" stroke="#D5D5D5" stroke-width="2" stroke-linecap="round"/>
-              <circle cx="56" cy="28" r="4" fill="#D5D5D5"/>
-              <circle cx="8" cy="50" r="2" fill="#F6F6F6"/>
-            </svg>
+            <image class="empty-svg" src="/static/image/icon/empty_dish.svg" mode="aspectFit" />
           </view>
           <text class="empty-text">暂无记录</text>
         </view>
@@ -167,6 +157,18 @@
         <view class="modal-btn primary" @click="saveEdit">保存</view>
       </view>
     </view>
+
+    <!-- 删除运动确认弹框 -->
+    <AppModal
+      v-model:visible="showDeleteModal"
+      icon="none"
+      title="提示"
+      text="确定删除这条记录吗？"
+      confirmText="删除"
+      confirmDanger
+      cancelText="取消"
+      @confirm="confirmDeleteItem"
+    />
   </view>
 </template>
 
@@ -177,8 +179,13 @@ import { recordApi } from '../../api';
 import { EXERCISE_TYPES } from '../../utils/constants';
 import { getToday, formatDate } from '../../utils/date';
 import { goBack as navigateBack } from '../../utils/navigate';
+import AppModal from '../../components/AppModal.vue';
 
 const statusBarHeight = ref(44);
+
+// 删除确认弹框
+const showDeleteModal = ref(false);
+let pendingDeleteId = null;
 
 // 日期相关
 const today = getToday();
@@ -432,17 +439,21 @@ async function saveEdit() {
 }
 
 async function deleteItem(id) {
-  uni.showModal({
-    title: '提示',
-    content: '确定删除这条记录吗？',
-    success: async (res) => {
-      if (res.confirm) {
-        await recordApi.deleteExercise(id);
-        load(selectedDate.value);
-        loadRecordDates();
-      }
-    }
-  });
+  pendingDeleteId = id;
+  showDeleteModal.value = true;
+}
+
+/**
+ * 确认删除运动记录
+ */
+async function confirmDeleteItem() {
+  showDeleteModal.value = false;
+  const id = pendingDeleteId;
+  pendingDeleteId = null;
+  if (id == null) return;
+  await recordApi.deleteExercise(id);
+  load(selectedDate.value);
+  loadRecordDates();
 }
 
 onMounted(() => {
@@ -830,11 +841,14 @@ onShow(() => {
   right: 0;
   bottom: 0;
   padding: 24rpx 48rpx calc(24rpx + env(safe-area-inset-bottom));
-  background: linear-gradient(180deg, rgba(240, 240, 240, 0) 0%, #F0F0F0 40%);
+  background: #F7FbF4;
   z-index: 100;
+  display: flex;
+  gap: 24rpx;
 }
 
 .add-btn-main {
+  flex: 1;
   height: 92rpx;
   background: #FBE386;
   border-radius: 999rpx;
@@ -844,6 +858,12 @@ onShow(() => {
   font-size: 34rpx;
   color: #27282D;
   font-weight: 400;
+}
+
+.add-btn-main.secondary {
+  background: #fff;
+  border: 2rpx solid #8DBB77;
+  color: #8DBB77;
 }
 
 .add-btn-main:active {

@@ -15,7 +15,7 @@
     <scroll-view class="content-scroll" scroll-y>
       <view class="content-wrapper">
         <view class="form-card">
-          <view v-if="!isRecipe && !isInsight" class="form-item">
+          <view v-if="!isRecipe && !isInsight && !isMethod" class="form-item">
             <text class="input-label">类型</text>
             <picker mode="selector" :range="typeLabels" :value="typeIndex" @change="onTypeChange">
               <view class="picker">{{ typeLabels[typeIndex] }}</view>
@@ -31,9 +31,9 @@
           </view>
           <view v-if="!isRecipe && !isInsight" class="form-item">
             <text class="input-label">配图（可选）</text>
-            <view class="recipe-image-upload" @click="chooseImage">
+            <view class="recipe-image-upload disabled">
               <image v-if="image" :src="image" mode="aspectFill" />
-              <text v-else class="upload-hint">点击上传配图（最多1张）</text>
+              <text v-else class="upload-hint">配图上传功能暂未开放</text>
             </view>
           </view>
           <template v-if="isRecipe">
@@ -44,9 +44,9 @@
 
             <view class="form-item">
               <text class="input-label">配图</text>
-              <view class="recipe-image-upload" @click="chooseImage">
+              <view class="recipe-image-upload disabled">
                 <image v-if="recipe.image" :src="recipe.image" mode="aspectFill" />
-                <text v-else class="upload-hint">点击上传配图（最多1张）</text>
+                <text v-else class="upload-hint">配图上传功能暂未开放</text>
               </view>
             </view>
 
@@ -223,7 +223,7 @@ async function loadItem() {
     extractedData.value = data;
     image.value = data.image || '';
     recipe.value = {
-      title: data.title || item.sub_type || '',
+      title: item.title || data.title || item.sub_type || '',
       image: data.image || '',
       ingredients: Array.isArray(data.ingredients) ? data.ingredients.map(i => ({ name: i.name || '', amount: i.amount || '' })) : [],
       steps: data.steps || '',
@@ -238,7 +238,13 @@ function onTypeChange(e) {
   form.value.type = types[parseInt(e.detail.value)].value;
 }
 
+/**
+ * 博物馆对比记录：上传配图功能暂未开放（提审阶段相机/相册读取权限暂不声明）
+ * 后续开放时恢复下面的 uni.chooseImage 调用（原 chooseImage 函数体保留在注释里）
+ */
 function chooseImage() {
+  uni.showToast({ title: '配图上传功能暂未开放', icon: 'none' });
+  /*
   uni.chooseImage({
     count: 1,
     success: (res) => {
@@ -249,6 +255,7 @@ function chooseImage() {
       }
     }
   });
+  */
 }
 
 function addIngredient() {
@@ -308,7 +315,14 @@ async function save() {
       await museumApi.addItem(payload);
     }
     uni.showToast({ title: '保存成功', icon: 'success' });
-    setTimeout(() => uni.navigateBack(), 800);
+    setTimeout(() => {
+      const pages = getCurrentPages();
+      if (pages.length > 1) {
+        uni.navigateBack();
+      } else {
+        uni.switchTab({ url: '/pages/museum/index' });
+      }
+    }, 800);
   } catch (err) {
     uni.showToast({ title: '保存失败', icon: 'none' });
   }
@@ -503,6 +517,13 @@ async function save() {
   image {
     width: 100%;
     height: 100%;
+  }
+
+  &.disabled {
+    // 提审阶段：图片上传功能禁用（灰化 + 降低透明度 + 默认鼠标指针，不引导点击）
+    pointer-events: none;
+    opacity: 0.55;
+    filter: grayscale(0.7);
   }
 }
 

@@ -48,8 +48,10 @@
         <scroll-view class="food-scroll" scroll-y>
           <view v-if="foods.length > 0" class="food-list">
             <view v-for="food in foods" :key="food.id" class="food-item">
-              <text class="food-name">{{ food.name }}</text>
-              <text class="food-calorie">{{ food.calorie_per_100g }}kcal/100g</text>
+              <view class="food-info" @click="goFoodDetail(food)">
+                <text class="food-name">{{ food.name }}</text>
+                <text class="food-calorie">{{ food.calorie_per_100g }}kcal/100g</text>
+              </view>
               <image class="add-btn" src="/static/image/icon/tianjia.svg" mode="aspectFit" @click="selectFood(food)" />
             </view>
           </view>
@@ -77,7 +79,8 @@
     </view>
 
     <!-- 已选食物弹窗 -->
-    <view v-if="showSelectedPanel" class="selected-mask" @click="showSelectedPanel = false">
+    <template v-if="showSelectedPanel">
+      <view class="selected-mask" @click="showSelectedPanel = false"></view>
       <view class="selected-panel" @click.stop>
         <view class="panel-header">
           <text class="panel-title">已选食物</text>
@@ -96,25 +99,38 @@
         </view>
         <AppEmpty v-if="currentMealFoods.length === 0" text="还没有选择食物" icon="🥗" />
       </view>
-    </view>
+    </template>
 
     <!-- 添加食物编辑弹窗 -->
-    <view v-if="showFoodEditModal" class="food-edit-mask" @click="closeFoodEditModal">
+    <template v-if="showFoodEditModal">
+      <view class="food-edit-mask" @click="closeFoodEditModal"></view>
       <view class="food-edit-panel" @click.stop>
         <view class="panel-header">
           <text class="panel-title">{{ editMode === 'edit' ? '编辑' : '添加' }}{{ editingFood?.name }}</text>
           <text class="panel-close" @click="closeFoodEditModal">✕</text>
         </view>
         <view class="food-edit-body">
-          <view v-if="showEditQuantity" class="edit-row">
-            <text class="edit-label">数量</text>
-            <input v-model="editQuantity" type="digit" class="edit-input" />
-            <text class="edit-unit">{{ editingFood?.unit || 'g' }}</text>
+          <!-- 单位切换：克 / 个数等单位 -->
+          <view v-if="unitOptions.length > 1" class="unit-tabs">
+            <view
+              v-for="u in unitOptions"
+              :key="u"
+              class="unit-tab"
+              :class="{ active: editUnit === u }"
+              @click="switchUnit(u)"
+            >
+              <text>{{ u === 'g' ? '克' : u }}</text>
+            </view>
           </view>
           <view class="edit-row">
-            <text class="edit-label">重量</text>
-            <input v-model="editWeight" type="digit" class="edit-input" />
-            <text class="edit-unit">g</text>
+            <text class="edit-label">{{ editUnit === 'g' ? '重量' : '数量' }}</text>
+            <input v-model="editValue" type="digit" class="edit-input" :focus="true" />
+            <text class="edit-unit">{{ editUnit === 'g' ? 'g' : editUnit }}</text>
+          </view>
+          <!-- 非克数记录时给出大致克数 -->
+          <view v-if="editUnit !== 'g'" class="estimate-row">
+            <text v-if="editingFood?.unit_weight" class="estimate-text">约 {{ editingFood.unit_weight }}g/{{ editUnit }}，共约 {{ estimatedWeight }}g</text>
+            <text v-else-if="editingFood?.unit_calorie" class="estimate-text">1 {{ editUnit }} ≈ {{ editingFood.unit_calorie }} 千卡</text>
           </view>
           <view class="edit-info">
             <text class="edit-calorie">{{ editCalorie }} 千卡</text>
@@ -125,7 +141,7 @@
           <AppButton v-else block @click="confirmEditFood">确认修改</AppButton>
         </view>
       </view>
-    </view>
+    </template>
   </view>
 </template>
 
@@ -133,6 +149,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi, systemApi } from '../../api';
+import { showRewardToast } from '../../utils/rewardToast.js';
 import { MEAL_OPTIONS, isDescriptiveUnit } from '../../utils/constants';
 import AppButton from '../../components/AppButton.vue';
 import AppEmpty from '../../components/AppEmpty.vue';
@@ -162,30 +179,65 @@ const currentMealFoods = computed(() => {
 // 食物编辑弹窗
 const showFoodEditModal = ref(false);
 const editingFood = ref(null);
-const editQuantity = ref('1');
-const editWeight = ref('100');
+const editValue = ref('100');   // 当前输入值（克数或个数，取决于 editUnit）
+const editUnit = ref('g');      // 当前单位：g 或食物自带单位（个/颗/碗…）
 const editMode = ref('add'); // 'add' 或 'edit'
 const editingIndex = ref(-1); // 编辑时的索引
+// 从已选列表打开编辑弹窗时，先收起已选面板；关闭/保存编辑后恢复（数据已联动更新）
+const returnToSelected = ref(false);
+// 被编辑/删除过的当日已有记录行 id（提交时同步到服务器）
+const dirtyRecordIds = new Set();
+
+// 可切换的单位：克 + 食物自带单位（有的话）
+const unitOptions = computed(() => {
+  const u = editingFood.value?.unit;
+  return u ? ['g', u] : ['g'];
+});
+
+// 个数模式下的估算总克数
+const estimatedWeight = computed(() => {
+  const qty = parseFloat(editValue.value) || 0;
+  const per = editingFood.value?.unit_weight || 0;
+  return Math.round(qty * per * 10) / 10;
+});
 
 const editCalorie = computed(() => {
   if (!editingFood.value) return 0;
-  const ratio = parseFloat(editWeight.value) / 100;
+  if (editUnit.value === 'g') {
+    const ratio = (parseFloat(editValue.value) || 0) / 100;
+    return Math.round((editingFood.value.calorie_per_100g || 0) * ratio * 10) / 10;
+  }
+  // 个数模式：优先每单位热量，其次按估算克数折算
+  const qty = parseFloat(editValue.value) || 0;
+  if (editingFood.value.unit_calorie) {
+    return Math.round(qty * editingFood.value.unit_calorie * 10) / 10;
+  }
+  const ratio = estimatedWeight.value / 100;
   return Math.round((editingFood.value.calorie_per_100g || 0) * ratio * 10) / 10;
 });
+
+function switchUnit(u) {
+  if (editUnit.value === u) return;
+  editUnit.value = u;
+  // 切换单位时给一个合理的默认值
+  if (u === 'g') {
+    editValue.value = String(editingFood.value?.unit_weight || 100);
+  } else {
+    editValue.value = '1';
+  }
+}
 
 function isWeightOnlyUnit(unit) {
   const u = String(unit || '').trim().toLowerCase();
   return u === 'g' || u === '克' || u === '100g' || u === '100克' || isDescriptiveUnit(unit);
 }
 
-const showEditQuantity = computed(() => {
-  return !isWeightOnlyUnit(editingFood.value?.unit);
-});
 
 function openFoodEditModal(food) {
   editingFood.value = food;
-  editQuantity.value = '1';
-  editWeight.value = String(food.unit_weight || 100);
+  // 有自带单位（个/颗/碗…）默认按个数记录，否则按克
+  editUnit.value = food.unit ? food.unit : 'g';
+  editValue.value = food.unit ? '1' : String(food.unit_weight || 100);
   editMode.value = 'add';
   editingIndex.value = -1;
   showFoodEditModal.value = true;
@@ -196,14 +248,22 @@ function openEditSelectedFood(index) {
   if (!food) return;
   // 从数据库加载的食物只有 calorie（总热量），需要反推 calorie_per_100g
   const caloriePer100g = food.weight > 0 ? (food.calorie / food.weight) * 100 : food.calorie || 0;
+  const qty = parseFloat(food.quantity) || 1;
   editingFood.value = {
     ...food,
-    calorie_per_100g: caloriePer100g
+    calorie_per_100g: caloriePer100g,
+    // 记录里的食物没有单位克数/单位热量时，按 总量÷个数 反推，避免编辑弹窗热量显示 0
+    unit_weight: food.unit_weight || (food.weight > 0 && qty > 0 ? Math.round((food.weight / qty) * 10) / 10 : null),
+    unit_calorie: food.unit_calorie || (food.calorie > 0 && qty > 0 ? Math.round((food.calorie / qty) * 10) / 10 : null)
   };
-  editQuantity.value = String(food.quantity || 1);
-  editWeight.value = String(food.weight || 100);
+  const u = food.unit && food.unit !== 'g' && food.unit !== '克' ? food.unit : 'g';
+  editUnit.value = u;
+  editValue.value = String(u === 'g' ? (food.weight || 100) : (food.quantity || 1));
   editMode.value = 'edit';
   editingIndex.value = index;
+  // 先收起已选面板，编辑弹窗独占展示；关闭/保存后再恢复
+  showSelectedPanel.value = false;
+  returnToSelected.value = true;
   showFoodEditModal.value = true;
 }
 
@@ -211,6 +271,11 @@ function closeFoodEditModal() {
   showFoodEditModal.value = false;
   editingFood.value = null;
   editingIndex.value = -1;
+  // 从已选列表进入的编辑，关闭后恢复已选面板（数据是同一引用，已同步）
+  if (returnToSelected.value) {
+    returnToSelected.value = false;
+    showSelectedPanel.value = true;
+  }
 }
 
 function confirmAddFood() {
@@ -219,15 +284,18 @@ function confirmAddFood() {
   if (!selectedFoods.value[mealTime]) {
     selectedFoods.value[mealTime] = [];
   }
+  const isGram = editUnit.value === 'g';
+  const weight = isGram ? (parseFloat(editValue.value) || 100) : (estimatedWeight.value || 0);
+  const quantity = isGram ? 1 : (parseFloat(editValue.value) || 1);
   selectedFoods.value[mealTime].push({
     name: editingFood.value.name,
-    calorie: editingFood.value.calorie_per_100g || 0,
+    calorie: editCalorie.value,
     protein: editingFood.value.protein_per_100g || 0,
     carb: editingFood.value.carb_per_100g || 0,
     fat: editingFood.value.fat_per_100g || 0,
-    weight: parseFloat(editWeight.value) || 100,
-    unit: editingFood.value.unit || 'g',
-    quantity: parseFloat(editQuantity.value) || 1,
+    weight: weight || 100,
+    unit: isGram ? 'g' : editUnit.value,
+    quantity,
     category: editingFood.value.category || ''
   });
   closeFoodEditModal();
@@ -239,17 +307,27 @@ function confirmEditFood() {
   const mealTime = form.value.meal_time;
   const food = selectedFoods.value[mealTime][editingIndex.value];
   if (!food) return;
-  food.quantity = parseFloat(editQuantity.value) || 1;
-  food.weight = parseFloat(editWeight.value) || 100;
+  const isGram = editUnit.value === 'g';
+  food.unit = isGram ? 'g' : editUnit.value;
+  food.quantity = isGram ? 1 : (parseFloat(editValue.value) || 1);
+  food.weight = isGram ? (parseFloat(editValue.value) || 100) : (estimatedWeight.value || food.weight || 100);
   // 重新计算总热量（calorie_per_100g 是每100g的值）
   const ratio = food.weight / 100;
   food.calorie = Math.round((editingFood.value.calorie_per_100g || 0) * ratio);
+  // 编辑的是当日已记录的食物：提交时同步更新服务器记录
+  if (food.fromRecord && food.recordId) {
+    dirtyRecordIds.add(food.recordId);
+  }
   closeFoodEditModal();
   uni.showToast({ title: '已修改', icon: 'none' });
 }
 
 function selectFood(food) {
   openFoodEditModal(food);
+}
+
+function goFoodDetail(food) {
+  uni.navigateTo({ url: `/pages/record/food-detail?id=${food.id}` });
 }
 
 const categories = [
@@ -360,23 +438,26 @@ async function loadMealFoods(mealTime) {
   try {
     const res = await recordApi.getDiet(recordDate.value);
     const mealItems = res.data.meals[mealTime] || [];
-    // 将食物加载到对应餐别
-    const allFoods = [];
+    // 当日该餐别已记录的食物（来自服务器）
+    const serverFoods = [];
     for (const item of mealItems) {
       if (item.foods && item.foods.length > 0) {
         for (const food of item.foods) {
-          allFoods.push({
+          serverFoods.push({
             ...food,
             weight: food.weight || 100,
             quantity: food.quantity || 1,
             unit: food.unit || 'g',
+            fromRecord: true,
             recordId: item.id
           });
         }
       }
     }
-    selectedFoods.value[mealTime] = allFoods;
-    console.log(`[loadMealFoods] 加载${mealTime}餐别食物:`, allFoods.length, '个');
+    // 合并展示：当日已记录 + 本次会话新增（未保存的不能被覆盖）
+    const current = selectedFoods.value[mealTime] || [];
+    const unsaved = current.filter(f => !f.fromRecord);
+    selectedFoods.value[mealTime] = [...serverFoods, ...unsaved];
   } catch (err) {
     console.error(err);
   }
@@ -425,6 +506,11 @@ async function loadFoodToSelected(foodId, source) {
 
 function removeFood(index) {
   const mealTime = form.value.meal_time;
+  const food = selectedFoods.value[mealTime]?.[index];
+  // 删除的是当日已记录的食物：提交时需要同步更新/删除服务器记录
+  if (food && food.fromRecord && food.recordId) {
+    dirtyRecordIds.add(food.recordId);
+  }
   if (selectedFoods.value[mealTime]) {
     selectedFoods.value[mealTime].splice(index, 1);
   }
@@ -433,49 +519,74 @@ function removeFood(index) {
 async function submit() {
   const mealTime = form.value.meal_time;
   const foods = selectedFoods.value[mealTime] || [];
-  if (foods.length === 0) {
+  if (foods.length === 0 && dirtyRecordIds.size === 0) {
     uni.showToast({ title: '请至少选择一种食物', icon: 'none' });
     return;
   }
   loading.value = true;
   try {
-    // 如果是编辑模式（加载了整个餐别），先删除该餐别的所有旧记录
+    const toPayload = (f) => ({
+      name: f.name,
+      weight: parseFloat(f.weight) || 100,
+      quantity: parseFloat(f.quantity) || 1,
+      unit: f.unit || 'g',
+      calorie: parseFloat(f.calorie) || 0,
+      protein: parseFloat(f.protein) || 0,
+      carb: parseFloat(f.carb) || 0,
+      fat: parseFloat(f.fat) || 0,
+      category: f.category || ''
+    });
+
     if (isEdit.value && pageQuery.value.editMode) {
+      // 编辑模式（整餐编辑）：先删除该餐别旧记录再整体写入
       const res = await recordApi.getDiet(recordDate.value);
       const mealItems = res.data.meals[mealTime] || [];
       for (const item of mealItems) {
         await recordApi.deleteDiet(item.id);
       }
-      console.log(`[submit] 已删除${mealTime}餐别的${mealItems.length}条旧记录`);
+      const foodsData = foods.map(toPayload);
+      if (foodsData.length > 0) {
+        const data = { record_date: recordDate.value, meal_time: mealTime, foods: foodsData };
+        if (pageQuery.value.id) data.id = parseInt(pageQuery.value.id);
+        const res2 = await recordApi.saveDiet(data);
+        showRewardToast(res2.data?.reward_messages || [], '保存成功');
+      } else {
+        uni.showToast({ title: '保存成功', icon: 'none' });
+      }
+    } else {
+      // 新增模式：先同步被编辑/删除过的已有记录行
+      for (const rid of dirtyRecordIds) {
+        const remaining = foods.filter(f => f.fromRecord && f.recordId === rid).map(toPayload);
+        if (remaining.length === 0) {
+          await recordApi.deleteDiet(rid);
+        } else {
+          await recordApi.saveDiet({ id: rid, record_date: recordDate.value, meal_time: mealTime, foods: remaining });
+        }
+      }
+      // 只把本次新选的食物写入新记录，避免与当日已记录重复
+      const newFoods = foods.filter(f => !f.fromRecord).map(toPayload);
+      if (newFoods.length > 0) {
+        const res = await recordApi.saveDiet({
+          record_date: recordDate.value,
+          meal_time: mealTime,
+          foods: newFoods
+        });
+        showRewardToast(res.data?.reward_messages || [], '保存成功');
+      } else {
+        uni.showToast({ title: '保存成功', icon: 'none' });
+      }
     }
-
-    const foodsData = foods.map(f => {
-      const quantity = parseFloat(f.quantity) || 1;
-      const weight = parseFloat(f.weight) || 100;
-      return {
-        name: f.name,
-        weight: weight,
-        quantity: quantity,
-        unit: f.unit || 'g',
-        calorie: parseFloat(f.calorie) || 0,
-        protein: parseFloat(f.protein) || 0,
-        carb: parseFloat(f.carb) || 0,
-        fat: parseFloat(f.fat) || 0,
-        category: f.category || ''
-      };
-    });
-    const data = {
-      record_date: recordDate.value,
-      meal_time: mealTime,
-      foods: foodsData
-    };
-    if (isEdit.value && pageQuery.value.id) {
-      data.id = parseInt(pageQuery.value.id);
-    }
-    await recordApi.saveDiet(data);
-    uni.showToast({ title: '保存成功', icon: 'success' });
-    setTimeout(() => uni.navigateBack(), 800);
+    dirtyRecordIds.clear();
+    setTimeout(() => {
+      const pages = getCurrentPages();
+      if (pages.length > 1) {
+        uni.navigateBack();
+      } else {
+        uni.switchTab({ url: '/pages/record/index' });
+      }
+    }, 800);
   } catch (err) {
+    console.error(err);
     uni.showToast({ title: '保存失败', icon: 'none' });
   } finally {
     loading.value = false;
@@ -678,8 +789,15 @@ async function submit() {
   border-bottom: none;
 }
 
-.food-name {
+.food-info {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-right: 24rpx;
+}
+
+.food-name {
   font-size: 34rpx;
   font-weight: 700;
   color: #27282D;
@@ -691,7 +809,7 @@ async function submit() {
   font-size: 26rpx;
   color: #999999;
   line-height: 36rpx;
-  margin-right: 24rpx;
+  margin-top: 4rpx;
 }
 
 .add-btn {
@@ -778,10 +896,11 @@ async function submit() {
 }
 
 .selected-panel {
-  position: absolute;
+  position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 1001;
   background: #FFFFFF;
   border-radius: 32rpx 32rpx 0 0;
   padding: 32rpx;
@@ -872,14 +991,15 @@ async function submit() {
   bottom: 0;
   background: rgba(0, 0, 0, 0.3);
   z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32rpx;
 }
 
 .food-edit-panel {
-  width: 100%;
+  position: fixed;
+  left: 32rpx;
+  right: 32rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1001;
   background: #FFFFFF;
   border-radius: 32rpx;
   padding: 32rpx;
@@ -923,6 +1043,36 @@ async function submit() {
 .edit-info {
   text-align: center;
   padding: 24rpx 0;
+}
+
+.unit-tabs {
+  display: flex;
+  gap: 16rpx;
+  padding-bottom: 20rpx;
+}
+
+.unit-tab {
+  padding: 12rpx 40rpx;
+  border-radius: 999rpx;
+  background: #F5F7FA;
+  font-size: 28rpx;
+  color: #6B7280;
+}
+
+.unit-tab.active {
+  background: #E8F6D7;
+  color: #563E22;
+  font-weight: 600;
+}
+
+.estimate-row {
+  padding: 12rpx 0 0;
+  text-align: right;
+}
+
+.estimate-text {
+  font-size: 24rpx;
+  color: #E8A65C;
 }
 
 .edit-calorie {

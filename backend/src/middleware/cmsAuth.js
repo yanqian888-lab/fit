@@ -51,9 +51,10 @@ function cmsAuthMiddleware(req, res, next) {
 function cmsPermissionMiddleware(...permissions) {
   return (req, res, next) => {
     const userPermissions = req.cmsPermissions || [];
-    const hasPermission = permissions.some(p => userPermissions.includes(p));
-    if (!hasPermission) {
-      return res.status(403).json(error('无权执行此操作', 403));
+    // 修复：使用every()确保用户拥有所有所需权限
+    const hasAllPermissions = permissions.every(p => userPermissions.includes(p));
+    if (!hasAllPermissions) {
+      return res.status(403).json(error('无权执行此操作，需要权限: ' + permissions.join(', '), 403));
     }
     next();
   };

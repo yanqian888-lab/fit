@@ -3,8 +3,42 @@
     <view class="status-bar"></view>
 
     <view class="page-header">
-      <text class="header-date">{{ todayDate }}</text>
-      <text class="header-title">今日记录</text>
+      <view class="header-bg"></view>
+      <view class="header-content">
+        <image class="header-panda" src="/static/image/icon/gongjvxiang01@3x.png" mode="aspectFit" />
+        <view class="header-tabs">
+          <view class="header-tab" :class="{ active: activeTab === 'data' }" @click="activeTab = 'data'">
+            <text>今日数据</text>
+          </view>
+          <view class="header-tab workout-tab" :class="{ active: activeTab === 'workout' }" @click="switchWorkoutTab">
+            <text>陪你动</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 今日数据 -->
+    <template v-if="activeTab === 'data'">
+    <!-- 快捷入口 -->
+    <view class="quick-actions">
+      <view class="action-item" @click="goTo('/pages/record/diet-detail')">
+        <view class="action-icon-box">
+          <image class="action-icon-img" src="/static/image/icon/jiyinshi@3x.png" mode="aspectFit" />
+        </view>
+        <text class="action-label">记饮食</text>
+      </view>
+      <view class="action-item" @click="goTo('/pages/record/exercise-detail')">
+        <view class="action-icon-box">
+          <image class="action-icon-img" src="/static/image/icon/jiyundong.png" mode="aspectFit" />
+        </view>
+        <text class="action-label">记运动</text>
+      </view>
+      <view class="action-item" @click="goTo('/pages/record/body-data')">
+        <view class="action-icon-box">
+          <image class="action-icon-img" src="/static/image/icon/jitizhong@3x.png" mode="aspectFit" />
+        </view>
+        <text class="action-label">记体重</text>
+      </view>
     </view>
 
     <!-- 今日摄入卡片 -->
@@ -12,10 +46,12 @@
       <text class="intake-card-title">今日摄入</text>
       <view class="intake-main">
         <view class="intake-ring-wrap">
-          <svg viewBox="0 0 100 100" class="intake-ring">
-            <circle cx="50" cy="50" r="42" fill="none" stroke="#FFFFFF" stroke-width="8" />
-            <circle cx="50" cy="50" r="42" fill="none" stroke="#8DBB77" stroke-width="8" stroke-linecap="round" stroke-dasharray="264" :stroke-dashoffset="intakeRingDashoffset" transform="rotate(-90 50 50)" />
-          </svg>
+          <view
+            class="intake-ring"
+            :style="{ background: `conic-gradient(#8DBB77 ${intakeRingDeg}deg, #FFFFFF ${intakeRingDeg}deg)` }"
+          >
+            <view class="intake-ring-hole"></view>
+          </view>
           <view class="intake-ring-center">
             <text class="intake-ring-value">{{ todayStats.intake || 0 }}</text>
             <text class="intake-ring-label">剩余{{ todayStats.remaining || 0 }}kcal</text>
@@ -54,49 +90,26 @@
       </view>
     </view>
 
-    <!-- 快捷入口 -->
-    <view class="quick-actions">
-      <view class="action-item" @click="goTo('/pages/record/diet-detail')">
-        <view class="action-icon-box">
-          <image class="action-icon-img" src="/static/image/icon/jiyinshi.png" mode="aspectFit" />
-        </view>
-        <text class="action-label">记饮食</text>
-      </view>
-      <view class="action-item" @click="goTo('/pages/record/exercise-detail')">
-        <view class="action-icon-box">
-          <image class="action-icon-img" src="/static/image/icon/jiyundong.png" mode="aspectFit" />
-        </view>
-        <text class="action-label">记运动</text>
-      </view>
-      <view class="action-item" @click="goTo('/pages/record/body-data')">
-        <view class="action-icon-box">
-          <image class="action-icon-img" src="/static/image/icon/jitizhong.png" mode="aspectFit" />
-        </view>
-        <text class="action-label">记体重</text>
-      </view>
-      <view class="action-item" @click="goTo('/pages/record/habit')">
-        <view class="action-icon-box">
-          <image class="action-icon-img" src="/static/image/icon/jiheshui.png" mode="aspectFit" />
-        </view>
-        <text class="action-label">记喝水</text>
-      </view>
-    </view>
-
     <!-- 轻断食打卡 -->
     <view class="fasting-card">
       <view class="fasting-header">
         <text class="fasting-title">轻断食打卡</text>
-        <view class="fasting-edit" @click="openFastingPanel">
-          <text class="fasting-edit-text">编辑</text>
-          <image class="fasting-edit-icon" src="/static/image/icon/xiugai.png" mode="aspectFit" />
+        <view class="fasting-header-right">
+          <text v-if="fastingStatsText" class="fasting-stats-text">{{ fastingStatsText }}</text>
+          <view class="fasting-edit" @click="openFastingPanel">
+            <text class="fasting-edit-text">编辑</text>
+            <image class="fasting-edit-icon" src="/static/image/icon/xiugai.png" mode="aspectFit" />
+          </view>
         </view>
       </view>
       <view class="fasting-body">
         <view class="fasting-ring-wrap">
-          <svg viewBox="0 0 100 100" class="fasting-ring">
-            <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(204,204,204,0.8)" stroke-width="8" />
-            <circle cx="50" cy="50" r="42" fill="none" stroke="#8DBB77" stroke-width="8" stroke-linecap="round" stroke-dasharray="264" :stroke-dashoffset="fastingRingDashoffset" transform="rotate(-90 50 50)" />
-          </svg>
+          <view
+            class="fasting-ring"
+            :style="{ background: `conic-gradient(#8DBB77 ${fastingRingDeg}deg, rgba(204,204,204,0.8) ${fastingRingDeg}deg)` }"
+          >
+            <view class="fasting-ring-hole"></view>
+          </view>
           <view class="fasting-ring-center">
             <text class="fasting-ring-value">{{ countdownText }}</text>
             <text class="fasting-ring-label">{{ eatingHint }}</text>
@@ -121,10 +134,61 @@
       </view>
     </view>
 
-    <!-- 生成今日分析 -->
-    <view class="diary-btn" @click="generateDiary">
-      <text>生成今日分析</text>
+    <!-- 饮水模块 -->
+    <view class="water-card">
+      <view class="water-header">
+        <text class="water-title">喝点水</text>
+        <text class="water-amount">{{ waterTotal }}ml / 2000ml</text>
+      </view>
+      <view class="water-progress">
+        <view class="water-fill" :style="{ width: Math.min((waterTotal / 2000) * 100, 100) + '%' }"></view>
+      </view>
+      <view class="water-actions">
+        <text class="cup-btn" @click="addWater(100)">+100ml</text>
+        <text class="cup-btn" @click="addWater(200)">+200ml</text>
+        <text class="cup-btn" @click="addWater(500)">+500ml</text>
+        <view class="cup-btn undo" :class="{ disabled: undoStack.length === 0 }" @click="undoWater">
+          <image class="undo-icon" src="/static/image/icon/chehui@3x.png" mode="aspectFit" />
+        </view>
+      </view>
     </view>
+
+    <!-- 生成今日分析（已生成则去查看） -->
+    <view class="diary-btn" @click="generateDiary">
+      <text>{{ todayDiaryExists ? '今日分析已生成，去查看' : '生成今日分析' }}</text>
+    </view>
+    </template>
+
+    <!-- 陪你动（页内切换，不跳二级页面） -->
+    <template v-else>
+      <view class="intro-card">
+        <text class="intro-title">今日跟练推荐</text>
+        <text class="intro-desc">选择一门课程，跟着搭搭一起动起来</text>
+      </view>
+
+      <view class="workout-list">
+        <view
+          v-for="item in workoutList"
+          :key="item.workout_key"
+          class="workout-card"
+          :class="{ locked: !item.is_unlocked }"
+          @click="handleWorkoutClick(item)"
+        >
+          <image class="workout-cover" :src="item.cover_url || '/static/image/icon/jiyundong.png'" mode="aspectFill" />
+          <view class="workout-info">
+            <text class="workout-name">{{ item.name }}</text>
+            <text class="workout-desc">{{ item.description }}</text>
+            <view class="workout-meta">
+              <text class="meta-text">{{ workoutDurationText(item) }}</text>
+              <text class="meta-text">{{ Math.round(item.calorie_per_hour || 0) }} 千卡/小时</text>
+            </view>
+          </view>
+          <view class="workout-badge" :class="{ locked: !item.is_unlocked }">
+            <text class="badge-text">{{ item.is_unlocked ? '去跟练' : '去解锁' }}</text>
+          </view>
+        </view>        <view v-if="workoutLoaded && workoutList.length === 0" class="workout-empty">暂无课程</view>
+      </view>
+    </template>
 
     <!-- 轻断食设置面板 -->
     <view class="panel-overlay" :class="{ show: showFastingPanel }" @click="closeFastingPanel"></view>
@@ -138,6 +202,11 @@
           <text class="mode-label">{{ mode.label }}</text>
           <text class="mode-desc">{{ mode.desc }}</text>
         </view>
+      </view>
+      <view v-if="panelSelectedMode === 'custom'" class="custom-hours-row">
+        <text class="custom-hours-label">断食时长</text>
+        <input class="custom-hours-input" type="number" v-model="customTargetHours" />
+        <text class="custom-hours-unit">小时</text>
       </view>
       <view class="time-picker-wrap">
         <view class="time-display-row">
@@ -208,19 +277,97 @@
       </view>
     </view>
 
+    <!-- 生成今日分析确认弹框 -->
+    <AppModal
+      v-model:visible="showDiaryModal"
+      icon="none"
+      title="生成今日分析"
+      text="每天只能分析一次，请确认饮食、运动等相关数据已经记录完全，点击确认进入分析～"
+      confirmText="确认"
+      cancelText="取消"
+      @confirm="confirmGenerateDiary"
+      @cancel="showDiaryModal = false"
+    />
+
+    <!-- 结束用餐二次确认弹框 -->
+    <AppModal
+      v-model:visible="showEndEatingModal"
+      icon="none"
+      title="结束用餐"
+      text="你是否已经完成今天所有的饮食了？"
+      confirmText="是"
+      cancelText="否"
+      @confirm="confirmEndEating"
+      @cancel="showEndEatingModal = false"
+    />
+
     <CustomTabBar />
   </view>
 </template>
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { recordApi, aiApi } from '../../api';
+import { recordApi, aiApi, workoutApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';
 import AppButton from '../../components/AppButton.vue';
+import AppModal from '../../components/AppModal.vue';
 import CustomTabBar from '../../custom-tab-bar/index.vue';
 import { getToday } from '../../utils/date';
+import { showRewardToast } from '../../utils/rewardToast.js';
 
 const today = getToday();
+
+// 页内 tab：今日数据 / 陪你动
+const activeTab = ref('data');
+const workoutList = ref([]);
+const workoutLoaded = ref(false);
+
+// 弹框可见性
+const showDiaryModal = ref(false);
+const showEndEatingModal = ref(false);
+
+async function loadWorkouts() {
+  try {
+    const res = await workoutApi.getList();
+    workoutList.value = res.data?.list || [];
+  } catch (e) {
+    console.error(e);
+  } finally {
+    workoutLoaded.value = true;
+  }
+}
+
+function switchWorkoutTab() {
+  activeTab.value = 'workout';
+  // 每次切换到陪你动都刷新课程列表（器材购买后解锁状态需要更新）
+  loadWorkouts();
+}
+
+function formatDuration(seconds) {
+  if (!seconds) return '0 分钟';
+  if (seconds < 60) return `${seconds} 秒`;
+  return `${Math.round(seconds / 60)} 分钟`;
+}
+
+// 课程时长展示：不限时长 / x分钟×y组
+function workoutDurationText(item) {
+  if (item.duration_mode === 'unlimited') return '不限时长';
+  const mins = item.set_minutes || Math.round((item.duration_seconds || 0) / 60) || 0;
+  const sets = item.sets_count || 1;
+  return sets > 1 ? `${mins} 分钟 × ${sets} 组` : `${mins} 分钟`;
+}
+
+function handleWorkoutClick(item) {
+  if (!item.is_unlocked) {
+    // 未购买器材：跳转搭搭 tab 拉起商店弹层，定位到运动器材 tab 引导购买
+    uni.setStorageSync('pending_shop_category', 'equipment');
+    uni.showToast({ title: '购买对应器材即可解锁该课程', icon: 'none' });
+    uni.switchTab({ url: '/pages/pet/index' });
+    return;
+  }
+  uni.navigateTo({ url: `/pages/workout/session?key=${item.workout_key}` });
+}
+
 const todayStats = ref({
   intake: 0, burned: 0, remaining: 0, target: 1500, status: 'green',
   current_weight: null, initial_weight: null, target_weight: null,
@@ -228,17 +375,68 @@ const todayStats = ref({
   weight_days: 1
 });
 
-// ========== 日期计算 ==========
-const todayDate = computed(() => {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = d.getMonth() + 1;
-  const date = d.getDate();
-  const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-  const weekday = weekdays[d.getDay()];
-  return `${year}年${month}月${date}日 · ${weekday}`;
-});
+// 饮水模块
+const waterTotal = ref(0);
+const waterRecordId = ref(null);
+const undoStack = ref([]);
+const waterCups = [100, 200, 500];
 
+async function loadWaterToday() {
+  try {
+    const res = await recordApi.getHabits({ date: today, type: 'water' });
+    const list = res.data.list || [];
+    const water = list.find(item => item.type === 'water');
+    waterTotal.value = water ? Number(water.value) || 0 : 0;
+    waterRecordId.value = water ? water.id : null;
+    undoStack.value = [];
+  } catch (e) { console.error(e); }
+}
+
+async function addWater(amount) {
+  const oldTotal = waterTotal.value;
+  waterTotal.value += amount;
+  undoStack.value.push(amount);
+  if (undoStack.value.length > 3) undoStack.value.shift();
+  try {
+    const res = await recordApi.saveHabit({
+      id: waterRecordId.value || null,
+      record_date: today,
+      type: 'water',
+      value: waterTotal.value,
+      unit: 'ml',
+      remark: ''
+    });
+    if (!waterRecordId.value && res && res.data && res.data.id) waterRecordId.value = res.data.id;
+    showRewardToast(res.data?.reward_messages || [], '饮水记录成功');
+  } catch (e) {
+    waterTotal.value = oldTotal;
+    undoStack.value.pop();
+    uni.showToast({ title: e.message || '记录失败', icon: 'none' });
+  }
+}
+
+async function undoWater() {
+  if (undoStack.value.length === 0) return;
+  const amount = undoStack.value.pop();
+  const oldTotal = waterTotal.value;
+  waterTotal.value = Math.max(0, waterTotal.value - amount);
+  try {
+    await recordApi.saveHabit({
+      id: waterRecordId.value || null,
+      record_date: today,
+      type: 'water',
+      value: waterTotal.value,
+      unit: 'ml',
+      remark: ''
+    });
+  } catch (e) {
+    waterTotal.value = oldTotal;
+    undoStack.value.push(amount);
+    uni.showToast({ title: e.message || '撤销失败', icon: 'none' });
+  }
+}
+
+// ========== 日期计算 ==========
 const weekdayShort = computed(() => {
   const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   return weekdays[new Date().getDay()];
@@ -288,10 +486,22 @@ const intakeRingDashoffset = computed(() => {
   return 264 - (264 * p / 100);
 });
 
+// conic-gradient 进度角（小程序端不支持 svg，用 conic-gradient 模拟圆环）
+const intakeRingDeg = computed(() => {
+  const p = Math.min(100, Math.max(0, intakePercent.value || 0));
+  return p * 3.6;
+});
+
 const fastingRingDashoffset = computed(() => {
   const p = Math.min(100, Math.max(0, eatingProgress.value || 0));
   // 圆环表示“剩余进度”，开始时 full（offset=0），结束时 empty（offset=264）
   return 264 * (p / 100);
+});
+
+// 轻断食进度角：剩余进度 = 100 - eatingProgress
+const fastingRingDeg = computed(() => {
+  const p = Math.min(100, Math.max(0, eatingProgress.value || 0));
+  return (100 - p) * 3.6;
 });
 
 const macroList = computed(() => [
@@ -319,7 +529,17 @@ const fastingDisabled = computed(() => {
 function onFastingAction() {
   if (fastingDisabled.value) return;
   if (!hasStartedToday.value) startEating();
-  else if (isInEatingWindow.value) endEatingEarly();
+  else if (isInEatingWindow.value) {
+    // 提前结束用餐前添加二次确认
+    showEndEatingModal.value = true;
+  }
+}
+/**
+ * 确认结束用餐二次确认弹框
+ */
+function confirmEndEating() {
+  showEndEatingModal.value = false;
+  endEatingEarly();
 }
 
 // ========== 轻断食（保留原有逻辑） ==========
@@ -327,16 +547,21 @@ const FASTING_SETTINGS_KEY = 'fasting_settings';
 function getFastingDailyKey() { return 'fasting_daily_' + getToday(); }
 
 const fastingModes = [
-  { label: '16:8', value: 16, desc: '16小时断食，8小时用餐' },
-  { label: '18:6', value: 18, desc: '18小时断食，6小时用餐' },
-  { label: '20:4', value: 20, desc: '20小时断食，4小时用餐' },
-  { label: '14:10', value: 14, desc: '14小时断食，10小时用餐' }
+  { label: '16:8', value: '16:8', hours: 16, desc: '16小时断食，8小时用餐' },
+  { label: '18:6', value: '18:6', hours: 18, desc: '18小时断食，6小时用餐' },
+  { label: '20:4', value: '20:4', hours: 20, desc: '20小时断食，4小时用餐' },
+  { label: '14:10', value: '14:10', hours: 14, desc: '14小时断食，10小时用餐' },
+  { label: 'OMAD', value: 'omad', hours: 23, desc: '一日一餐，23小时断食' },
+  { label: '自定义', value: 'custom', hours: 0, desc: '自定义断食时长' }
 ];
 
-const selectedMode = ref(16);
+const selectedMode = ref('16:8');
+const customTargetHours = ref(16);
 const eatingStart = ref(null);
 const eatingEnd = ref(null);
 const hasStartedToday = ref(false);
+// 用户是否完成过首次设置（决定用餐倒计时是否每天自动滚动）
+const hasFastingSettings = ref(false);
 const showFastingPanel = ref(false);
 const startTimeValue = ref([8, 0, 0, 0]);
 // 设置面板独立的预览状态，避免已打卡时拖动设置直接改动今天时间
@@ -344,8 +569,12 @@ const panelSelectedMode = ref(16);
 const panelStartTimeValue = ref([8, 0, 0, 0]);
 const panelEatingStart = ref(null);
 const panelEatingEnd = ref(null);
-const panelEatingDuration = computed(() => Math.max(1, 24 - panelSelectedMode.value));
-watch(panelSelectedMode, () => {
+const panelModeInfo = computed(() => fastingModes.find(m => m.value === panelSelectedMode.value) || fastingModes[0]);
+const panelEatingDuration = computed(() => {
+  if (panelSelectedMode.value === 'custom') return Math.max(1, 24 - customTargetHours.value);
+  return Math.max(1, 24 - (panelModeInfo.value?.hours || 16));
+});
+watch([panelSelectedMode, customTargetHours], () => {
   // 在设置面板中切换模式时，实时刷新结束时间预览
   if (showFastingPanel.value && panelEatingStart.value) {
     panelEatingEnd.value = panelEatingStart.value + panelEatingDuration.value * 3600000;
@@ -353,11 +582,23 @@ watch(panelSelectedMode, () => {
 });
 const countdownTimer = ref(null);
 const countdownText = ref('--:--');
+const fastingStats = ref(null);
 
-const eatingDuration = computed(() => Math.max(1, 24 - selectedMode.value));
+const fastingStatsText = computed(() => {
+  if (!fastingStats.value) return '';
+  if (fastingStats.value.this_week_completed > 0) {
+    return `本周完成 ${fastingStats.value.this_week_completed} 天`;
+  }
+  return '';
+});
+
+const currentModeInfo = computed(() => fastingModes.find(m => m.value === selectedMode.value) || fastingModes[0]);
+const eatingDuration = computed(() => {
+  if (selectedMode.value === 'custom') return Math.max(1, 24 - customTargetHours.value);
+  return Math.max(1, 24 - (currentModeInfo.value?.hours || 16));
+});
 const fastingModeText = computed(() => {
-  const mode = fastingModes.find(m => m.value === selectedMode.value);
-  return mode ? mode.label + ' 轻断食' : '16:8 轻断食';
+  return (currentModeInfo.value?.label || '16:8') + ' 轻断食';
 });
 
 const isInEatingWindow = computed(() => {
@@ -411,6 +652,48 @@ function formatTime(ts) {
   const h = String(d.getHours()).padStart(2, '0');
   const m = String(d.getMinutes()).padStart(2, '0');
   return `${h}:${m}`;
+}
+
+function formatHHMM(ts) {
+  if (!ts) return null;
+  return formatTime(ts);
+}
+
+async function loadFastingStats() {
+  try {
+    const res = await recordApi.getFastingStats();
+    fastingStats.value = res.data || null;
+  } catch (e) { console.error(e); }
+}
+
+async function loadFastingFromServer() {
+  try {
+    const res = await recordApi.getFasting();
+    const f = res.data?.fasting;
+    if (!f) {
+      // 服务器没有今日记录但本地标记了已打卡：说明上次打卡没提交成功（历史脱节状态），
+      // 重置本地让用户可以正常打卡（后端会自动按计划创建当日记录）
+      if (hasStartedToday.value) resetDailyState();
+      return;
+    }
+    if (['16:8', '18:6', '20:4', '14:10', 'omad'].includes(f.mode)) {
+      selectedMode.value = f.mode;
+      if (f.mode === 'custom' && f.target_hours) {
+        customTargetHours.value = f.target_hours;
+      }
+    }
+    hasStartedToday.value = f.status === 'fasting' || f.status === 'completed' || f.status === 'failed';
+    if (f.eating_window_start && f.eating_window_end) {
+      const today = new Date().toISOString().split('T')[0];
+      const s = new Date(`${today}T${f.eating_window_start}`);
+      const e = new Date(`${today}T${f.eating_window_end}`);
+      if (!isNaN(s.getTime())) eatingStart.value = s.getTime();
+      if (!isNaN(e.getTime())) eatingEnd.value = e.getTime();
+    }
+    if (f.status === 'completed' || f.status === 'failed') {
+      eatingEnd.value = Date.now();
+    }
+  } catch (e) { console.error(e); }
 }
 
 function updateCountdown() {
@@ -475,13 +758,36 @@ function onDailyAdjustEndChange(e) {
   dailyAdjustEnd.value = end.getTime();
 }
 
-function confirmDailyAdjust() {
+async function confirmDailyAdjust() {
+  // 先提交服务器（携带当前设置，无当日计划时后端自动创建），成功后再更新本地状态
+  const payload = {
+    action: 'start',
+    mode: selectedMode.value,
+    eating_window_start: formatHHMM(dailyAdjustStart.value),
+    eating_window_end: formatHHMM(dailyAdjustEnd.value)
+  };
+  if (selectedMode.value === 'custom') payload.target_hours = customTargetHours.value;
+  try {
+    await recordApi.saveFasting(payload);
+  } catch (e) {
+    console.error(e);
+    return; // 失败时不改本地状态，避免与服务器脱节
+  }
   eatingStart.value = dailyAdjustStart.value;
   eatingEnd.value = dailyAdjustEnd.value;
   hasStartedToday.value = true;
+  // 首次打卡选择的时间沉淀为长期设置，之后每天到点自动滚动
+  startTimeValue.value = [...dailyAdjustTimeValue.value];
+  saveSettings();
   saveDailyState();
   closeDailyAdjustPanel();
   startCountdown();
+  // 打卡成功 toast 提示
+  uni.showToast({
+    title: '轻断食打卡成功',
+    icon: 'success',
+    duration: 2000
+  });
 }
 
 function startEating() {
@@ -502,7 +808,18 @@ function startEating() {
   openDailyAdjustPanel();
 }
 
-function endEatingEarly() {
+async function endEatingEarly() {
+  try {
+    await recordApi.saveFasting({
+      action: 'end',
+      mode: selectedMode.value,
+      eating_window_start: formatHHMM(eatingStart.value),
+      eating_window_end: formatHHMM(eatingEnd.value)
+    });
+  } catch (e) {
+    console.error(e);
+    return; // 失败时不改本地状态
+  }
   eatingEnd.value = Date.now();
   hasStartedToday.value = true;
   saveDailyState();
@@ -521,7 +838,8 @@ function stopCountdown() {
 }
 
 function saveSettings() {
-  uni.setStorageSync(FASTING_SETTINGS_KEY, JSON.stringify({ selectedMode: selectedMode.value, startTimeValue: startTimeValue.value }));
+  hasFastingSettings.value = true;
+  uni.setStorageSync(FASTING_SETTINGS_KEY, JSON.stringify({ selectedMode: selectedMode.value, startTimeValue: startTimeValue.value, customTargetHours: customTargetHours.value }));
 }
 
 function loadSettings() {
@@ -529,10 +847,27 @@ function loadSettings() {
     const raw = uni.getStorageSync(FASTING_SETTINGS_KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      selectedMode.value = s.selectedMode || 16;
+      // 兼容旧版 numeric mode
+      const legacyMap = { 16: '16:8', 18: '18:6', 20: '20:4', 14: '14:10' };
+      selectedMode.value = legacyMap[s.selectedMode] || s.selectedMode || '16:8';
+      customTargetHours.value = s.customTargetHours || 16;
       startTimeValue.value = (Array.isArray(s.startTimeValue) && s.startTimeValue.length >= 4) ? s.startTimeValue : [8, 0, 0, 0];
+      hasFastingSettings.value = true;
     }
   } catch (e) { console.error(e); }
+}
+
+// 完成首次设置后，每天按设置的用餐窗口自动滚动倒计时（无需手动打卡）；
+// 未设置过则不滚动，等用户首次打卡时设置时间
+function ensureTodayWindow() {
+  if (!hasFastingSettings.value) return;
+  if (!eatingStart.value || !isSameDayAsToday(eatingStart.value)) {
+    const start = new Date();
+    start.setHours(startTimeValue.value[0], startTimeValue.value[2] * 5, 0, 0);
+    eatingStart.value = start.getTime();
+    eatingEnd.value = eatingStart.value + eatingDuration.value * 3600000;
+    saveDailyState();
+  }
 }
 
 function saveDailyState() {
@@ -594,7 +929,7 @@ function onStartTimeChange(e) {
   updatePanelPreview();
 }
 
-function confirmFastingSettings() {
+async function confirmFastingSettings() {
   selectedMode.value = panelSelectedMode.value;
   startTimeValue.value = [...panelStartTimeValue.value];
   saveSettings();
@@ -606,31 +941,55 @@ function confirmFastingSettings() {
     saveDailyState();
     startCountdown();
   }
-  // 如果今天已打卡，不覆盖今天实际打卡时间，新设置从明天开始生效
+  // 设置始终同步到服务器（后端按计划 upsert，已打卡时只更新设置不影响打卡状态）
+  const payload = {
+    mode: selectedMode.value,
+    eating_window_start: formatHHMM(hasStartedToday.value ? eatingStart.value : panelEatingStart.value),
+    eating_window_end: formatHHMM(hasStartedToday.value ? eatingEnd.value : panelEatingEnd.value)
+  };
+  if (selectedMode.value === 'custom') {
+    payload.target_hours = customTargetHours.value;
+  }
+  try {
+    await recordApi.saveFasting(payload);
+  } catch (e) { console.error(e); }
 }
 
-onMounted(() => {
+onMounted(async () => {
   load();
+  loadWaterToday();
   loadSettings();
-  // 先用设置生成默认时间
-  const hour = startTimeValue.value[0];
-  const minute = startTimeValue.value[2] * 5;
-  const start = new Date();
-  start.setHours(hour, minute, 0, 0);
-  eatingStart.value = start.getTime();
-  eatingEnd.value = eatingStart.value + eatingDuration.value * 3600000;
+  // 已设置过：按设置生成今日用餐窗口（未设置过则保持空，倒计时显示未设置）
+  ensureTodayWindow();
   // 再加载今日已保存状态（覆盖默认值），并处理跨天未刷新导致的状态过期
   loadDailyState();
   checkDateRollover();
+  // 同步服务端轻断食状态
+  await loadFastingFromServer();
+  // 跨天重置/服务端无记录后，按设置兜底今日窗口
+  ensureTodayWindow();
+  loadFastingStats();
   if (eatingStart.value && eatingEnd.value) startCountdown();
 });
 
 onShow(() => {
+  // 外部跳转过来时切换到指定 tab（如使用器材后进入“陪你动”）
+  const pendingTab = uni.getStorageSync('record_pending_tab');
+  if (pendingTab) {
+    activeTab.value = pendingTab;
+    uni.removeStorageSync('record_pending_tab');
+  }
   load();
+  loadWaterToday();
   loadDailyState();
   checkDateRollover();
+  // 回到页面时按设置兜底今日用餐窗口，保证倒计时每天自动滚动
+  ensureTodayWindow();
+  loadTodayDiaryStatus();
+  // 陪你动 tab 激活时刷新课程（器材购买后解锁状态需要更新）
+  if (activeTab.value === 'workout') loadWorkouts();
   if (eatingStart.value && eatingEnd.value) startCountdown();
-  uni.$emit('tabbar-select', 1);
+  uni.$emit('tabbar-select', 2);
   uni.hideTabBar({ animation: false }).catch(() => {});
 });
 
@@ -643,16 +1002,42 @@ async function load() {
   try {
     const res = await recordApi.getToday();
     todayStats.value = res.data;
+    loadFastingStats();
+    loadWaterToday();
+    loadTodayDiaryStatus();
   } catch (err) { console.error(err); }
 }
 
+// 今天是否已生成日记分析（同一天只能生成一次）
+const todayDiaryExists = ref(false);
+async function loadTodayDiaryStatus() {
+  try {
+    const res = await aiApi.getDiaryHistory({ month: today.slice(0, 7), size: 200 });
+    const list = res.data?.list || [];
+    todayDiaryExists.value = list.some(item => item.date === today);
+  } catch (e) { console.error(e); }
+}
+
 function generateDiary() {
+  // 已生成：直接进入日记与分析页（默认选中当天）
+  if (todayDiaryExists.value) {
+    uni.navigateTo({ url: '/pages/museum/diary' });
+    return;
+  }
+  // 每天首次生成需二次确认
+  showDiaryModal.value = true;
+}
+/**
+ * 确认生成今日分析
+ */
+function confirmGenerateDiary() {
+  showDiaryModal.value = false;
   uni.navigateTo({ url: `/pages/museum/diary-generate?date=${today}` });
 }
 </script>
 <style lang="scss" scoped>
 .record-page {
-  background: #F7FbF4;
+  background: #F8FAF7;
   min-height: 100vh;
   padding: 0 32rpx calc(180rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
@@ -660,26 +1045,88 @@ function generateDiary() {
 
 .status-bar {
   height: var(--status-bar-height);
+  /* #ifdef MP-WEIXIN */
+  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
+  height: calc(var(--status-bar-height) + 88rpx);
+  /* #endif */
 }
 
-/* 顶部 */
 .page-header {
-  padding-top: 24rpx;
-  margin-bottom: 32rpx;
+  position: relative;
+  margin: 0 -32rpx 28rpx;
+  padding: 16rpx 0 20rpx;
+  overflow: hidden;
 }
 
-.header-date {
-  font-size: 28rpx;
-  color: #666666;
-  display: block;
-  margin-bottom: 12rpx;
+.header-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #E8F6D7;
+  z-index: 0;
 }
 
-.header-title {
-  font-size: 60rpx;
+.header-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  padding-left: 0;
+}
+
+.header-panda {
+  width: 94rpx;
+  height: 115rpx;
+  margin-left: 0;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+}
+
+.header-tabs {
+  /* 绝对定位相对整个头部居中，不受左侧小熊猫占位影响 */
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 128rpx;
+  pointer-events: none;
+}
+
+.header-tab {
+  pointer-events: auto;
+  font-size: 32rpx;
+  color: #999999;
+  font-weight: 400;
+  padding: 8rpx 0;
+  position: relative;
+}
+
+.header-tab.active {
+  color: #563E22;
   font-weight: 700;
-  color: #27282D;
-  line-height: 1.1;
+}
+
+/* 陪你动 tab 左移 24px（48rpx） */
+.workout-tab {
+  margin-left: -48rpx;
+}
+
+.header-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40rpx;
+  height: 4rpx;
+  background: #8DBB77;
+  border-radius: 2rpx;
 }
 
 /* 今日摄入卡片 */
@@ -687,14 +1134,15 @@ function generateDiary() {
   background: #DDF2D2;
   border-radius: 32rpx;
   padding: 32rpx;
-  margin-bottom: 32rpx;
+  margin-bottom: 28rpx;
+  box-shadow: 0 4rpx 16rpx rgba(141, 187, 119, 0.1);
 }
 
 .intake-card-title {
   text-align: center;
-  font-size: 34rpx;
+  font-size: 32rpx;
   font-weight: 600;
-  color: #8DBB77;
+  color: #563E22;
   display: block;
   margin-bottom: 24rpx;
 }
@@ -715,6 +1163,18 @@ function generateDiary() {
 .intake-ring {
   width: 100%;
   height: 100%;
+  border-radius: 50%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.intake-ring-hole {
+  width: 78%;
+  height: 78%;
+  background: #DDF2D2;
+  border-radius: 50%;
 }
 
 .intake-ring-center {
@@ -858,52 +1318,131 @@ function generateDiary() {
 /* 快捷入口 */
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 18rpx;
-  margin-bottom: 32rpx;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22rpx;
+  margin-bottom: 28rpx;
 }
 
 .action-item {
   background: #FFFFFF;
   border-radius: 24rpx;
-  height: 200rpx;
+  height: 106rpx;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.03);
 }
 
 .action-icon-box {
-  width: 88rpx;
-  height: 88rpx;
+  width: 56rpx;
+  height: 56rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 12rpx;
+  margin-right: 12rpx;
 }
 
 .action-icon-svg {
+  width: 52rpx;
+  height: 52rpx;
+}
+
+.action-icon-img {
   width: 56rpx;
   height: 56rpx;
 }
 
-.action-icon-img {
-  width: 72rpx;
-  height: 72rpx;
+.action-label {
+  font-size: 26rpx;
+  color: #563E22;
+  font-weight: 500;
 }
 
-.action-label {
+/* 饮水卡片 */
+.water-card {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 28rpx;
+  margin-bottom: 28rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.03);
+}
+
+.water-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.water-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1A1A1A;
+}
+
+.water-amount {
+  font-size: 26rpx;
+  color: #563E22;
+  font-weight: 600;
+}
+
+.water-progress {
+  height: 16rpx;
+  background: #E8F5FF;
+  border-radius: 8rpx;
+  overflow: hidden;
+  margin-bottom: 24rpx;
+}
+
+.water-fill {
+  height: 100%;
+  background: #B5E2FF;
+  border-radius: 8rpx;
+  transition: width 0.3s ease;
+}
+
+.water-actions {
+  display: flex;
+  gap: 16rpx;
+}
+
+.cup-btn {
+  flex: 1;
+  text-align: center;
+  background: #DDF2D2;
+  color: #8DBB77;
+  border-radius: 32rpx;
+  padding: 18rpx 0;
   font-size: 24rpx;
-  color: #27282D;
+  font-weight: 500;
+}
+
+.cup-btn.undo {
+  flex: 0.8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14rpx 0;
+}
+
+.cup-btn.undo.disabled {
+  opacity: 0.4;
+}
+
+.undo-icon {
+  width: 32rpx;
+  height: 26rpx;
 }
 
 /* 轻断食卡片 */
 .fasting-card {
   background: #FFFFFF;
   border: 1rpx solid rgba(204, 204, 204, 0.8);
-  border-radius: 32rpx;
+  border-radius: 24rpx;
   padding: 28rpx;
-  margin-bottom: 32rpx;
+  margin-bottom: 28rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.03);
 }
 
 .fasting-header {
@@ -914,13 +1453,13 @@ function generateDiary() {
 }
 
 .fasting-title {
-  font-size: 36rpx;
-  font-weight: 600;
-  color: #27282D;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1A1A1A;
 }
 
 .fasting-edit {
-  background: #F0F0F0;
+  background: #F0F7EC;
   border-radius: 16rpx;
   padding: 8rpx 16rpx;
   display: flex;
@@ -929,7 +1468,7 @@ function generateDiary() {
 
 .fasting-edit-text {
   font-size: 24rpx;
-  color: #666666;
+  color: #563E22;
   margin-right: 6rpx;
 }
 
@@ -954,6 +1493,18 @@ function generateDiary() {
 .fasting-ring {
   width: 100%;
   height: 100%;
+  border-radius: 50%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fasting-ring-hole {
+  width: 78%;
+  height: 78%;
+  background: #FFFFFF;
+  border-radius: 50%;
 }
 
 .fasting-ring-center {
@@ -1034,15 +1585,17 @@ function generateDiary() {
 
 /* 生成今日分析 */
 .diary-btn {
-  background: #FBE386;
+  background: #FFAB76;
   border-radius: 60rpx;
   height: 96rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 34rpx;
-  color: #27282D;
-  margin-bottom: 32rpx;
+  font-size: 32rpx;
+  color: #FFFFFF;
+  font-weight: 600;
+  margin-bottom: 28rpx;
+  box-shadow: 0 4rpx 16rpx rgba(255, 171, 118, 0.3);
 }
 
 /* 弹窗 */
@@ -1213,9 +1766,178 @@ function generateDiary() {
   display: flex;
   gap: 20rpx;
   margin-top: 32rpx;
+  justify-content: center;
 }
 
-.panel-actions AppButton {
+.panel-actions :deep(.app-button) {
   flex: 1;
+}
+
+.fasting-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.fasting-stats-text {
+  font-size: 22rpx;
+  color: #8DBB77;
+  background: #E8F5E8;
+  padding: 4rpx 12rpx;
+  border-radius: 12rpx;
+}
+
+.custom-hours-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24rpx;
+  padding: 16rpx;
+  background: #F9FAFB;
+  border-radius: 16rpx;
+}
+
+.custom-hours-label {
+  font-size: 26rpx;
+  color: #666;
+  margin-right: 16rpx;
+}
+
+.custom-hours-input {
+  width: 100rpx;
+  height: 56rpx;
+  background: #fff;
+  border-radius: 12rpx;
+  text-align: center;
+  font-size: 30rpx;
+  color: #333;
+}
+
+.custom-hours-unit {
+  font-size: 26rpx;
+  color: #666;
+  margin-left: 12rpx;
+}
+
+/* 陪你动（页内切换） */
+.intro-card {
+  background: linear-gradient(135deg, #DDF2D2, #E8F5FF);
+  border-radius: 32rpx;
+  padding: 32rpx;
+  /* 页面左右 padding 是 32rpx，用负边距把卡片钉在距屏幕边缘固定 16px */
+  margin: 0 calc(16px - 32rpx) 16px;
+}
+.intro-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #333;
+  display: block;
+  margin-bottom: 8rpx;
+}
+.intro-desc {
+  display: block;
+  font-size: 24rpx;
+  color: #666;
+  margin-top: 8rpx;
+}
+.workout-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* 距屏幕左右边缘固定 16px（抵消页面 32rpx 的 rpx 边距） */
+  margin: 0 calc(16px - 32rpx);
+  padding: 0 0 16px;
+  box-sizing: border-box;
+}
+.workout-card {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 32rpx;
+  padding: 36rpx 32rpx;
+  box-shadow: 0 4rpx 24rpx rgba(0, 0, 0, 0.05);
+}
+.workout-card.locked {
+  opacity: 0.75;
+}
+.workout-card:active {
+  transform: scale(0.98);
+}
+.workout-cover {
+  width: 152rpx;
+  height: 152rpx;
+  border-radius: 28rpx;
+  background: #f0f0f0;
+  margin-right: 28rpx;
+  flex-shrink: 0;
+}
+.workout-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  margin-right: 24rpx;
+}
+.workout-name {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 12rpx;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workout-desc {
+  font-size: 24rpx;
+  color: #999;
+  line-height: 34rpx;
+  margin-bottom: 16rpx;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  word-break: break-all;
+}
+.workout-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6rpx;
+}
+.meta-text {
+  font-size: 24rpx;
+  color: #8DBB77;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.workout-badge {
+  flex-shrink: 0;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #8DBB77;
+  border-radius: 999rpx;
+  padding: 20rpx 44rpx;
+}
+.workout-badge.locked {
+  background: #fff;
+  border: 2rpx solid #C9C9C9;
+}
+.badge-text {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  line-height: 1;
+}
+.workout-badge.locked .badge-text {
+  color: #999;
+}
+.workout-empty {
+  text-align: center;
+  font-size: 26rpx;
+  color: #999;
+  padding: 80rpx 0;
 }
 </style>

@@ -104,12 +104,13 @@ const usageMap = {
   diary_system: '每日减肥日记的系统提示词，约束输出结构与风格',
   diary_user: '每日减肥日记的用户数据填充提示词',
   helper_agent: '搭子/Helper 助手的系统提示词',
-  main_agent: '主智能体（减肥搭子）的系统提示词',
+  main_agent: '主智能体（掉秤搭搭）的系统提示词',
   method_extraction: '从聊天记录中提取减脂方法/经验的提示词',
   monthly_diary: '生成月度减肥日记的提示词',
   plateau_analysis: '体重平台期分析的提示词',
   precipitation_agent: '从聊天记录沉淀饮食/运动/身体数据的提示词',
-  recipe_extraction: '从聊天记录中提取食谱的提示词'
+  recipe_extraction: '从聊天记录中提取食谱的提示词',
+  weight_loss_advice: '首次填写/更新身体信息后进入聊聊页时，按循证营养学输出完整减重方案的系统提示词'
 }
 const loading = ref(false)
 const detailLoading = ref(false)

@@ -4,56 +4,57 @@
       <view class="logo">
         <text>瘦</text>
       </view>
-      <text class="app-name">减肥搭子</text>
-      <text class="app-slogan">你的专属 AI 减肥伙伴</text>
+      <text class="app-name">掉秤搭搭</text>
+      <text class="app-slogan">你的AI掉秤搭子，陪你一起健康瘦下去～</text>
     </view>
-    
-    <!-- 隐私政策弹窗 -->
-    <PrivacyModal
-      ref="privacyModal"
-      @agreed="onPrivacyAgreed"
-      @rejected="onPrivacyRejected"
-    />
   </view>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted } from 'vue';
 import { useUserStore } from '../../store';
 import { isProfileComplete } from '../../utils/authRedirect';
-import PrivacyModal from '../../components/PrivacyModal.vue';
 
 const userStore = useUserStore();
-const privacyModal = ref(null);
+
+/**
+ * 当前隐私政策版本号（必须和 PrivacyModal 兜底版本、login/index 写入版本保持一致 1.0.0）
+ * 将来后台配置了新版本号，这里同步改
+ */
+const EXPECTED_PRIVACY_VERSION = '1.0.0';
+
+/**
+ * 校验用户是否已经同意过当前版本的隐私政策
+ * 1. 本地 privacy_agreed === true
+ * 2. 本地 privacy_agreed_version === 当前期望版本号
+ */
+function hasAgreedCurrentPrivacy() {
+  const agreed = uni.getStorageSync('privacy_agreed') === true;
+  const version = uni.getStorageSync('privacy_agreed_version');
+  return agreed && version === EXPECTED_PRIVACY_VERSION;
+}
 
 onMounted(() => {
   setTimeout(async () => {
     await userStore.init();
 
-    // 等待隐私弹窗完成配置加载与本地版本校验
-    const needShow = await privacyModal.value?.check();
-    if (needShow) {
-      // 需要用户确认，弹窗已显示，等待用户点击同意/拒绝
+    // 未同意过当前版本隐私协议 → 直接跳登录页（登录页底部带勾选框，一站式处理）
+    if (!hasAgreedCurrentPrivacy()) {
+      uni.redirectTo({ url: '/pages/login/index' });
       return;
     }
 
-    // 已同意且版本一致，进入主流程
+    // 已同意，进入主流程
     enterApp();
   }, 1500);
 });
 
-function onPrivacyAgreed() {
-  enterApp();
-}
-
-function onPrivacyRejected() {
-  // 用户已选择拒绝，由 PrivacyModal 执行退出逻辑
-  // 此处可做额外清理（如清除本地缓存）
-  uni.removeStorageSync('privacy_agreed_version');
-  uni.removeStorageSync('privacy_agreed_at');
-}
-
 function enterApp() {
+  // 预览模式：直接进首页，不校验登录态
+  if (uni.getStorageSync('preview_mode') === '1') {
+    uni.switchTab({ url: '/pages/index/index' });
+    return;
+  }
   const settings = uni.getStorageSync('settings') || {};
   if (!settings.guide_completed) {
     uni.redirectTo({ url: '/pages/onboarding/index' });

@@ -2,8 +2,9 @@
  * 模板消息服务
  * 负责管理话术模板库、发送策略、定时任务
  */
-const { db } = require('../db');
+const { db, withTransaction } = require('../db');
 const chatState = require('./chatState');
+const { getChinaDateStr, getChinaTimeStr, getMsUntilChinaMidnight } = require('../utils/chinaTime');
 
 // ==================== 话术模板库 ====================
 
@@ -100,6 +101,40 @@ const TEMPLATE_LIBRARY = {
       '运动时间到，沙发不会帮你瘦，站起来。'
     ]
   },
+  weight: {
+    gentle: [
+      '早上好～今天称体重了吗？记录一下才能看到进步哦～',
+      '新的一天，先上秤看看成果吧，我陪你一起面对数字～',
+      '体重记录时间到，今天的数字是什么样的呀？'
+    ],
+    strict: [
+      '起床第一件事：称体重。今天的数字报上来。',
+      '每天早上固定称重，别偷懒，数据不会骗你。',
+      '称体重了吗？没称的话现在去，我等着记录。'
+    ],
+    tease: [
+      '早上好，体重秤在等你，你不会是不敢看吧？',
+      '今天称体重了吗？别告诉我你把它藏起来了。',
+      '上秤！逃避数字可不会让脂肪自己消失。'
+    ]
+  },
+  water: {
+    gentle: [
+      '今天已经喝了 {drank}ml 水，距离 {goal}ml 目标还差 {remaining}ml，来一口水吧～',
+      '喝水时间到！目前 {drank}ml，再喝 {remaining}ml 就达标啦，慢慢来～',
+      '身体在等你补水哦，今日已喝 {drank}ml，目标 {goal}ml，还剩 {remaining}ml。'
+    ],
+    strict: [
+      '今日饮水 {drank}ml，距离 {goal}ml 还差 {remaining}ml，现在去喝。',
+      '已经 {drank}ml 了，还差 {remaining}ml 才达标，别等渴了再喝。',
+      '喝水打卡！当前 {drank}ml，目标 {goal}ml，立刻补 {remaining}ml。'
+    ],
+    tease: [
+      '今天才喝 {drank}ml，距离 {goal}ml 还有 {remaining}ml，你是打算让脂肪缺水吗？',
+      '喝水了吗？{drank}ml 而已，还差 {remaining}ml，杯子不是用来当摆件的。',
+      '再不喝 {remaining}ml 水，代谢就要罢工了，目前进度 {drank}/{goal}ml。'
+    ]
+  },
   wakeup: {
     gentle: [
       '你去哪儿了？我一个人减肥好寂寞，最近进度怎么样啦？',
@@ -122,6 +157,26 @@ const TEMPLATE_LIBRARY = {
       '好久不见，还以为你瘦了就不需要我了呢，结果？',
       '欢迎回来，这段时间胖了几斤自己心里有数吧。'
     ]
+  },
+  recall: {
+    gentle: [
+      '已经 {days} 天没见到你啦，今天回来记录一下吗？',
+      '{days} 天不见，减肥路上别把我丢下呀～',
+      '好久不见啦，最近还好吗？我一直在等你。',
+      '最近去哪儿了？快回来看看，我陪你一起坚持。'
+    ],
+    strict: [
+      '已经 {days} 天没登录了，减肥计划不能停，现在回来。',
+      '{days} 天没打卡，再这样下去前功尽弃，立刻恢复。',
+      '消失了 {days} 天，体重涨了几斤？老实交代。',
+      '{days} 天不见，你是放弃了吗？马上回来打卡。'
+    ],
+    tease: [
+      '{days} 天不露面，脂肪可没放假。',
+      '还以为你瘦到不需要我了呢，结果 {days} 天没动静？',
+      '{days} 天不见，你是被奶茶炸鸡绑架了吗？',
+      '你再不回来，我都要以为你胖得打不开 App 了。'
+    ]
   }
 };
 
@@ -130,11 +185,61 @@ const TIME_SLOTS = {
   breakfast: { start: '07:30', end: '09:00' },
   lunch: { start: '11:30', end: '13:00' },
   dinner: { start: '17:30', end: '19:00' },
-  exercise: { start: '19:00', end: '20:00' }
+  exercise: { start: '19:00', end: '20:00' },
+  water: { start: '14:00', end: '14:30' },
+  weight: { start: '08:00', end: '09:00' }
 };
 
 // 运动相关关键词
 const EXERCISE_KEYWORDS = ['运动', '步数', '跑步', '走路', '健身', '锻炼', '散步', '快走', '跳绳', '游泳', '瑜伽', '打卡'];
+
+/**
+ * 从数据库加载启用的模板，内存常量作为 fallback
+ */
+function loadTemplateLibrary() {
+  try {
+    const rows = db.prepare(`
+      SELECT template_type, mode, content FROM template_configs
+      WHERE is_enabled = 1 ORDER BY sort_order ASC
+    `).all();
+    if (rows.length === 0) return TEMPLATE_LIBRARY;
+
+    const lib = JSON.parse(JSON.stringify(TEMPLATE_LIBRARY));
+    for (const row of rows) {
+      if (!lib[row.template_type]) lib[row.template_type] = {};
+      if (!lib[row.template_type][row.mode]) lib[row.template_type][row.mode] = [];
+      lib[row.template_type][row.mode].push(row.content);
+    }
+    return lib;
+  } catch (err) {
+    console.error('[模板消息] 从数据库加载模板失败:', err.message);
+    return TEMPLATE_LIBRARY;
+  }
+}
+
+/**
+ * 检查当前是否处于用户勿扰时段（优先读 settings.dnd_start/end）
+ */
+function isInQuietHours(userId) {
+  const settings = db.prepare('SELECT dnd_start, dnd_end FROM settings WHERE user_id = ?').get(userId);
+  const fallback = db.prepare('SELECT quiet_hours_start, quiet_hours_end FROM user_profiles WHERE user_id = ?').get(userId);
+
+  const toHHMM = (t) => {
+    if (!t) return null;
+    return String(t).slice(0, 5);
+  };
+
+  const start = toHHMM(settings?.dnd_start) || fallback?.quiet_hours_start || '22:00';
+  const end = toHHMM(settings?.dnd_end) || fallback?.quiet_hours_end || '08:00';
+
+  const current = getChinaTimeStr();
+
+  if (start <= end) {
+    return current >= start && current <= end;
+  }
+  // 跨午夜，例如 22:00-08:00
+  return current >= start || current <= end;
+}
 
 // ==================== 工具函数 ====================
 
@@ -142,9 +247,8 @@ const EXERCISE_KEYWORDS = ['运动', '步数', '跑步', '走路', '健身', '�
  * 获取当前时间是否在发送时段内
  */
 function getCurrentTimeSlot() {
-  const now = new Date();
-  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  
+  const currentTime = getChinaTimeStr();
+
   for (const [type, slot] of Object.entries(TIME_SLOTS)) {
     if (currentTime >= slot.start && currentTime <= slot.end) {
       return type;
@@ -160,14 +264,14 @@ function hasChatInTimeSlot(userId, slotType) {
   const slot = TIME_SLOTS[slotType];
   if (!slot) return false;
   
-  const today = new Date().toISOString().split('T')[0];
+  const today = getChinaDateStr();
   const startTime = `${today} ${slot.start}:00`;
   const endTime = `${today} ${slot.end}:00`;
-  
+
   const result = db.prepare(`
     SELECT COUNT(*) as count FROM chat_messages
-    WHERE user_id = ? AND role = 'user' 
-    AND created_at >= ? AND created_at <= ?
+    WHERE user_id = ? AND role = 'user'
+    AND datetime(created_at, '+8 hours') >= ? AND datetime(created_at, '+8 hours') <= ?
   `).get(userId, startTime, endTime);
   
   return result.count > 0;
@@ -177,18 +281,18 @@ function hasChatInTimeSlot(userId, slotType) {
  * 检查当天是否已聊过运动
  */
 function hasMentionedExercise(userId) {
-  const today = new Date().toISOString().split('T')[0];
-  
+  const today = getChinaDateStr();
+
   // 先检查缓存
   const stats = db.prepare('SELECT today_exercise_mentioned FROM user_chat_stats WHERE user_id = ?').get(userId);
   if (stats && stats.today_exercise_mentioned === 1) return true;
   
-  // 查询当天消息
+  // 查询当天消息（东八区）
   const messages = db.prepare(`
     SELECT content FROM chat_messages
     WHERE user_id = ? AND role = 'user'
-    AND created_at >= date('now') AND created_at < date('now', '+1 day')
-  `).all(userId);
+    AND date(created_at, '+8 hours') = ?
+  `).all(userId, today);
   
   const hasExercise = messages.some(msg => 
     EXERCISE_KEYWORDS.some(keyword => msg.content.includes(keyword))
@@ -212,8 +316,8 @@ function hasMentionedExercise(userId) {
 function hasDietRecordToday(userId, mealTime) {
   const result = db.prepare(`
     SELECT COUNT(*) as count FROM diet_records
-    WHERE user_id = ? AND record_date = date('now') AND meal_time = ?
-  `).get(userId, mealTime);
+    WHERE user_id = ? AND record_date = ? AND meal_time = ?
+  `).get(userId, getChinaDateStr(), mealTime);
   return result.count > 0;
 }
 
@@ -223,8 +327,45 @@ function hasDietRecordToday(userId, mealTime) {
 function hasExerciseRecordToday(userId) {
   const result = db.prepare(`
     SELECT COUNT(*) as count FROM exercise_records
-    WHERE user_id = ? AND record_date = date('now')
-  `).get(userId);
+    WHERE user_id = ? AND record_date = ?
+  `).get(userId, getChinaDateStr());
+  return result.count > 0;
+}
+
+/**
+ * 获取用户设置
+ */
+function getUserSettings(userId) {
+  const settings = db.prepare('SELECT * FROM settings WHERE user_id = ?').get(userId);
+  const profile = db.prepare('SELECT water_goal FROM user_profiles WHERE user_id = ?').get(userId);
+  return {
+    notification_enabled: settings?.notification_enabled ?? 1,
+    reminder_water: settings?.reminder_water ?? 1,
+    reminder_weight: settings?.reminder_weight ?? 1,
+    reminder_exercise: settings?.reminder_exercise ?? 1,
+    water_goal: profile?.water_goal || 2000
+  };
+}
+
+/**
+ * 获取今日饮水量
+ */
+function getTodayWaterTotal(userId) {
+  const result = db.prepare(`
+    SELECT COALESCE(SUM(water_ml), 0) as total FROM habit_records
+    WHERE user_id = ? AND record_date = ? AND type = 'water' AND status = 1
+  `).get(userId, getChinaDateStr());
+  return result.total || 0;
+}
+
+/**
+ * 检查用户今天是否已有饮水记录
+ */
+function hasWaterRecordToday(userId) {
+  const result = db.prepare(`
+    SELECT COUNT(*) as count FROM habit_records
+    WHERE user_id = ? AND record_date = ? AND type = 'water' AND status = 1
+  `).get(userId, getChinaDateStr());
   return result.count > 0;
 }
 
@@ -234,8 +375,8 @@ function hasExerciseRecordToday(userId) {
 function getTodayTemplateCount(userId) {
   const result = db.prepare(`
     SELECT COUNT(*) as count FROM template_messages
-    WHERE user_id = ? AND date(sent_at) = date('now')
-  `).get(userId);
+    WHERE user_id = ? AND date(sent_at, '+8 hours') = ?
+  `).get(userId, getChinaDateStr());
   return result.count;
 }
 
@@ -245,8 +386,8 @@ function getTodayTemplateCount(userId) {
 function getTodaySentTypes(userId) {
   const rows = db.prepare(`
     SELECT DISTINCT template_type FROM template_messages
-    WHERE user_id = ? AND date(sent_at) = date('now')
-  `).all(userId);
+    WHERE user_id = ? AND date(sent_at, '+8 hours') = ?
+  `).all(userId, getChinaDateStr());
   return rows.map(r => r.template_type);
 }
 
@@ -256,8 +397,8 @@ function getTodaySentTypes(userId) {
 function hasSentToday(userId, templateType) {
   const result = db.prepare(`
     SELECT COUNT(*) as count FROM template_messages
-    WHERE user_id = ? AND template_type = ? AND date(sent_at) = date('now')
-  `).get(userId, templateType);
+    WHERE user_id = ? AND template_type = ? AND date(sent_at, '+8 hours') = ?
+  `).get(userId, templateType, getChinaDateStr());
   return result.count > 0;
 }
 
@@ -273,22 +414,23 @@ function getConsecutiveUnread(userId) {
  * 更新用户连续未回复次数
  */
 function updateConsecutiveUnread(userId, increment = true) {
+  const today = getChinaDateStr();
   if (increment) {
     db.prepare(`
       INSERT INTO user_chat_stats (user_id, consecutive_unread, last_active_date)
-      VALUES (?, 1, date('now'))
-      ON CONFLICT(user_id) DO UPDATE SET 
+      VALUES (?, 1, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
         consecutive_unread = consecutive_unread + 1,
-        last_active_date = date('now')
-    `).run(userId);
+        last_active_date = ?
+    `).run(userId, today, today);
   } else {
     db.prepare(`
       INSERT INTO user_chat_stats (user_id, consecutive_unread, last_active_date)
-      VALUES (?, 0, date('now'))
-      ON CONFLICT(user_id) DO UPDATE SET 
+      VALUES (?, 0, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
         consecutive_unread = 0,
-        last_active_date = date('now')
-    `).run(userId);
+        last_active_date = ?
+    `).run(userId, today, today);
   }
 }
 
@@ -296,22 +438,24 @@ function updateConsecutiveUnread(userId, increment = true) {
  * 重置每日统计（每天0点调用）
  */
 function resetDailyStats() {
+  const today = getChinaDateStr();
   db.prepare(`
-    UPDATE user_chat_stats 
-    SET today_message_count = 0, 
+    UPDATE user_chat_stats
+    SET today_message_count = 0,
         today_exercise_mentioned = 0,
-        last_active_date = date('now')
-    WHERE last_active_date < date('now')
-  `).run();
+        last_active_date = ?
+    WHERE last_active_date < ?
+  `).run(today, today);
 }
 
 /**
  * 随机获取一条话术
  */
 function getRandomTemplate(templateType, mode) {
-  const templates = TEMPLATE_LIBRARY[templateType]?.[mode];
+  const lib = loadTemplateLibrary();
+  const templates = lib[templateType]?.[mode];
   if (!templates || templates.length === 0) {
-    return TEMPLATE_LIBRARY[templateType]?.gentle?.[0] || '你好呀，今天过得怎么样？';
+    return lib[templateType]?.gentle?.[0] || '你好呀，今天过得怎么样？';
   }
   return templates[Math.floor(Math.random() * templates.length)];
 }
@@ -332,6 +476,33 @@ function getUserPartnerMode(userId) {
 function checkAndSendTemplatesForUser(userId) {
   const currentSlot = getCurrentTimeSlot();
   if (!currentSlot) return null;
+
+  // 0. 读取用户通知设置
+  const settings = getUserSettings(userId);
+  if (!settings.notification_enabled) {
+    console.log(`[模板消息] 用户${userId}关闭了通知总开关，跳过`);
+    return null;
+  }
+
+  // 细分提醒开关过滤
+  const slotSwitchMap = {
+    water: settings.reminder_water,
+    exercise: settings.reminder_exercise,
+    weight: settings.reminder_weight,
+    breakfast: settings.reminder_weight,
+    lunch: settings.reminder_weight,
+    dinner: settings.reminder_weight
+  };
+  if (slotSwitchMap[currentSlot] === 0) {
+    console.log(`[模板消息] 用户${userId}关闭了${currentSlot}提醒，跳过`);
+    return null;
+  }
+
+  // 0. 勿扰时段不发送
+  if (isInQuietHours(userId)) {
+    console.log(`[模板消息] 用户${userId}处于勿扰时段，跳过`);
+    return null;
+  }
 
   // 0. 检查是否有正在生成的 helper 回复，避免打断 AI
   if (chatState.isHelperPending(userId)) {
@@ -362,6 +533,16 @@ function checkAndSendTemplatesForUser(userId) {
     if (hasDietRecordToday(userId, currentSlot)) return null;
   } else if (currentSlot === 'exercise') {
     if (hasExerciseRecordToday(userId)) return null;
+  } else if (currentSlot === 'weight') {
+    const todayWeight = db.prepare(`
+      SELECT id FROM body_records
+      WHERE user_id = ? AND record_date = ? AND type = 'weight' AND status = 1
+    `).get(userId, getChinaDateStr());
+    if (todayWeight) return null;
+  } else if (currentSlot === 'water') {
+    const todayWater = getTodayWaterTotal(userId);
+    if (todayWater >= settings.water_goal) return null;
+    if (hasWaterRecordToday(userId)) return null;
   }
 
   // 6. 运动消息特殊检查（聊天中已提到运动）
@@ -387,29 +568,39 @@ function checkAndSendTemplatesForUser(userId) {
 
   // 8. 发送模板消息
   const mode = getUserPartnerMode(userId);
-  const content = getRandomTemplate(currentSlot, mode);
+  let content = getRandomTemplate(currentSlot, mode);
 
-  // 保存到聊天记录
-  const messageResult = db.prepare(`
-    INSERT INTO chat_messages (user_id, role, content, mode, created_at)
-    VALUES (?, 'partner', ?, ?, datetime('now'))
-  `).run(userId, content, mode);
+  // 饮水提醒注入今日数据
+  if (currentSlot === 'water') {
+    const todayWater = getTodayWaterTotal(userId);
+    const remaining = Math.max(0, settings.water_goal - todayWater);
+    content = content
+      .replace(/{drank}/g, todayWater)
+      .replace(/{goal}/g, settings.water_goal)
+      .replace(/{remaining}/g, remaining);
+  }
 
-  // 记录模板发送
-  db.prepare(`
-    INSERT INTO template_messages (user_id, template_type, content, sent_at)
-    VALUES (?, ?, ?, datetime('now'))
-  `).run(userId, currentSlot, content);
+  // 保存到聊天记录、记录模板发送、更新未回复计数放在同一事务
+  return withTransaction(() => {
+    const messageResult = db.prepare(`
+      INSERT INTO chat_messages (user_id, role, content, mode, created_at)
+      VALUES (?, 'partner', ?, ?, datetime('now'))
+    `).run(userId, content, mode);
 
-  // 更新未回复计数
-  updateConsecutiveUnread(userId, true);
+    db.prepare(`
+      INSERT INTO template_messages (user_id, template_type, content, sent_at)
+      VALUES (?, ?, ?, datetime('now'))
+    `).run(userId, currentSlot, content);
 
-  return {
-    userId,
-    type: currentSlot,
-    content,
-    messageId: messageResult.lastInsertRowid
-  };
+    updateConsecutiveUnread(userId, true);
+
+    return {
+      userId,
+      type: currentSlot,
+      content,
+      messageId: messageResult.lastInsertRowid
+    };
+  });
 }
 
 /**
@@ -441,32 +632,133 @@ function sendWakeupMessage(userId) {
   // 检查连续未回复
   const consecutiveUnread = getConsecutiveUnread(userId);
   if (consecutiveUnread < 5) return null;
-  
+
+  // 当天已发送过唤醒消息则不再发送
+  if (hasSentToday(userId, 'wakeup')) return null;
+
+  // 勿扰时段不发送
+  if (isInQuietHours(userId)) return null;
+
   // 获取用户模式
   const mode = getUserPartnerMode(userId);
   const content = getRandomTemplate('wakeup', mode);
   
-  // 保存到聊天记录
-  const messageResult = db.prepare(`
-    INSERT INTO chat_messages (user_id, role, content, mode, created_at)
-    VALUES (?, 'partner', ?, ?, datetime('now'))
-  `).run(userId, content, mode);
-  
-  // 记录模板发送
-  db.prepare(`
-    INSERT INTO template_messages (user_id, template_type, content, sent_at)
-    VALUES (?, 'wakeup', ?, datetime('now'))
-  `).run(userId, content);
-  
-  // 重置未回复计数
-  updateConsecutiveUnread(userId, false);
-  
-  return {
-    userId,
-    type: 'wakeup',
-    content,
-    messageId: messageResult.lastInsertRowid
-  };
+  // 保存到聊天记录、记录模板发送、重置未回复计数放在同一事务
+  return withTransaction(() => {
+    const messageResult = db.prepare(`
+      INSERT INTO chat_messages (user_id, role, content, mode, created_at)
+      VALUES (?, 'partner', ?, ?, datetime('now'))
+    `).run(userId, content, mode);
+
+    db.prepare(`
+      INSERT INTO template_messages (user_id, template_type, content, sent_at)
+      VALUES (?, 'wakeup', ?, datetime('now'))
+    `).run(userId, content);
+
+    updateConsecutiveUnread(userId, false);
+
+    return {
+      userId,
+      type: 'wakeup',
+      content,
+      messageId: messageResult.lastInsertRowid
+    };
+  });
+}
+
+// ==================== 沉默召回 ====================
+
+const RECALL_DAYS = [3, 7, 14, 30];
+
+/**
+ * 获取指定天数的召回文案
+ */
+function getRecallTemplate(days, mode) {
+  const lib = loadTemplateLibrary();
+  const templates = lib.recall?.[mode] || lib.recall?.gentle || [];
+  if (templates.length === 0) {
+    return `已经 ${days} 天没见到你啦，今天回来记录一下吗？`;
+  }
+  const tpl = templates[Math.floor(Math.random() * templates.length)];
+  return tpl.replace(/\{days\}/g, days);
+}
+
+/**
+ * 给指定用户发送 N 天沉默召回消息
+ */
+function sendRecallMessage(userId, days) {
+  const type = `recall_${days}d`;
+
+  // 当天已发送过该节点召回则跳过
+  if (hasSentToday(userId, type)) return null;
+
+  // 勿扰时段不发送
+  if (isInQuietHours(userId)) return null;
+
+  const mode = getUserPartnerMode(userId);
+  const content = getRecallTemplate(days, mode);
+
+  return withTransaction(() => {
+    const messageResult = db.prepare(`
+      INSERT INTO chat_messages (user_id, role, content, mode, created_at)
+      VALUES (?, 'partner', ?, ?, datetime('now'))
+    `).run(userId, content, mode);
+
+    db.prepare(`
+      INSERT INTO template_messages (user_id, template_type, content, sent_at)
+      VALUES (?, ?, ?, datetime('now'))
+    `).run(userId, type, content);
+
+    updateConsecutiveUnread(userId, false);
+
+    return {
+      userId,
+      type,
+      content,
+      messageId: messageResult.lastInsertRowid
+    };
+  });
+}
+
+/**
+ * 检查并发送沉默召回消息
+ * 基于 last_login_at，按 3/7/14/30 天节点触发，每个节点每天只发一次
+ */
+function checkAndSendRecalls() {
+  const today = getChinaDateStr();
+  const sent = [];
+
+  for (const days of RECALL_DAYS) {
+    const type = `recall_${days}d`;
+    const users = db.prepare(`
+      SELECT u.id FROM users u
+      WHERE u.status = 1
+        AND (
+          u.last_login_at IS NULL
+          OR date(u.last_login_at, '+8 hours') <= date(?, '-' || ? || ' days')
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM template_messages tm
+          WHERE tm.user_id = u.id
+            AND tm.template_type = ?
+            AND date(tm.sent_at, '+8 hours') = ?
+        )
+    `).all(today, days, type, today);
+
+    for (const user of users) {
+      try {
+        const result = sendRecallMessage(user.id, days);
+        if (result) sent.push(result);
+      } catch (err) {
+        console.error(`[recall] 发送失败 user=${user.id} days=${days}:`, err.message);
+      }
+    }
+  }
+
+  if (sent.length > 0) {
+    console.log(`[recall] 已发送 ${sent.length} 条沉默召回消息`);
+  }
+  return sent;
 }
 
 /**
@@ -476,14 +768,14 @@ function onUserMessage(userId) {
   // 重置未回复计数
   updateConsecutiveUnread(userId, false);
   
-  // 检查是否提到运动
-  const today = new Date().toISOString().split('T')[0];
+  // 检查是否提到运动（东八区当天）
+  const today = getChinaDateStr();
   const messages = db.prepare(`
     SELECT content FROM chat_messages
     WHERE user_id = ? AND role = 'user'
-    AND created_at >= ? AND created_at < date(?, '+1 day')
+    AND date(created_at, '+8 hours') = ?
     ORDER BY created_at DESC LIMIT 1
-  `).all(userId, today, today);
+  `).all(userId, today);
   
   if (messages.length > 0) {
     const content = messages[0].content;
@@ -498,14 +790,14 @@ function onUserMessage(userId) {
     }
   }
   
-  // 更新当天消息计数
+  // 更新当天消息计数（跨天自动重置）
   db.prepare(`
     INSERT INTO user_chat_stats (user_id, today_message_count, last_active_date)
-    VALUES (?, 1, date('now'))
-    ON CONFLICT(user_id) DO UPDATE SET 
-      today_message_count = today_message_count + 1,
-      last_active_date = date('now')
-  `).run(userId);
+    VALUES (?, 1, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      today_message_count = CASE WHEN last_active_date = ? THEN today_message_count + 1 ELSE 1 END,
+      last_active_date = ?
+  `).run(userId, today, today, today);
 }
 
 /**
@@ -559,6 +851,7 @@ module.exports = {
   checkAndSendTemplates,
   checkAndSendTemplatesForUser,
   sendWakeupMessage,
+  checkAndSendRecalls,
   onUserMessage,
   getUserChatStats,
   resetDailyStats,
@@ -569,5 +862,6 @@ module.exports = {
   hasChatInTimeSlot,
   hasMentionedExercise,
   getTodayTemplateCount,
-  getConsecutiveUnread
+  getConsecutiveUnread,
+  getMsUntilChinaMidnight
 };

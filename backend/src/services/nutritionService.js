@@ -50,6 +50,7 @@ const ALIAS_MAP = {
   '豆浆': ['豆浆', '豆奶'],
   '卤牛肉': ['酱牛肉', '卤牛肉', '牛肉'],
   '酱牛肉': ['酱牛肉', '卤牛肉'],
+  '卤煮': ['卤煮', '北京卤煮', '卤煮火烧'],
   '牛肉': ['水煮瘦牛肉', '酱牛肉', '牛肉', '牛'],
   '猪肉': ['猪肉', '猪'],
   '鸡肉': ['鸡肉', '鸡'],
@@ -117,11 +118,22 @@ const CATEGORY_MAP = {
   'meal_replacement': '代餐特殊食品'
 };
 
-// 常见宽泛/笼统食物名的兜底营养值（避免匹配到不相关的加工食品）
+/**
+ * 常见宽泛/笼统食物名的兜底营养值（避免匹配到不相关的加工食品）
+ * 包含常见液体饮品的通用营养值，用于食物库无匹配时的兜底
+ */
 const GENERIC_FOOD_FALLBACKS = {
   '蔬菜': { calorie_per_100g: 25, protein_per_100g: 1.5, carb_per_100g: 4, fat_per_100g: 0.3, category: '蔬菜水果类', sub_category: '熟制蔬菜' },
   '青菜': { calorie_per_100g: 25, protein_per_100g: 1.5, carb_per_100g: 4, fat_per_100g: 0.3, category: '蔬菜水果类', sub_category: '熟制蔬菜' },
-  '水果': { calorie_per_100g: 50, protein_per_100g: 0.5, carb_per_100g: 12, fat_per_100g: 0.2, category: '蔬菜水果类', sub_category: '鲜果类' }
+  '水果': { calorie_per_100g: 50, protein_per_100g: 0.5, carb_per_100g: 12, fat_per_100g: 0.2, category: '蔬菜水果类', sub_category: '鲜果类' },
+  '牛奶': { calorie_per_100g: 54, protein_per_100g: 3, carb_per_100g: 3.4, fat_per_100g: 3.2, category: '肉蛋奶类', sub_category: '乳制品' },
+  '低脂牛奶': { calorie_per_100g: 47, protein_per_100g: 3.4, carb_per_100g: 5, fat_per_100g: 1.4, category: '肉蛋奶类', sub_category: '乳制品' },
+  '脱脂牛奶': { calorie_per_100g: 35, protein_per_100g: 3.4, carb_per_100g: 4.8, fat_per_100g: 0.4, category: '肉蛋奶类', sub_category: '乳制品' },
+  '酸奶': { calorie_per_100g: 72, protein_per_100g: 2.5, carb_per_100g: 9.4, fat_per_100g: 2.7, category: '肉蛋奶类', sub_category: '乳制品' },
+  '豆浆': { calorie_per_100g: 16, protein_per_100g: 1.8, carb_per_100g: 1.1, fat_per_100g: 0.7, category: '豆类坚果类', sub_category: '豆制品' },
+  '果汁': { calorie_per_100g: 45, protein_per_100g: 0.7, carb_per_100g: 10.4, fat_per_100g: 0.2, category: '零食饮料类', sub_category: '果汁' },
+  '咖啡': { calorie_per_100g: 2, protein_per_100g: 0.3, carb_per_100g: 0, fat_per_100g: 0, category: '零食饮料类', sub_category: '咖啡' },
+  '茶': { calorie_per_100g: 1, protein_per_100g: 0.1, carb_per_100g: 0, fat_per_100g: 0, category: '零食饮料类', sub_category: '茶饮' }
 };
 
 function isMisleadingMatch(keyword, foodName) {
@@ -335,51 +347,158 @@ function resolveWeight(food) {
 
 /**
  * 根据食物数据库计算单个食物的营养数据
- * @param {Object} food - { name, weight, quantity, unit, calorie, protein, carb, fat }
+ * 热量优先级：用户指定热量 > 食物库查询 > 通用兜底值
+ * @param {Object} food - { name, weight, quantity, unit, calorie, protein, carb, fat, user_specified_calorie }
  * @returns {Object} - 补齐/修正后的食物对象
  */
 function computeFoodNutrition(food) {
-  const dbFood = getFoodNutrition(food.name, food.category);
   const { weight, quantity, unit } = resolveWeight(food);
   const ratio = weight / 100;
 
-  if (!dbFood) {
-    // 数据库无匹配，保留传入值，但补齐重量字段
+  // 1. 如果用户指定了热量，保留用户指定值，从食物库/兜底值补充营养素
+  if (food.user_specified_calorie && parseFloat(food.calorie) > 0) {
+    const dbFood = getFoodNutrition(food.name, food.category);
+    const fallbackFood = GENERIC_FOOD_FALLBACKS[food.name] || null;
+    const nutrientSource = dbFood || fallbackFood;
+
+    if (nutrientSource) {
+      // 使用用户指定的热量，补充营养素
+      return {
+        ...food,
+        weight,
+        quantity,
+        unit,
+        calorie: parseFloat(food.calorie),
+        protein: parseFloat(food.protein) || Math.round((nutrientSource.protein_per_100g || 0) * ratio * 10) / 10,
+        carb: parseFloat(food.carb) || Math.round((nutrientSource.carb_per_100g || 0) * ratio * 10) / 10,
+        fat: parseFloat(food.fat) || Math.round((nutrientSource.fat_per_100g || 0) * ratio * 10) / 10,
+        category: food.category || nutrientSource.category || '',
+        sub_category: food.sub_category || nutrientSource.sub_category || ''
+      };
+    } else {
+      // 食物库和兜底值都没有，保留用户指定的热量和营养素
+      return {
+        ...food,
+        weight,
+        quantity,
+        unit,
+        calorie: parseFloat(food.calorie),
+        protein: parseFloat(food.protein) || 0,
+        carb: parseFloat(food.carb) || 0,
+        fat: parseFloat(food.fat) || 0
+      };
+    }
+  }
+
+  // 2. 用户未指定热量，从食物库查询
+  const dbFood = getFoodNutrition(food.name, food.category);
+
+  if (dbFood) {
+    // 如果用户已经选择了分类，且数据库匹配到的分类不一致，保留用户选择的分类
+    const incomingCategory = normalizeCategory(food.category);
+    const dbCategory = normalizeCategory(dbFood.category);
+    const shouldKeepIncomingCategory = incomingCategory && dbCategory && incomingCategory !== dbCategory;
+
     return {
       ...food,
       weight,
       quantity,
       unit,
-      calorie: parseFloat(food.calorie) || 0,
-      protein: parseFloat(food.protein) || 0,
-      carb: parseFloat(food.carb) || 0,
-      fat: parseFloat(food.fat) || 0
+      category: shouldKeepIncomingCategory ? food.category : (dbFood.category || food.category || ''),
+      sub_category: shouldKeepIncomingCategory ? food.sub_category : (dbFood.sub_category || food.sub_category || ''),
+      calorie: Math.round((dbFood.calorie_per_100g || 0) * ratio * 10) / 10,
+      protein: Math.round((dbFood.protein_per_100g || 0) * ratio * 10) / 10,
+      carb: Math.round((dbFood.carb_per_100g || 0) * ratio * 10) / 10,
+      fat: Math.round((dbFood.fat_per_100g || 0) * ratio * 10) / 10
     };
   }
 
-  // 如果用户已经选择了分类，且数据库匹配到的分类不一致，保留用户选择的分类
-  // 避免"蔬菜"被错误覆盖成"零食饮料类"
-  const incomingCategory = normalizeCategory(food.category);
-  const dbCategory = normalizeCategory(dbFood.category);
-  const shouldKeepIncomingCategory = incomingCategory && dbCategory && incomingCategory !== dbCategory;
+  // 3. 食物库无匹配，使用通用兜底值
+  const fallbackFood = GENERIC_FOOD_FALLBACKS[food.name];
+  if (fallbackFood) {
+    return {
+      ...food,
+      weight,
+      quantity,
+      unit,
+      category: food.category || fallbackFood.category || '',
+      sub_category: food.sub_category || fallbackFood.sub_category || '',
+      calorie: Math.round((fallbackFood.calorie_per_100g || 0) * ratio * 10) / 10,
+      protein: Math.round((fallbackFood.protein_per_100g || 0) * ratio * 10) / 10,
+      carb: Math.round((fallbackFood.carb_per_100g || 0) * ratio * 10) / 10,
+      fat: Math.round((fallbackFood.fat_per_100g || 0) * ratio * 10) / 10
+    };
+  }
 
+  // 4. 连兜底值都没有，保留传入值
   return {
     ...food,
     weight,
     quantity,
     unit,
-    category: shouldKeepIncomingCategory ? food.category : (dbFood.category || food.category || ''),
-    sub_category: shouldKeepIncomingCategory ? food.sub_category : (dbFood.sub_category || food.sub_category || ''),
-    calorie: Math.round((dbFood.calorie_per_100g || 0) * ratio * 10) / 10,
-    protein: Math.round((dbFood.protein_per_100g || 0) * ratio * 10) / 10,
-    carb: Math.round((dbFood.carb_per_100g || 0) * ratio * 10) / 10,
-    fat: Math.round((dbFood.fat_per_100g || 0) * ratio * 10) / 10
+    calorie: parseFloat(food.calorie) || 0,
+    protein: parseFloat(food.protein) || 0,
+    carb: parseFloat(food.carb) || 0,
+    fat: parseFloat(food.fat) || 0
   };
+}
+
+/**
+ * 把食材用量字符串解析为 computeFoodNutrition 入参
+ * 支持 "150g"/"150克"/"1kg"/"2片"/"1勺" 等；"适量/少许"/空 返回 null（无法估算，不计入）
+ */
+function parseAmountToFood(name, amount) {
+  let a = String(amount || '').trim();
+  if (!a || a === '适量' || a === '少许') {
+    // 用量缺失时，尝试从名称里提取（如 "全麦面包 2 片"）
+    const m = String(name || '').match(/(\d+(?:\.\d+)?)\s*([\u4e00-\u9fa5a-zA-Z]+)\s*$/);
+    if (m) return { name, quantity: parseFloat(m[1]), unit: m[2] };
+    return null;
+  }
+  let m = a.match(/^(\d+(?:\.\d+)?)\s*(g|克)$/i);
+  if (m) return { name, weight: parseFloat(m[1]) };
+  m = a.match(/^(\d+(?:\.\d+)?)\s*(kg|千克)$/i);
+  if (m) return { name, weight: parseFloat(m[1]) * 1000 };
+  m = a.match(/^(\d+(?:\.\d+)?)\s*(.+)$/);
+  if (m) return { name, quantity: parseFloat(m[1]), unit: m[2].trim() };
+  return null;
+}
+
+/**
+ * 计算食谱的总克数与总热量（按食材逐项经食物库估算）
+ * @param {Array} ingredients [{name, amount}] 或 ["鸡胸肉 150g"] 字符串数组
+ * @returns {{ totalWeight: number, totalCalorie: number }} 克/千卡（整数估算）
+ */
+function computeRecipeTotals(ingredients) {
+  let totalWeight = 0;
+  let totalCalorie = 0;
+  for (const raw of ingredients || []) {
+    let name = '';
+    let amount = '';
+    if (typeof raw === 'string') {
+      // "鸡胸肉 150g" / "鸡胸肉150g" → 名称 + 用量
+      const m = raw.trim().match(/^(.+?)[\s　]*(\d+(?:\.\d+)?\s*[\u4e00-\u9fa5a-zA-Z]+.*)$/);
+      if (m) { name = m[1].trim(); amount = m[2].trim(); } else { name = raw.trim(); }
+    } else if (raw && raw.name) {
+      name = raw.name;
+      amount = raw.amount;
+    }
+    if (!name) continue;
+    const food = parseAmountToFood(name, amount);
+    if (!food) continue;
+    try {
+      const n = computeFoodNutrition(food);
+      totalWeight += n.weight || 0;
+      totalCalorie += n.calorie || 0;
+    } catch (e) { /* 单项失败不影响整体 */ }
+  }
+  return { totalWeight: Math.round(totalWeight), totalCalorie: Math.round(totalCalorie) };
 }
 
 module.exports = {
   getFoodNutrition,
   computeFoodNutrition,
+  computeRecipeTotals,
   getTypicalWeight,
   extractFoodKeywords
 };

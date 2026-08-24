@@ -179,7 +179,7 @@ function isInvalidFoodName(name) {
 const BEVERAGE_FOOD_KEYWORDS = [
   '牛奶', '酸奶', '豆浆', '豆奶', '奶昔', '咖啡', '奶茶',
   '果汁', '可乐', '雪碧', '汽水', '苏打水', '碳酸饮料',
-  '啤酒', '红酒', '白酒', '葡萄酒', '鸡尾酒', '酒',
+  '啤酒', '红酒', '白酒', '葡萄酒', '鸡尾酒',
   '椰汁', '核桃露', '杏仁露', '燕麦奶', '养乐多', '优酸乳',
   '饮料'
 ];
@@ -193,7 +193,7 @@ function isBeverageFoodContent(content) {
 /**
  * 把 LLM 误识别为喝水习惯的饮品消息，转成 diet_record
  */
-function convertBeverageHabitToDiet(item, content) {
+function convertBeverageHabitToDiet(item, content, userId = null, recordDate = null) {
   if (item.type !== 'habit') return item;
   const data = item.extracted_data || {};
   const subType = data.sub_type || 'water';
@@ -226,6 +226,20 @@ function convertBeverageHabitToDiet(item, content) {
   const caloriePer100g = nutrition.calorie_per_100g || 0;
   const ratio = weight > 0 ? weight / 100 : 0;
 
+  // 查询用户今天已有的餐别，用于午饭时段二次判断
+  const today = recordDate || getChinaDateStr();
+  let existingMeals = [];
+  if (userId) {
+    try {
+      existingMeals = db.prepare(`
+        SELECT DISTINCT meal_time FROM diet_records
+        WHERE user_id = ? AND record_date = ? AND status = 1
+      `).pluck().all(userId, today);
+    } catch (e) {
+      console.error('[convertBeverageHabitToDiet] 查询已有餐别失败:', e.message);
+    }
+  }
+
   const food = {
     name: cleanedName,
     weight: Math.round(weight),
@@ -245,7 +259,7 @@ function convertBeverageHabitToDiet(item, content) {
     total_protein: food.protein,
     total_carb: food.carb,
     total_fat: food.fat,
-    meal_time: inferMealTimeByContent(content) || normalizeMealTime(null, content)
+    meal_time: inferMealTimeByContent(content) || normalizeMealTime(null, content, [], existingMeals)
   };
   item.reason = (item.reason || '') + '（饮品校正为饮食记录）';
   console.log(`[饮品校正] habit→diet: ${cleanedName} ${food.weight}g ${food.calorie}千卡`);
@@ -557,23 +571,40 @@ function recoverMissedExercises(content, rawItems) {
 /**
  * 信息沉淀 Agent（独立后台）
  * 职责：聊天记录实时扫描、信息提取、置信度计算、数据同步
- * 模型：豆包 doubao-lite-32k（备用：fit-Backup）
+ * 模型：腾讯混元 Hy3（备用：fit-Backup）
  */
-const { db } = require('../../db');
+const { db, withTransaction } = require('../../db');
 const { callWithPrompt } = require('../aiClient');
-const { computeFoodNutrition } = require('../nutritionService');
+const { computeFoodNutrition, computeRecipeTotals } = require('../nutritionService');
 const promptService = require('../promptService');
 const tagMatcher = require('../tagMatcher');
+const rewardService = require('../rewardService');
+const exerciseMergeService = require('../exerciseMergeService');
 const { isQuestionContent, hasNegativeRecordIntent, hasSelfReportMarker } = require('../../utils/intent');
+const { safeJsonParse } = require('../../utils/safeJson');
+const { getChinaDateStr, getChinaHour, getChinaDateTimeStr } = require('../../utils/chinaTime');
 
 
 /**
  * 快速判断消息是否值得沉淀（本地过滤，避免浪费API调用）
  */
+// 沉淀兜底匹配用的饮品/常见食物关键词（LLM 未提取到有效内容时，直接从 food_db 匹配）
+const FALLBACK_FOOD_KEYWORDS = [
+  ...BEVERAGE_FOOD_KEYWORDS,
+  '苹果', '香蕉', '橙子', '西瓜', '葡萄', '西红柿', '黄瓜', '白菜', '菠菜', '胡萝卜',
+  '土豆', '红薯', '玉米', '花生', '核桃', '巧克力', '饼干', '蛋糕', '面包', '汉堡',
+  '披萨', '米饭', '面条', '馒头', '鸡蛋', '豆腐', '牛肉', '猪肉', '鸡肉', '鱼肉', '虾'
+];
+
+// 内容是否包含可兜底匹配的饮品/食物关键词
+function hasBeverageFoodContent(content) {
+  if (!content) return false;
+  return FALLBACK_FOOD_KEYWORDS.some(kw => String(content).includes(kw));
+}
+
 function shouldPrecipitate(content) {
   const text = (content || '').trim();
   if (text.length < 5) return false;
-
   // 本地标签匹配器能识别出食物/运动/身体数据/喝水，直接触发沉淀
   if (tagMatcher.matchMessageTags(text)) {
     return true;
@@ -584,6 +615,8 @@ function shouldPrecipitate(content) {
   const keywords = [
     '吃', '喝', '早餐', '午餐', '晚餐', '饭', '菜', '肉', '蛋', '奶', '水果', '零食',
     '卡路里', '千卡', '热量', '碳水', '蛋白质', '脂肪', '糖', '油',
+    // 饮品关键词（确保饮品类内容能正确触发沉淀）
+    '咖啡', '饮料', '果汁', '奶茶', '豆浆', '牛奶', '酸奶', '豆奶', '奶昔', '茶', '啤酒', '红酒', '白酒', '葡萄酒', '鸡尾酒', '椰汁', '核桃露', '杏仁露', '燕麦奶', '养乐多', '优酸乳', '气泡水', '苏打水', '碳酸饮料', '可乐', '雪碧', '汽水',
     '运动', '健身', '跑步', '慢跑', '快跑', '超慢跑', '变速跑', '间歇跑', '长跑', '短跑', '冲刺跑', '夜跑', '晨跑',
     '走路', '快走', '慢走', '散步', '健走', '徒步', '逛街', '爬楼梯', '爬山', '登山',
     '游泳', '蛙泳', '自由泳', '仰泳', '蝶泳', '潜水', '浮潜',
@@ -594,7 +627,6 @@ function shouldPrecipitate(content) {
     '跳绳', '跳舞', '广场舞', '健身操', '搏击操', '有氧操', '尊巴',
     'HIIT', 'Tabata', '拳击', '打拳', '跆拳道', '空手道', '柔道', '轮滑', '滑板', '攀岩', '滑雪', '滑冰',
     '有氧', '无氧', '力量', '训练', '公里', '千米', 'km', '分钟', '小时', '步', '米', 'm',
-    '有氧', '无氧', '力量', '训练', 'HIIT', '深蹲', '俯卧撑', '平板支撑',
     '体重', '体脂', 'BMI', '腰围', '腿围', '臀围', '胸围', '肌肉',
     '斤', '公斤', '厘米', 'kg',
     '喝水', '睡眠', '睡觉', '熬夜', '排便', '便秘', '心情', '情绪',
@@ -660,6 +692,25 @@ function isValidPrecipitationItem(item) {
         console.log(`[沉淀过滤] exercise_record 被过滤: exercises为空`);
         return false;
       }
+      // 过滤无实质数据的运动项：步数/时长/消耗/距离全为 0 或空（如"走路0步"）直接舍弃，不进确认弹窗
+      const meaningful = [];
+      for (const e of exercises) {
+        if (!e || !e.name || !String(e.name).trim()) continue;
+        const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+        const steps = num(e.steps);
+        // 只有步数时折算时长/消耗，避免确认弹窗里分钟数和热量值空白
+        if (steps > 0) {
+          if (num(e.duration) <= 0) e.duration = Math.max(1, Math.round(steps / 100)); // 走路约 100 步/分钟
+          if (num(e.calorie) <= 0) e.calorie = Math.round(steps * 0.04); // 约 0.04 千卡/步
+        }
+        const hasValue = [e.duration, e.calorie, e.steps, e.distance].some(v => num(v) > 0);
+        if (hasValue) meaningful.push(e);
+      }
+      if (meaningful.length === 0) {
+        console.log(`[沉淀过滤] exercise_record 被过滤: 运动数据全为0（如走路0步）`);
+        return false;
+      }
+      data.exercises = meaningful;
       return true;
     }
     case 'body_data': {
@@ -796,14 +847,18 @@ function processSinglePrecipitation(userId, chatId, content, item, recordDate) {
     }
   }
 
-  // 个人资产类（方法/感悟/食谱/踩坑/金句）统一进入 museum_items pending，由用户在聊天页确认。
-  // 食谱需要和其他记录（体重/运动/饮食）一样走待确认流程，不自动确认。
+  // 食谱已由 partnerAssetAgent 专属处理（savePartnerRecipes），通用沉淀 Agent 不再创建 recipe 记录
+  // 避免两条链路竞争导致格式不一致（precipitation_recipe 格式 vs 结构化 recipe 格式）
+  if (item.type === 'recipe') {
+    console.log('[沉淀] 跳过 recipe 类型，由 partnerAssetAgent 专属处理');
+    return null;
+  }
+
+  // 个人资产类（方法/感悟/踩坑/金句）统一进入 museum_items pending，由用户在聊天页确认。
   const isAsset = ASSET_TYPES.includes(item.type);
   let status;
-  if (isAsset && item.type !== 'recipe') {
-    status = 1;
-  } else if (item.type === 'recipe') {
-    status = 0;
+  if (isAsset) {
+    status = confidence >= 0.85 ? 1 : 2;
   } else {
     status = confidence >= 0.85 ? 1 : 2;
   }
@@ -831,7 +886,7 @@ function processSinglePrecipitation(userId, chatId, content, item, recordDate) {
  * 对于身体数据：检查今天是否已有相同类型记录
  */
 function hasDuplicateRecord(userId, type, data, recordDate) {
-  const today = recordDate || new Date().toISOString().split('T')[0];
+  const today = recordDate || getChinaDateStr();
   
   switch (type) {
     case 'diet_record': {
@@ -854,7 +909,7 @@ function hasDuplicateRecord(userId, type, data, recordDate) {
       for (const newFood of newFoods) {
         let foundExisting = false;
         for (const record of existingRecords) {
-          const existingFoods = JSON.parse(record.foods || '[]');
+          const existingFoods = safeJsonParse(record.foods, []);
           // 模糊匹配：新食物名包含已有食物名，或已有食物名包含新食物名
           const found = existingFoods.find(ef => {
             const efName = ef.name || '';
@@ -933,7 +988,7 @@ function hasDuplicateRecord(userId, type, data, recordDate) {
       `).all(userId, today);
       
       for (const record of existingRecords) {
-        const existingExercises = JSON.parse(record.exercises || '[]');
+        const existingExercises = safeJsonParse(record.exercises, []);
         for (const newEx of newExercises) {
           // 模糊匹配：名称完全相同，或存在≥2字的公共子串（如"哑铃练背"与"哑铃训练肩胸背"）
           const isDuplicate = existingExercises.some(ee => {
@@ -1270,19 +1325,36 @@ function inferMealTimeByContent(content, foods = []) {
   return null;
 }
 
-function inferMealTimeByHour(hour = new Date().getHours()) {
+function inferMealTimeByHour() {
+  const hour = getChinaHour();
   if (hour >= 6 && hour < 10.5) return 'breakfast';
   if (hour < 14.5) return 'lunch';
   if (hour < 17) return 'snack';
   return 'dinner';
 }
 
-function normalizeMealTime(mealTime, content, foods = []) {
+function normalizeMealTime(mealTime, content, foods = [], existingMeals = [], isUserEdit = false) {
+  // 用户手动修改餐别时，直接采用用户的选择，不再进行时间/内容推断覆盖
+  if (isUserEdit && mealTime) {
+    const mt = String(mealTime).trim();
+    const mapped = VALID_MEAL_TIMES.includes(mt) ? mt : MEAL_TIME_MAP[mt];
+    if (mapped) {
+      console.log(`[normalizeMealTime] 用户手动选择餐别：${mapped}`);
+      return mapped;
+    }
+  }
+
   const contentMeal = inferMealTimeByContent(content, foods);
   const timeMeal = inferMealTimeByHour();
 
   // 用户原文有明确餐别/时间词，优先级最高
   if (contentMeal) return contentMeal;
+
+  // 午饭时段（10:30-14:30）且用户今天已有午餐记录，则本次归为加餐
+  if (timeMeal === 'lunch' && existingMeals.includes('lunch')) {
+    console.log(`[normalizeMealTime] 当前为午饭时段但用户已记录午餐，归为加餐`);
+    return 'snack';
+  }
 
   // LLM 返回了有效餐别：只有和当前时间推断一致时才采用，否则以当前时间推断为准
   // 避免中午无明确时间词时 LLM 错判成晚餐
@@ -1372,10 +1444,208 @@ function calculateFoodTotals(foods) {
 }
 
 /**
- * 同步沉淀数据到业务表
+ * 同步 diet_records 的计算结果到 precipitation_records.extracted_data
+ * 确保沉淀记录 UI、饮食记录列表、搭搭回复显示一致的热量值
+ * @param {number} userId - 用户ID
+ * @param {number} precipitationId - 沉淀记录ID
+ * @param {string} mealTime - 餐别
  */
-function syncToBusinessTable(userId, type, content, data, recordDate, subType = null, precipitationId = null, chatMessageId = null) {
-  const today = recordDate || new Date().toISOString().split('T')[0];
+function syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime) {
+  if (!precipitationId || !mealTime) return;
+  
+  try {
+    // 查找关联的 diet_records
+    const rows = db.prepare(`
+      SELECT * FROM diet_records
+      WHERE user_id = ? AND precipitation_id = ? AND status = 1
+      ORDER BY id ASC
+    `).all(userId, precipitationId);
+    
+    if (rows.length === 0) return;
+    
+    // 合并所有食物（同一 precipitation_id 可能有多条记录）
+    const allFoods = [];
+    let totalCalorie = 0;
+    let totalProtein = 0;
+    let totalCarb = 0;
+    let totalFat = 0;
+    
+    for (const row of rows) {
+      const foods = safeJsonParse(row.foods, []);
+      allFoods.push(...foods);
+      totalCalorie += row.total_calorie || 0;
+      totalProtein += row.total_protein || 0;
+      totalCarb += row.total_carb || 0;
+      totalFat += row.total_fat || 0;
+    }
+    
+    // 更新 precipitation_records.extracted_data
+    const newExtractedData = {
+      meal_time: mealTime,
+      foods: allFoods,
+      total_calorie: totalCalorie,
+      total_protein: totalProtein,
+      total_carb: totalCarb,
+      total_fat: totalFat
+    };
+    
+    db.prepare(`
+      UPDATE precipitation_records
+      SET extracted_data = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).run(JSON.stringify(newExtractedData), precipitationId, userId);
+    
+    console.log(`[syncDietExtractedData] 同步 precipitation_id=${precipitationId} 的 extracted_data: total_calorie=${totalCalorie}, foods=${allFoods.length}`);
+  } catch (e) {
+    console.error('[syncDietExtractedData] 同步失败:', e.message);
+  }
+}
+
+/**
+ * 批量沉淀处理完后的最终数据对账
+ *
+ * 核心背景：LLM 提取出 N 个饮食 item 时，每个 item 都会创建独立的 precipitation_record。
+ * 但 syncToBusinessTable 在处理第 2~N 个 item 时，会把食物合并到第 1 个 item 对应的 diet_record 中。
+ * 此时第 2~N 个 precipitation_record 的 extracted_data 仍是 LLM 原始值（如"冷面165千卡"），
+ * 而第 1 个 precipitation_record 的 extracted_data 已被 syncDietExtractedDataToPrecipitation 修正为 diet_records 的正确值。
+ * 前端根据 chat_message.precipitation_id 定位到某条 precipitation_record，就会出现数据不一致。
+ *
+ * 解决方案：收集本批次所有 precipitation_id，汇总所有关联的 diet_records，
+ * 将合并后的完整数据写回每一条 precipitation_record，保证弹窗/记录列表/搭搭回复三处一致。
+ *
+ * @param {number} userId - 用户ID
+ * @param {number} chatId - 聊天消息ID
+ * @param {Array} processed - 已处理的 precipitation_record 数组
+ * @param {string} recordDate - 记录日期 YYYY-MM-DD
+ */
+function finalReconcilePrecipitations(userId, chatId, processed, recordDate) {
+  if (!processed || processed.length === 0) return;
+
+  try {
+    // 1. 收集本批次所有饮食类 precipitation_id
+    const dietResults = processed.filter(r => r && r.type === 'diet_record' && r.precipitation_id);
+    if (dietResults.length === 0) return;
+
+    const precipitationIds = dietResults.map(r => r.precipitation_id);
+    const idPlaceholders = precipitationIds.map(() => '?').join(',');
+
+    // 2. 拉取所有关联的 diet_records（包含被合并过的）
+    const today = recordDate || getChinaDateStr();
+    const dietRows = db.prepare(`
+      SELECT id, precipitation_id, meal_time, foods, total_calorie, total_protein, total_carb, total_fat
+      FROM diet_records
+      WHERE user_id = ? AND status = 1
+      AND (precipitation_id IN (${idPlaceholders}) OR (record_date = ? AND meal_time IS NOT NULL))
+      ORDER BY id ASC
+    `).all(userId, ...precipitationIds, today);
+
+    if (dietRows.length === 0) {
+      console.log(`[最终对账] 无关联 diet_records，跳过（可能全被合并到其他餐次）`);
+      return;
+    }
+
+    // 3. 合并所有 diet_records 的食物数据
+    const allFoods = [];
+    let totalCalorie = 0;
+    let totalProtein = 0;
+    let totalCarb = 0;
+    let totalFat = 0;
+    let mealTime = dietRows[0].meal_time;
+
+    for (const row of dietRows) {
+      const foods = safeJsonParse(row.foods) || [];
+      // 只合并那些关联到本批次 precipitation_id 的记录，同餐其他记录不合并
+      if (row.precipitation_id && precipitationIds.includes(row.precipitation_id)) {
+        allFoods.push(...foods);
+        totalCalorie += row.total_calorie || 0;
+        totalProtein += row.total_protein || 0;
+        totalCarb += row.total_carb || 0;
+        totalFat += row.total_fat || 0;
+        if (row.meal_time) mealTime = row.meal_time;
+      }
+    }
+
+    if (allFoods.length === 0) {
+      console.log(`[最终对账] 本批次 precipitation_id 无关联 diet_records 数据`);
+      return;
+    }
+
+    // 4. 去重合并（同食物累加数量/重量）
+    const mergedFoods = [];
+    for (const food of allFoods) {
+      const existing = mergedFoods.find(f => foodNamesMatch(f.name, food.name));
+      if (existing) {
+        existing.quantity = (existing.quantity || 1) + (food.quantity || 1);
+        existing.weight = (existing.weight || 0) + (food.weight || 0);
+        existing.calorie = (existing.calorie || 0) + (food.calorie || 0);
+        existing.protein = (existing.protein || 0) + (food.protein || 0);
+        existing.carb = (existing.carb || 0) + (food.carb || 0);
+        existing.fat = (existing.fat || 0) + (food.fat || 0);
+      } else {
+        mergedFoods.push({ ...food });
+      }
+    }
+
+    // 5. 用合并后的完整数据更新每一条 precipitation_record
+    for (const precipId of precipitationIds) {
+      const existing = db.prepare('SELECT extracted_data FROM precipitation_records WHERE id = ? AND user_id = ?').get(precipId, userId);
+      if (!existing) continue;
+
+      const baseData = safeJsonParse(existing.extracted_data) || {};
+      const newExtractedData = {
+        ...baseData,
+        meal_time: mealTime || baseData.meal_time || 'lunch',
+        foods: mergedFoods,
+        total_calorie: totalCalorie,
+        total_protein: totalProtein,
+        total_carb: totalCarb,
+        total_fat: totalFat
+      };
+
+      db.prepare(`
+        UPDATE precipitation_records
+        SET extracted_data = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `).run(JSON.stringify(newExtractedData), precipId, userId);
+
+      console.log(`[最终对账] precipitation_id=${precipId} 已同步 ${mergedFoods.length} 种食物, 总热量=${totalCalorie}千卡`);
+    }
+
+    // 6. 确保 chat_message.precipitation_id 指向数据最完整的那条
+    // 优先选择食物数最多的 precipitation_id
+    if (chatId) {
+      let bestId = precipitationIds[0];
+      for (const pid of precipitationIds) {
+        const rec = db.prepare('SELECT extracted_data FROM precipitation_records WHERE id = ?').get(pid);
+        if (rec) {
+          const ext = safeJsonParse(rec.extracted_data) || {};
+          const foodsCount = (ext.foods || []).length;
+          const bestRec = db.prepare('SELECT extracted_data FROM precipitation_records WHERE id = ?').get(bestId);
+          const bestExt = safeJsonParse(bestRec?.extracted_data) || {};
+          const bestFoodsCount = (bestExt.foods || []).length;
+          if (foodsCount > bestFoodsCount) bestId = pid;
+        }
+      }
+      db.prepare(`
+        UPDATE chat_messages
+        SET precipitation_id = ?, precipitation_status = 1
+        WHERE id = ? AND user_id = ?
+      `).run(bestId, chatId, userId);
+      console.log(`[最终对账] chat_message ${chatId} 关联 precipitation_id=${bestId}`);
+    }
+
+    console.log(`[最终对账] 完成：${precipitationIds.length} 条沉淀记录 → ${mergedFoods.length} 种食物, 总热量=${totalCalorie}千卡`);
+  } catch (e) {
+    console.error('[最终对账] 失败（不影响主流程）:', e.message);
+  }
+}
+
+/**
+ * 同步沉淀数据到业务表
+ * @param {boolean} isUserEdit - 是否为用户手动编辑场景
+ */
+function syncToBusinessTable(userId, type, content, data, recordDate, subType = null, precipitationId = null, chatMessageId = null, isUserEdit = false) {
+  const today = recordDate || getChinaDateStr();
   
   // 检查是否重复记录（饮食记录按 precipitation_id  upsert，不走旧的食物级去重）
   const duplicateCheck = type === 'diet_record'
@@ -1482,6 +1752,20 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
     if (type === 'body_data' && precipitationId) {
       db.prepare('DELETE FROM body_records WHERE user_id = ? AND precipitation_id = ?').run(userId, precipitationId);
       console.log(`[身体数据] 有 precipitation_id=${precipitationId}，删除旧记录后重新插入`);
+    } else if (type === 'habit') {
+      // 习惯记录（喝水）累加，其他子类型更新
+      const habitData = data || {};
+      const subType = habitData.sub_type || 'water';
+      const addValue = parseInt(habitData.value) || 0;
+      const existing = db.prepare('SELECT value, water_ml FROM habit_records WHERE id = ?').get(duplicateCheck.recordId);
+      const newValue = subType === 'water' ? (parseInt(existing.value) || 0) + addValue : addValue;
+      const newWaterMl = subType === 'water' ? (parseInt(existing.water_ml) || 0) + addValue : 0;
+      db.prepare(`
+        UPDATE habit_records
+        SET value = ?, water_ml = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(newValue, newWaterMl, duplicateCheck.recordId);
+      return { skipped: false, updated: true, recordId: duplicateCheck.recordId };
     } else {
       // 对于其他类型，直接返回（不重复插入）
       return { skipped: true, reason: 'duplicate', recordId: duplicateCheck.recordId };
@@ -1492,7 +1776,21 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
     case 'diet_record': {
       const dietData = data || {};
       const rawFoods = Array.isArray(dietData.foods) ? dietData.foods : [];
-      const mealTime = normalizeMealTime(dietData.meal_time || subType, content, rawFoods);
+
+      // 查询用户今天已有的餐别，用于午饭时段判断是加餐还是午餐
+      let existingMeals = [];
+      if (userId) {
+        try {
+          existingMeals = db.prepare(`
+            SELECT DISTINCT meal_time FROM diet_records
+            WHERE user_id = ? AND record_date = ? AND status = 1
+          `).pluck().all(userId, today);
+        } catch (e) {
+          console.error('[syncToBusinessTable] 查询已有餐别失败:', e.message);
+        }
+      }
+
+      const mealTime = normalizeMealTime(dietData.meal_time || subType, content, rawFoods, existingMeals, isUserEdit);
       if (rawFoods.length === 0) {
         console.log(`[饮食同步] 无食物，跳过: precipitation_id=${precipitationId}`);
         return { skipped: true, reason: 'no foods' };
@@ -1518,8 +1816,68 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
           }
 
           console.log(`[饮食同步] 更新记录 id=${keepId}, meal_time=${mealTime}, foods=${foods.length}, precipitation_id=${precipitationId}`);
+          // 同步更新 precipitation_records.extracted_data，确保所有显示路径一致
+          syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
           return { skipped: false, updated: true, recordId: keepId };
         }
+
+        // 无旧记录时直接 upsert，防止并发重复插入
+        // 新增前先与同一餐其他记录（含手动记录）合并同名食物，避免同一餐重复计算热量
+        const existingMealRows = db.prepare(`
+          SELECT id, foods FROM diet_records
+          WHERE user_id = ? AND record_date = ? AND meal_time = ? AND status = 1
+          ORDER BY id ASC
+        `).all(userId, today, mealTime);
+
+        const unmergedFoods = [];
+        for (const newFood of foods) {
+          let merged = false;
+          for (const row of existingMealRows) {
+            const existingFoods = safeJsonParse(row.foods, []);
+            const match = existingFoods.find(ef => ef && ef.name && foodNamesMatch(ef.name, newFood.name));
+            if (match) {
+              mergeFoodInto(match, newFood);
+              const totals = calculateFoodTotals(existingFoods);
+              db.prepare(`
+                UPDATE diet_records
+                SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND user_id = ?
+              `).run(JSON.stringify(existingFoods), totals.calorie, totals.protein, totals.carb, totals.fat, row.id, userId);
+              console.log(`[饮食同步] 合并到同一餐现有记录 id=${row.id}: ${match.name} 数量 ${match.quantity}`);
+              merged = true;
+              break;
+            }
+          }
+          if (!merged) unmergedFoods.push(newFood);
+        }
+
+        if (unmergedFoods.length === 0) {
+          console.log(`[饮食同步] 所有食物已合并到同一餐现有记录，未新增沉淀记录`);
+          // 同步更新 precipitation_records.extracted_data
+          syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
+          return { skipped: false, updated: true, recordId: existingMealRows[0]?.id };
+        }
+
+        const totals = calculateFoodTotals(unmergedFoods);
+        const upsertDiet = db.prepare(`
+          INSERT INTO diet_records (user_id, precipitation_id, record_date, meal_time, foods, total_calorie, total_protein, total_carb, total_fat, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+          ON CONFLICT(user_id, precipitation_id) DO UPDATE SET
+            record_date = excluded.record_date,
+            meal_time = excluded.meal_time,
+            foods = excluded.foods,
+            total_calorie = excluded.total_calorie,
+            total_protein = excluded.total_protein,
+            total_carb = excluded.total_carb,
+            total_fat = excluded.total_fat,
+            status = 1,
+            updated_at = CURRENT_TIMESTAMP
+        `);
+        const result = upsertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(unmergedFoods), totals.calorie, totals.protein, totals.carb, totals.fat);
+        console.log(`[饮食同步] upsert记录, meal_time=${mealTime}, foods=${unmergedFoods.length}, precipitation_id=${precipitationId}`);
+        // 同步更新 precipitation_records.extracted_data
+        syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
+        return { skipped: false, updated: result.changes === 1, recordId: null };
       }
 
       // 合并到同一餐别的已有记录：同名食物累加数量/重量/营养素，避免同一餐出现两个卤鸭腿
@@ -1533,7 +1891,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
       for (const newFood of foods) {
         let merged = false;
         for (const row of existingMealRows) {
-          const existingFoods = JSON.parse(row.foods || '[]');
+          const existingFoods = safeJsonParse(row.foods, []);
           const match = existingFoods.find(ef => ef && ef.name && foodNamesMatch(ef.name, newFood.name));
           if (match) {
             mergeFoodInto(match, newFood);
@@ -1553,6 +1911,8 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
 
       if (unmergedFoods.length === 0) {
         console.log(`[饮食同步] 所有食物已合并到现有记录，未新增`);
+        // 同步更新 precipitation_records.extracted_data
+        syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
         return { skipped: false, updated: true, recordId: existingMealRows[0]?.id };
       }
 
@@ -1563,6 +1923,8 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
       `);
       const result = insertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(unmergedFoods), totals.calorie, totals.protein, totals.carb, totals.fat);
       console.log(`[饮食同步] 新增记录 id=${result.lastInsertRowid}, meal_time=${mealTime}, foods=${unmergedFoods.length}, precipitation_id=${precipitationId}`);
+      // 同步更新 precipitation_records.extracted_data
+      syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
       return { skipped: false, recordId: result.lastInsertRowid };
     }
     case 'exercise_record': {
@@ -1625,31 +1987,45 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
           console.log(`[运动同步] 更新记录 id=${keepId}, exercises=${exercises.length}, precipitation_id=${precipitationId}`);
           return { skipped: false, updated: true, recordId: keepId };
         }
+
+        // 无旧记录时直接 upsert，防止并发重复插入
+        const upsertEx = db.prepare(`
+          INSERT INTO exercise_records (user_id, precipitation_id, record_date, exercise_type, exercises, total_duration, total_calorie, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+          ON CONFLICT(user_id, precipitation_id) DO UPDATE SET
+            record_date = excluded.record_date,
+            exercise_type = excluded.exercise_type,
+            exercises = excluded.exercises,
+            total_duration = excluded.total_duration,
+            total_calorie = excluded.total_calorie,
+            status = 1,
+            updated_at = CURRENT_TIMESTAMP
+        `);
+        const exResult = upsertEx.run(userId, precipitationId, today, exerciseType, JSON.stringify(exercises), totalDur, totalCal);
+        syncExerciseExtractedData();
+        console.log(`[运动同步] upsert记录, exercises=${exercises.length}, precipitation_id=${precipitationId}`);
+        return { skipped: false, updated: exResult.changes === 1, recordId: null };
       }
 
-      // 无 precipitation_id 时按名称+时长去重
-      const dupCheck = hasDuplicateRecord(userId, type, data, recordDate);
-      if (dupCheck.isDuplicate) {
-        console.log(`[运动同步] 用户${userId}今天已有相同运动记录，跳过插入`);
-        return { skipped: true, reason: 'duplicate', recordId: dupCheck.recordId };
-      }
-
-      const insertEx = db.prepare(`
-        INSERT INTO exercise_records (user_id, precipitation_id, record_date, exercise_type, exercises, total_duration, total_calorie, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-      `);
-      const exResult = insertEx.run(userId, precipitationId, today, exerciseType, JSON.stringify(exercises), totalDur, totalCal);
+      // 无 precipitation_id：同日同名运动合并（时长/消耗累加），否则新增一行
+      const mergeResult = exerciseMergeService.mergeOrInsertExercise(userId, today, exerciseType, exercises);
       syncExerciseExtractedData();
-      console.log(`[运动同步] 新增记录 id=${exResult.lastInsertRowid}, exercises=${exercises.length}, precipitation_id=${precipitationId}`);
-      break;
+      console.log(`[运动同步] ${mergeResult.merged ? '合并到记录' : '新增记录'} id=${mergeResult.recordId}, exercises=${exercises.length}, precipitation_id=${precipitationId}`);
+      return { skipped: false, recordId: mergeResult.recordId, merged: mergeResult.merged };
     }
     case 'body_data': {
       const bodyData = data || {};
       // 兼容：sub_type 可能在 extracted_data 中，也可能在 precipitation_records.sub_type 中
       const mainSubType = bodyData.sub_type || subType || 'weight';
-      const insertBody = db.prepare(`
+      const upsertBody = db.prepare(`
         INSERT INTO body_records (user_id, precipitation_id, record_date, type, value, unit, status)
         VALUES (?, ?, ?, ?, ?, ?, 1)
+        ON CONFLICT(user_id, record_date, type) DO UPDATE SET
+          value = excluded.value,
+          unit = excluded.unit,
+          precipitation_id = COALESCE(excluded.precipitation_id, precipitation_id),
+          status = 1,
+          updated_at = CURRENT_TIMESTAMP
       `);
 
       const items = [];
@@ -1678,7 +2054,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
       }
 
       for (const item of items) {
-        insertBody.run(userId, precipitationId, today, item.type, item.value, item.unit);
+        upsertBody.run(userId, precipitationId, today, item.type, item.value, item.unit);
       }
 
       // 如果有体重，同步更新当前体重
@@ -1688,22 +2064,59 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
           .run(weightItem.value, userId);
       }
 
-      break;
+      // 返回记录 id，供调用方推进任务/奖励（体重等身体数据也计入任务）
+      const bodyRow = db.prepare(`
+        SELECT id FROM body_records WHERE user_id = ? AND record_date = ? AND type = ? AND status = 1
+        ORDER BY id DESC LIMIT 1
+      `).get(userId, today, items[0].type);
+      return { recordId: bodyRow ? bodyRow.id : null };
     }
     case 'habit': {
       const habitData = data || {};
-      const insertHabit = db.prepare(`
-        INSERT INTO habit_records (user_id, precipitation_id, record_date, type, value, status)
-        VALUES (?, ?, ?, ?, ?, 1)
+      const subType = habitData.sub_type || 'water';
+      const value = parseInt(habitData.value) || 0;
+      const waterMl = subType === 'water' ? value : 0;
+      const upsertHabit = db.prepare(`
+        INSERT INTO habit_records (user_id, precipitation_id, record_date, type, value, water_ml, status)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
+        ON CONFLICT(user_id, record_date, type) DO UPDATE SET
+          value = value + excluded.value,
+          water_ml = water_ml + excluded.water_ml,
+          precipitation_id = COALESCE(excluded.precipitation_id, precipitation_id),
+          status = 1,
+          updated_at = CURRENT_TIMESTAMP
       `);
-      insertHabit.run(userId, precipitationId, today, habitData.sub_type || 'water', habitData.value || 0);
-      break;
+      upsertHabit.run(userId, precipitationId, today, subType, value, waterMl);
+      // 返回记录 id，供调用方推进任务/奖励（ habit 类记录也计入任务）
+      const habitRow = db.prepare(`
+        SELECT id FROM habit_records WHERE user_id = ? AND record_date = ? AND type = ? AND status = 1
+      `).get(userId, today, subType);
+      return { recordId: habitRow ? habitRow.id : null };
     }
     case 'quote':
     case 'insight':
     case 'recipe':
     case 'method':
     case 'pitfall': {
+      // 食谱数据格式规范化：确保 ingredients 为 [{name, amount}] 数组
+      if (type === 'recipe' && data) {
+        data = normalizeRecipeData(data, content);
+      }
+
+      // 食谱沉淀统一归类到 precipitation_recipe，便于前端识别并原文展示
+      const recipeSubType = 'precipitation_recipe';
+      const recipeTitle = (type === 'recipe' && data?.title && data.title !== recipeSubType)
+        ? data.title
+        : (content || '').slice(0, 32);
+      // 防止旧链路把类型字符串写进 extracted_data.title
+      if (type === 'recipe' && data) {
+        data.title = recipeTitle;
+        // 食谱总克数/总热量（按食材经食物库估算）
+        const totals = computeRecipeTotals(data.ingredients);
+        data.total_weight = totals.totalWeight;
+        data.total_calorie = totals.totalCalorie;
+      }
+
       // 食谱在确认时支持更新已有的 museum_items（如搭子推荐时已创建 pending）
       if (type === 'recipe' && chatMessageId) {
         const existing = db.prepare(`
@@ -1714,17 +2127,17 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
         if (existing) {
           db.prepare(`
             UPDATE museum_items
-            SET content = ?, extracted_data = ?, status = 1, updated_at = CURRENT_TIMESTAMP
+            SET title = ?, sub_type = ?, content = ?, extracted_data = ?, status = 1, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-          `).run(content, data ? JSON.stringify(data) : null, existing.id);
+          `).run(recipeTitle, recipeSubType, content, data ? JSON.stringify(data) : null, existing.id);
           console.log(`[食谱同步] 更新已有食谱 id=${existing.id}, chat_message_id=${chatMessageId}`);
           break;
         }
       }
 
       const insertMuseum = db.prepare(`
-        INSERT INTO museum_items (user_id, chat_message_id, type, content, extracted_data, author, emotion, tags, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO museum_items (user_id, chat_message_id, type, sub_type, title, content, extracted_data, author, emotion, tags, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       // 感悟/金句作者为用户；食谱/方法等来自搭子的资产保留 data.author 或 partner
       const museumAuthor = (type === 'quote' || type === 'insight') ? 'user' : (data?.author || 'partner');
@@ -1732,6 +2145,8 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
         userId,
         chatMessageId || null,
         type,
+        type === 'recipe' ? recipeSubType : subType,
+        type === 'recipe' ? recipeTitle : (data?.title || null),
         content,
         data ? JSON.stringify(data) : null,
         museumAuthor,
@@ -1768,9 +2183,9 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
     return { extracted: false, reason: '否定或犹豫意图不沉淀' };
   }
 
-  const today = recordDate || new Date().toISOString().split('T')[0];
+  const today = recordDate || getChinaDateStr();
   const systemPrompt = promptService.getPrompt('precipitation_agent', {
-    current_time: new Date().toISOString()
+    current_time: getChinaDateTimeStr()
   });
 
   try {
@@ -1828,7 +2243,7 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
     // 兜底：LLM 把牛奶/咖啡/果汁等饮品误判为喝水习惯时，转成 diet_record
     for (const item of items) {
       if (item.type === 'habit') {
-        convertBeverageHabitToDiet(item, content);
+        convertBeverageHabitToDiet(item, content, userId, recordDate);
       }
     }
 
@@ -1839,8 +2254,88 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
         return subType === 'water' || subType === '喝水';
       }
       if (item.type === 'emotion') return false;
+      // 食谱由 partnerAssetAgent 专属处理，通用沉淀 Agent 不再处理
+      if (item.type === 'recipe') return false;
       return true;
     });
+
+    // 兜底：当 LLM 没有提取到有效内容，但内容包含饮品/食物关键词时，
+    // 直接从 food_db 中查找匹配的食物并创建饮食记录
+    // 注意：疑问句/咨询句（"奶茶热量高吗"）不兜底，避免把提问误记为饮食
+    if (items.length === 0 && !isQuestionContent(content) && hasBeverageFoodContent(content)) {
+      console.log(`[沉淀兜底] LLM 未提取到有效内容，但检测到饮品/食物关键词，尝试从 food_db 匹配`);
+      
+      // 直接使用内容中的核心关键词（如"咖啡"、"苹果"等）来查询 food_db
+      let matchedFood = null;
+      const beverageKeywords = FALLBACK_FOOD_KEYWORDS;
+      
+      for (const kw of beverageKeywords) {
+        if (content.includes(kw)) {
+          const food = db.prepare(`
+            SELECT food_name, category, sub_category, calories_per_100g, protein_per_100g, carb_per_100g, fat_per_100g
+            FROM food_db
+            WHERE food_name LIKE ?
+            ORDER BY LENGTH(food_name) ASC
+            LIMIT 1
+          `).get(`%${kw}%`);
+          if (food) {
+            matchedFood = food;
+            console.log(`[沉淀兜底] 使用关键词 "${kw}" 匹配到: ${food.food_name}`);
+            break;
+          }
+        }
+      }
+      
+      if (matchedFood) {
+        const nutrition = {
+          calorie_per_100g: matchedFood.calories_per_100g || 0,
+          protein_per_100g: matchedFood.protein_per_100g || 0,
+          carb_per_100g: matchedFood.carb_per_100g || 0,
+          fat_per_100g: matchedFood.fat_per_100g || 0
+        };
+        const caloriePer100g = nutrition.calorie_per_100g;
+        
+        // 估算重量：如果用户没有明确说出重量，按常见饮品量估算
+        let weight = 200; // 默认 200g
+        const qtyMatch = content.match(/(\d+(?:\.\d+)?)\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗)/i);
+        if (qtyMatch) {
+          const qty = parseFloat(qtyMatch[1]);
+          const unit = qtyMatch[2].toLowerCase();
+          if (['克', 'g', '毫升', 'ml'].includes(unit)) weight = qty;
+          else if (['杯'].includes(unit)) weight = qty * 250;
+          else if (['瓶'].includes(unit)) weight = qty * 500;
+          else if (['盒'].includes(unit)) weight = qty * 200;
+          else if (['罐'].includes(unit)) weight = qty * 330;
+          else if (['碗'].includes(unit)) weight = qty * 250;
+        }
+        
+        const ratio = weight / 100;
+        const food = {
+          name: matchedFood.food_name,
+          weight: Math.round(weight),
+          quantity: 1,
+          unit: 'g',
+          calorie: Math.round(caloriePer100g * ratio),
+          protein: Math.round((nutrition.protein_per_100g || 0) * ratio * 10) / 10,
+          carb: Math.round((nutrition.carb_per_100g || 0) * ratio * 10) / 10,
+          fat: Math.round((nutrition.fat_per_100g || 0) * ratio * 10) / 10
+        };
+        
+        items.push({
+          type: 'diet_record',
+          extracted_data: {
+            foods: [food],
+            total_calorie: food.calorie,
+            total_protein: food.protein,
+            total_carb: food.carb,
+            total_fat: food.fat,
+            meal_time: inferMealTimeByContent(content) || normalizeMealTime(null, content, [], [])
+          },
+          confidence: 0.8
+        });
+        console.log(`[沉淀兜底] 从 food_db 匹配到食物: ${food.name}, 重量: ${food.weight}g, 热量: ${food.calorie}千卡`);
+      }
+    }
 
     if (items.length === 0) {
       return { extracted: false, reason: '未提取到有效内容' };
@@ -1876,32 +2371,140 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
 
     console.log(`[沉淀] 提取到 ${items.length} 条记录`);
 
-    let processed = null;
-    let processedCount = 0;
+    const processed = [];
+    const processedCount = 0;
     for (const item of items) {
-      const result = processSinglePrecipitation(userId, chatId, content, item, recordDate);
-      if (result) {
-        processed = result;
-        processedCount++;
-        if (result.status === 1) {
-          const syncResult = syncToBusinessTable(userId, result.type, content, result.extracted_data, recordDate, result.sub_type, result.precipitation_id, chatId);
-          if (syncResult && syncResult.skipped) {
-            // 记录被去重跳过
-            console.log(`[去重] 沉淀ID ${result.precipitation_id} 被跳过，原因: ${syncResult.reason}`);
-          } else if (syncResult && syncResult.updated) {
-            // 记录被更新（如喝水累加）
-            console.log(`[更新] 沉淀ID ${result.precipitation_id} 更新了现有记录 ${syncResult.recordId}`);
+      try {
+        const result = withTransaction(() => {
+          const r = processSinglePrecipitation(userId, chatId, content, item, recordDate);
+          if (!r) return null;
+          if (r.status === 1) {
+            const syncResult = syncToBusinessTable(userId, r.type, content, r.extracted_data, recordDate, r.sub_type, r.precipitation_id, chatId);
+            if (syncResult && syncResult.skipped) {
+              console.log(`[去重] 沉淀ID ${r.precipitation_id} 被跳过，原因: ${syncResult.reason}`);
+            } else if (syncResult && syncResult.updated) {
+              console.log(`[更新] 沉淀ID ${r.precipitation_id} 更新了现有记录 ${syncResult.recordId}`);
+            }
+
+            if (syncResult && !syncResult.skipped) {
+              const relatedId = syncResult.recordId || r.precipitation_id;
+              rewardService.rewardForPrecipitationRecord(userId, r.type, r.sub_type, r.extracted_data, relatedId);
+            }
           }
+          return r;
+        });
+        if (result) {
+          processed.push(result);
         }
+      } catch (err) {
+        console.error('[沉淀] 单条记录事务失败:', err.message);
       }
     }
 
-    console.log(`[沉淀] 成功处理 ${processedCount}/${items.length} 条记录`);
-    return processed || { extracted: false, reason: '处理失败' };
+    // 关键修复：批量处理完后进行最终数据对账
+    // 问题根源：多个 food item 被分别合并到同一条 diet_record 时，
+    // 只有第一个 precipitation_id 能正确同步，其余 precipitation_record 保持 LLM 原始值。
+    // 解决：收集本批次所有 precipitation_id，拉取所有关联的 diet_records，合并后写回每一个。
+    finalReconcilePrecipitations(userId, chatId, processed, recordDate);
+
+    console.log(`[沉淀] 成功处理 ${processed.length}/${items.length} 条记录`);
+    return processed.length > 0 ? processed[processed.length - 1] : { extracted: false, reason: '处理失败' };
   } catch (error) {
     console.error('沉淀 Agent 调用失败:', error.message);
     return { extracted: false, reason: 'API调用失败' };
   }
 }
 
-module.exports = { callPrecipitationAgent, syncToBusinessTable };
+/**
+ * 食谱数据格式规范化
+ * 确保 ingredients 为 [{name, amount}] 数组，steps/tip 为字符串
+ * @param {object} data 原始数据
+ * @param {string} content 食谱原文（用于兜底解析）
+ * @returns {object} 规范化后的数据
+ */
+function normalizeRecipeData(data, content) {
+  if (!data || typeof data !== 'object') return data;
+
+  // 规范化 ingredients
+  if (data.ingredients) {
+    if (Array.isArray(data.ingredients)) {
+      data.ingredients = data.ingredients.map(item => {
+        if (typeof item === 'string') {
+          return parseIngredientStr(item);
+        }
+        if (item && typeof item === 'object' && item.name) {
+          return { name: String(item.name), amount: item.amount ? String(item.amount) : '适量' };
+        }
+        return null;
+      }).filter(Boolean);
+    } else {
+      data.ingredients = [];
+    }
+  } else {
+    data.ingredients = [];
+  }
+
+  // 从 content 兜底解析食材
+  if (data.ingredients.length === 0 && content) {
+    const parsed = parseIngredientsFromContent(content);
+    data.ingredients = parsed;
+  }
+
+  // 规范化 steps
+  if (data.steps && !Array.isArray(data.steps) && typeof data.steps !== 'string') {
+    data.steps = String(data.steps);
+  }
+  if (!data.steps && content) {
+    const parsedSteps = parseStepsFromContent(content);
+    if (parsedSteps) data.steps = parsedSteps;
+  }
+
+  // 规范化 tip
+  if (data.tip && typeof data.tip !== 'string') {
+    data.tip = String(data.tip);
+  }
+
+  return data;
+}
+
+/**
+ * 解析单个食材字符串
+ * @param {string} str 如 "鸡蛋 2个"
+ * @returns {object} {name, amount}
+ */
+function parseIngredientStr(str) {
+  if (!str || typeof str !== 'string') return { name: '食材', amount: '适量' };
+  const s = str.trim();
+  const match1 = s.match(/^(.+?)\s+(\d+[\u4e00-\u9fa5a-zA-Z]+)$/);
+  if (match1) return { name: match1[1].trim(), amount: match1[2].trim() };
+  const match2 = s.match(/^(.+?)(\d+[\u4e00-\u9fa5a-zA-Z]+)$/);
+  if (match2) return { name: match2[1].trim(), amount: match2[2].trim() };
+  return { name: s, amount: '适量' };
+}
+
+/**
+ * 从 content 原文解析食材列表
+ * @param {string} content
+ * @returns {Array}
+ */
+function parseIngredientsFromContent(content) {
+  if (!content) return [];
+  const match = content.match(/食材[：:]\s*([\s\S]*?)(?=做法|步骤|小贴士|$)/i);
+  if (!match) return [];
+  const parts = match[1].split(/[、，,；;\n]/).map(s => s.trim()).filter(Boolean);
+  return parts.map(parseIngredientStr);
+}
+
+/**
+ * 从 content 原文解析做法步骤
+ * @param {string} content
+ * @returns {string|null}
+ */
+function parseStepsFromContent(content) {
+  if (!content) return null;
+  const match = content.match(/(?:做法|步骤)[：:]\s*([\s\S]*?)(?=小贴士|$)/i);
+  if (match) return match[1].trim();
+  return null;
+}
+
+module.exports = { callPrecipitationAgent, syncToBusinessTable, isValidPrecipitationItem, shouldPrecipitate };

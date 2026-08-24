@@ -1,10 +1,11 @@
 /**
  * 主协调 Agent（大脑 + 感性层）
  * 职责：对话上下文维护、意图识别、共情话术生成、最终回复、工具调用调度
- * 模型：豆包 doubao-seed-2.0-lite（备用：fit-Backup）
+ * 模型：腾讯混元 Hy3（备用：fit-Backup）
  */
 const { callWithPrompt } = require('../aiClient');
 const promptService = require('../promptService');
+const petService = require('../petService');
 
 const helperAgent = require('./helperAgent');
 
@@ -35,9 +36,15 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
     preferences: userInfo.preferences || '无'
   }, null, 2);
 
+  const pet = userInfo.id ? petService.getPet(userInfo.id) : null;
+  const petPersona = pet
+    ? `你同时以宠物形象出现在用户的小窝里，宠物名叫${pet.name || '搭搭'}，是一只${pet.species === 'red_panda' ? '小熊猫' : (pet.species || '小熊猫')}。你和小窝里的宠物是同一只搭搭，回复中始终以"我"自称，不要把它说成另一个角色。`
+    : '你同时以宠物形象出现在用户的小窝里，是一只陪伴用户减肥的小熊猫。你和小窝里的宠物是同一只搭搭，回复中始终以"我"自称，不要把它说成另一个角色。';
+
   const systemPrompt = promptService.getPrompt('main_agent', {
     user_info: userInfoStr,
-    partner_mode: modeMap[mode] || '温柔鼓励型'
+    partner_mode: modeMap[mode] || '温柔鼓励型',
+    pet_persona: petPersona
   });
 
   const messages = [
@@ -160,7 +167,7 @@ function stripThinkingTags(content) {
     // 标准 think/thinking 标签对
     .replace(/<think(?:ing)?[^>]*>[\s\S]*?<\/think(?:ing)?[^>]*>/gi, '');
 
-  // 豆包 Seed 等模型可能只输出 </think_xxx> 结束标记，取标记之后的内容
+  // 混元等模型可能只输出 </think_xxx> 结束标记，取标记之后的内容
   const thinkEndMatch = result.match(/<\/think_[^>]+>/);
   if (thinkEndMatch && thinkEndMatch.index !== undefined) {
     result = result.slice(thinkEndMatch.index + thinkEndMatch[0].length);

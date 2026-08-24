@@ -1,20 +1,26 @@
 <template>
+  <!-- 外层：固定 100vh，作为 absolute 的定位参照 -->
   <view class="onboarding-page">
-    <swiper class="swiper" :current="current" @change="onChange">
-      <swiper-item v-for="(page, index) in pages" :key="index">
-        <view class="page-content">
-          <text class="page-icon">{{ page.icon }}</text>
-          <text class="page-title">{{ page.title }}</text>
-          <text class="page-desc">{{ page.desc }}</text>
-        </view>
-      </swiper-item>
-    </swiper>
-
-    <view class="dots">
-      <view v-for="(_, index) in pages" :key="index" class="dot" :class="{ active: current === index }"></view>
+    <view class="slide-wrap">
+      <!-- 引导内容：纯文本+表情，不加载大图，控制包体 -->
+      <view class="slide-emoji">{{ pages[current].emoji }}</view>
+      <text class="slide-title">{{ pages[current].title }}</text>
+      <text class="slide-subtitle">{{ pages[current].subtitle }}</text>
+      <image class="slide-mascot" src="/static/image/icon/dada02@3x.png" mode="aspectFit" />
     </view>
 
-    <view class="actions">
+    <!-- 指示器：fixed 相对于视口，永远可见不消失，容器透明 -->
+    <view class="dots-overlay">
+      <view
+        v-for="(_, index) in pages"
+        :key="index"
+        class="dot"
+        :class="{ active: current === index }"
+      ></view>
+    </view>
+
+    <!-- 按钮：fixed 相对于视口，永远可见不消失，容器透明 -->
+    <view class="actions-overlay">
       <AppButton v-if="current < pages.length - 1" type="ghost" block @click="next">下一步</AppButton>
       <AppButton v-else block @click="finish">开始体验</AppButton>
     </view>
@@ -26,20 +32,25 @@ import { ref } from 'vue';
 import AppButton from '../../components/AppButton.vue';
 
 const current = ref(0);
+// 引导内容（与原引导图一致，改为轻量文本版，删除大图控制包体）
 const pages = [
-  { icon: '🤖', title: 'AI 减肥搭子', desc: '不是冰冷教练，而是真实有情绪的减肥伙伴，陪你一起瘦下来' },
-  { icon: '💬', title: '聊天即记录', desc: '只要和搭子聊天，饮食、运动、体重数据自动沉淀到今日记录' },
-  { icon: '🏛️', title: '博物馆', desc: '自动整理你的金句、食谱、感悟，生成专属减肥纪念墙' }
+  { emoji: '🎯', title: '虚拟伙伴“搭搭”', subtitle: '陪你健康减脂，追赶目标' },
+  { emoji: '🍳', title: '游戏化激励闭环', subtitle: '喂食、互动、事件，让坚持上瘾' },
+  { emoji: '💬', title: '对话即记录', subtitle: 'AI 智能沉淀，零负担记录' }
 ];
 
-function onChange(e) {
-  current.value = e.detail.current;
-}
-
+/**
+ * 下一步：切换到下一张引导
+ */
 function next() {
-  current.value++;
+  if (current.value < pages.length - 1) {
+    current.value++;
+  }
 }
 
+/**
+ * 完成：标记引导已完成并跳转到资料设置页
+ */
 function finish() {
   const settings = uni.getStorageSync('settings') || {};
   settings.guide_completed = true;
@@ -50,76 +61,80 @@ function finish() {
 
 <style lang="scss" scoped>
 .onboarding-page {
+  position: relative;
   height: 100vh;
-  background: linear-gradient(180deg, $mint-light 0%, $bg-page 60%, $bg-page 100%);
-  display: flex;
-  flex-direction: column;
+  width: 100%;
+  background: linear-gradient(180deg, #DFF2D8 0%, #FFFFF2 70%);
 }
 
-.swiper {
-  flex: 1;
-}
-
-.page-content {
-  height: 100%;
+.slide-wrap {
+  position: absolute;
+  top: 18vh;
+  left: 0;
+  right: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: $spacing-xl;
+  padding: 0 60rpx;
 }
 
-.page-icon {
-  font-size: 140rpx;
-  margin-bottom: $spacing-lg;
+.slide-emoji {
+  font-size: 110rpx;
+  margin-bottom: 48rpx;
 }
 
-.page-title {
-  font-size: $text-2xl;
-  font-weight: $font-bold;
-  color: $text-primary;
-  margin-bottom: $spacing-sm;
-}
-
-.page-desc {
-  font-size: $text-base;
-  color: $text-secondary;
+.slide-title {
+  font-size: 52rpx;
+  font-weight: 700;
+  color: #2E4A24;
   text-align: center;
-  line-height: 1.6;
-  font-weight: $font-light;
+  line-height: 1.4;
 }
 
-.dots {
+.slide-subtitle {
+  margin-top: 20rpx;
+  font-size: 30rpx;
+  color: #5A7250;
+  text-align: center;
+}
+
+.slide-mascot {
+  margin-top: 60rpx;
+  width: 320rpx;
+  height: 320rpx;
+}
+
+/* 指示器 */
+.dots-overlay {
+  position: fixed;
+  bottom: 220rpx;
+  left: 0;
+  right: 0;
   display: flex;
   justify-content: center;
   gap: 16rpx;
-  margin-bottom: $spacing-md;
+  pointer-events: none;
 }
 
 .dot {
   width: 16rpx;
   height: 16rpx;
   border-radius: 50%;
-  background: $gray-300;
-  transition: all 0.2s ease;
+  background: rgba(90, 114, 80, 0.25);
+  transition: all 0.3s;
 }
 
 .dot.active {
   width: 40rpx;
-  border-radius: $radius-pill;
-  background: $green;
+  border-radius: 8rpx;
+  background: #8DBB77;
 }
 
-.actions {
-  padding: 0 $spacing-md;
-  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
-}
-
-.skip {
-  display: block;
-  text-align: center;
-  margin-top: $spacing-md;
-  font-size: $text-sm;
-  color: $text-tertiary;
+/* 按钮 */
+.actions-overlay {
+  position: fixed;
+  bottom: 90rpx;
+  left: 60rpx;
+  right: 60rpx;
 }
 </style>

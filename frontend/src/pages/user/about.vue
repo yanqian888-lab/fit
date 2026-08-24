@@ -25,12 +25,24 @@
         @touchcancel="handleEnvTouchEnd"
       ></view>
     </view>
+
+    <!-- 环境切换完成提示弹框（单按钮） -->
+    <AppModal
+      v-model:visible="showEnvSwitchModal"
+      icon="none"
+      title="环境已切换"
+      :text="envSwitchText"
+      confirmText="立即重启"
+      :showCancel="false"
+      @confirm="confirmRestart"
+    />
   </AppPage>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import AppPage from '../../components/AppPage.vue';
+import AppModal from '../../components/AppModal.vue';
 import { goBack } from '../../utils/navigate';
 import { get } from '../../utils/request';
 import { getCurrentEnv, setCurrentEnv, getEnvLabel } from '../../utils/environment.js';
@@ -38,6 +50,10 @@ import { getCurrentEnv, setCurrentEnv, getEnvLabel } from '../../utils/environme
 const statusBarHeight = ref(44);
 const aboutContent = ref('');
 const longPressTimer = ref(null);
+
+// 环境切换完成提示
+const showEnvSwitchModal = ref(false);
+const envSwitchText = ref('');
 
 const paragraphs = computed(() => {
   return aboutContent.value.split(/\n+/).filter(p => p.trim());
@@ -86,18 +102,19 @@ function showEnvSwitchDialog() {
       const selectedEnv = envList[res.tapIndex];
       if (selectedEnv && selectedEnv !== currentEnv) {
         setCurrentEnv(selectedEnv);
-        uni.showModal({
-          title: '环境已切换',
-          content: `已切换至 ${getEnvLabel(selectedEnv)}，需要重启应用以生效。`,
-          showCancel: false,
-          confirmText: '立即重启',
-          success: () => {
-            uni.reLaunch({ url: '/pages/index/index' });
-          }
-        });
+        envSwitchText.value = `已切换至 ${getEnvLabel(selectedEnv)}，需要重启应用以生效。`;
+        showEnvSwitchModal.value = true;
       }
     }
   });
+}
+
+/**
+ * 确认重启应用
+ */
+function confirmRestart() {
+  showEnvSwitchModal.value = false;
+  uni.reLaunch({ url: '/pages/index/index' });
 }
 </script>
 

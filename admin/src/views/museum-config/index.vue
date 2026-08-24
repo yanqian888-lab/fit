@@ -43,7 +43,7 @@ const entryList = [
   { key: 'insight', name: '感悟集' },
   { key: 'photo', name: '照片墙' },
   { key: 'method', name: '方法库' },
-  { key: 'diary', name: '日记集' },
+  { key: 'diary', name: '日记与分析' },
   { key: 'milestone', name: '里程碑' }
 ]
 

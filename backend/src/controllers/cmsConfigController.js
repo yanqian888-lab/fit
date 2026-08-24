@@ -4,6 +4,7 @@
 const { db } = require('../db');
 const { success, error } = require('../utils/response');
 const cmsLogService = require('../services/cmsLogService');
+const { invalidateAppConfig } = require('../utils/configCache');
 
 const CONFIG_KEYS = [
   'user_agreement',
@@ -12,7 +13,8 @@ const CONFIG_KEYS = [
   'privacy_policy_url',
   'privacy_version',
   'force_privacy_update',
-  'about_us_content'
+  'about_us_content',
+  'delete_account_agreement'
 ];
 
 /**
@@ -63,6 +65,7 @@ function updateAppConfig(req, res) {
   }
 
   cmsLogService.log(req, 'app_config:update', 'app_config', '', { changed });
+  changed.forEach(key => invalidateAppConfig(key));
   return res.json(success(null, '保存成功'));
 }
 

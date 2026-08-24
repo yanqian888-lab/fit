@@ -34,13 +34,30 @@ const trialController = require('../controllers/trialController');
 const cmsTrialController = require('../controllers/cmsTrialController');
 const popupController = require('../controllers/popupController');
 const cmsPopupController = require('../controllers/cmsPopupController');
+const announcementController = require('../controllers/announcementController');
+const cmsAnnouncementController = require('../controllers/cmsAnnouncementController');
+const cmsOperationStatsController = require('../controllers/cmsOperationStatsController');
 const uploadController = require('../controllers/uploadController');
+const companionController = require('../controllers/companionController');
+const newbieTaskController = require('../controllers/newbieTaskController');
+const workoutController = require('../controllers/workoutController');
+const voiceController = require('../controllers/voiceController');
+const cmsPetController = require('../controllers/cmsPetController');
+const cmsCurrencyController = require('../controllers/cmsCurrencyController');
+const cmsShopController = require('../controllers/cmsShopController');
+const cmsEventController = require('../controllers/cmsEventController');
+const cmsWorkoutController = require('../controllers/cmsWorkoutController');
+const cmsTaskController = require('../controllers/cmsTaskController');
+const cmsAchievementController = require('../controllers/cmsAchievementController');
+const cmsDialogueController = require('../controllers/cmsDialogueController');
 const { cmsAuthMiddleware, cmsPermissionMiddleware } = require('../middleware/cmsAuth');
 
 const router = express.Router();
 
 // 通用上传（图片）
 router.post('/upload/image', authMiddleware, uploadController.uploadImage);
+// CMS 后台上传（图片，自动存储到服务端 /static/uploads）
+router.post('/cms/upload/image', cmsAuthMiddleware, uploadController.uploadImage);
 
 // 健康检查
 router.get('/health', (req, res) => {
@@ -51,7 +68,8 @@ router.get('/health', (req, res) => {
 router.post('/auth/login', authController.login);
 router.post('/auth/register', authController.register);
 router.post('/auth/wechat-login', authController.wechatLogin);
-router.post('/auth/wechat-bind', authController.wechatBindPhone);
+// 绑定微信手机号需登录态，通过 token 定位当前用户
+router.post('/auth/wechat-bind', authMiddleware, authController.wechatBindPhone);
 
 // 用户（需登录）
 router.get('/users/me', authMiddleware, userController.getMe);
@@ -90,6 +108,10 @@ router.delete('/records/body/:id', authMiddleware, recordController.deleteBody);
 router.get('/records/habit', authMiddleware, recordController.getHabits);
 router.post('/records/habit', authMiddleware, recordController.saveHabit);
 router.put('/records/habit/:id', authMiddleware, recordController.saveHabit);
+router.delete('/records/habit/:id', authMiddleware, recordController.deleteHabit);
+router.get('/records/fasting', authMiddleware, recordController.getFasting);
+router.get('/records/fasting/stats', authMiddleware, recordController.getFastingStats);
+router.post('/records/fasting', authMiddleware, recordController.saveFasting);
 router.get('/records/milestone-data', authMiddleware, recordController.getMilestoneData);
 router.get('/records/dates', authMiddleware, recordController.getRecordDates);
 
@@ -104,12 +126,54 @@ router.delete('/museum/items/:id', authMiddleware, museumController.deleteItem);
 router.post('/museum/items/:id/confirm', authMiddleware, museumController.confirmItem);
 router.post('/museum/items/:id/discard', authMiddleware, museumController.discardItem);
 router.post('/museum/items/:id/favorite', authMiddleware, museumController.toggleFavorite);
+router.post('/museum/items/:id/share', authMiddleware, museumController.shareItem);
+router.post('/museum/mood', authMiddleware, museumController.saveMood);
+router.get('/museum/moods', authMiddleware, museumController.getMoods);
+router.get('/museum/moods/stats', authMiddleware, museumController.getMoodStats);
 
 // 沉淀记录
 router.get('/precipitations', authMiddleware, precipitationController.getPrecipitations);
 router.post('/precipitations', authMiddleware, precipitationController.createPrecipitation);
 router.put('/precipitations/:id', authMiddleware, precipitationController.updatePrecipitation);
 router.delete('/precipitations/:id', authMiddleware, precipitationController.deletePrecipitation);
+
+// 陪伴系统
+router.get('/pet', authMiddleware, companionController.getPet);
+router.post('/pet/feed', authMiddleware, companionController.feed);
+router.post('/pet/exercise', authMiddleware, companionController.exercise);
+router.post('/pet/explore', authMiddleware, companionController.startExplore);
+router.post('/pet/explore/complete', authMiddleware, companionController.completeExplore);
+router.get('/pet/events', authMiddleware, companionController.getEvents);
+router.get('/pet/events/album', authMiddleware, companionController.getEventAlbum);
+router.put('/pet/events/:id/read', authMiddleware, companionController.markEventRead);
+router.get('/pet/dialogues', authMiddleware, companionController.getDialogues);
+
+router.get('/currency', authMiddleware, companionController.getCurrency);
+router.get('/currency/transactions', authMiddleware, companionController.getCurrencyTransactions);
+
+router.get('/shop/items', authMiddleware, companionController.getShopItems);
+router.post('/shop/buy', authMiddleware, companionController.buyShopItem);
+
+router.get('/inventory', authMiddleware, companionController.getInventory);
+router.post('/inventory/use', authMiddleware, companionController.useInventoryItem);
+router.get('/inventory/equipment-workouts', authMiddleware, companionController.getEquipmentWorkouts);
+
+router.get('/tasks', authMiddleware, companionController.getTasks);
+router.post('/tasks/:id/claim', authMiddleware, companionController.claimTaskReward);
+router.get('/checkin/status', authMiddleware, companionController.getCheckinStatus);
+router.post('/checkin', authMiddleware, companionController.checkin);
+
+router.get('/achievements', authMiddleware, companionController.getAchievements);
+
+// 新手任务
+router.get('/newbie-tasks', authMiddleware, newbieTaskController.list);
+router.post('/newbie-tasks/:key/claim', authMiddleware, newbieTaskController.claim);
+
+// 陪你动
+router.get('/workouts', authMiddleware, workoutController.list);
+router.get('/workouts/:key', authMiddleware, workoutController.detail);
+router.post('/workouts/:key/start', authMiddleware, workoutController.start);
+router.post('/workouts/:key/complete', authMiddleware, workoutController.complete);
 
 // 系统数据
 router.get('/foods', authMiddleware, systemController.getFoods);
@@ -123,9 +187,13 @@ router.post('/exercises/custom', authMiddleware, systemController.addCustomExerc
 router.get('/settings', authMiddleware, systemController.getSettings);
 router.put('/settings', authMiddleware, systemController.updateSettings);
 
-// AI P1 功能
+// AI P1 功能（注意：/ai/diary/monthly 必须在 /ai/diary/:id 之前注册，否则会被 :id 吃掉）
 router.get('/ai/diary', authMiddleware, aiController.generateDiary);
+router.get('/ai/diary/history', authMiddleware, aiController.getDiaryHistory);
 router.get('/ai/diary/monthly', authMiddleware, aiController.generateMonthlyDiary);
+router.get('/ai/diary/:id', authMiddleware, aiController.getDiaryDetail);
+router.delete('/ai/diary/:id', authMiddleware, aiController.deleteDiary);
+router.post('/ai/diary/:id/favorite', authMiddleware, aiController.toggleDiaryFavorite);
 router.get('/ai/milestones', authMiddleware, aiController.getMilestones);
 router.post('/ai/milestones/check', authMiddleware, aiController.checkMilestones);
 router.get('/ai/plateau', authMiddleware, aiController.analyzePlateau);
@@ -155,6 +223,8 @@ router.put('/admin/app-config', authMiddleware, adminMiddleware, systemControlle
 
 // CMS 认证
 router.post('/cms/auth/login', cmsAuthController.login);
+router.post('/cms/upload/image', cmsAuthMiddleware, cmsPermissionMiddleware('popup_config:write'), uploadController.uploadImage);
+router.post('/cms/upload/video', cmsAuthMiddleware, cmsPermissionMiddleware('workout_config:write'), uploadController.uploadVideo);
 router.get('/cms/auth/profile', cmsAuthMiddleware, cmsAuthController.getProfile);
 router.put('/cms/auth/password', cmsAuthMiddleware, cmsAuthController.changePassword);
 
@@ -251,7 +321,7 @@ router.get('/cms/logs', cmsAuthMiddleware, cmsPermissionMiddleware('log:read'), 
 // CMS 试用权限管理
 router.get('/cms/trial/dashboard', cmsAuthMiddleware, cmsPermissionMiddleware('trial_config:read'), cmsTrialController.dashboard);
 router.get('/cms/trial/config', cmsAuthMiddleware, cmsPermissionMiddleware('trial_config:read'), cmsTrialController.getConfig);
-router.put('/cms/trial/config', cmsAuthMiddleware, cmsPermissionMiddleware('trial_config:write'), cmsTrialController.updateConfig);
+router.post('/cms/trial/config', cmsAuthMiddleware, cmsPermissionMiddleware('trial_config:write'), cmsTrialController.updateConfig);
 router.post('/cms/trial/audit-mode', cmsAuthMiddleware, cmsPermissionMiddleware('trial_config:write'), cmsTrialController.auditMode);
 router.get('/cms/trial/whitelist', cmsAuthMiddleware, cmsPermissionMiddleware('trial_whitelist:read'), cmsTrialController.listWhitelist);
 router.post('/cms/trial/whitelist', cmsAuthMiddleware, cmsPermissionMiddleware('trial_whitelist:write'), cmsTrialController.createWhitelist);
@@ -261,9 +331,17 @@ router.delete('/cms/trial/whitelist/:id', cmsAuthMiddleware, cmsPermissionMiddle
 router.get('/cms/trial/logs', cmsAuthMiddleware, cmsPermissionMiddleware('trial_log:read'), cmsTrialController.listLogs);
 
 // C 端弹窗广告
-// 弹窗配置对未登录用户也可下发（如开屏运营活动），上报仍需登录
+// 弹窗配置对未登录用户也可下发（如开屏运营活动），上报支持未登录用户通过 device_id 埋点
 router.get('/app/popup/config/list', popupController.getConfigList);
-router.post('/app/popup/report', authMiddleware, popupController.reportEvents);
+router.post('/app/popup/report', popupController.reportEvents);
+
+// C 端公告/消息中心
+router.get('/app/announcements', authMiddleware, announcementController.listAnnouncements);
+router.get('/app/announcements/:id', authMiddleware, announcementController.getAnnouncement);
+router.post('/app/announcements/:id/read', authMiddleware, announcementController.markRead);
+router.post('/app/announcements/:id/show', authMiddleware, announcementController.recordShow);
+router.get('/app/notifications/unread-count', authMiddleware, announcementController.getUnreadCount);
+router.get('/app/notifications/channels', authMiddleware, announcementController.listChannels);
 
 // CMS 弹窗广告管理
 router.get('/cms/popups', cmsAuthMiddleware, cmsPermissionMiddleware('popup_config:read'), cmsPopupController.listPopups);
@@ -292,15 +370,132 @@ router.get('/cms/popup-events/export', cmsAuthMiddleware, cmsPermissionMiddlewar
 router.get('/cms/popup-global', cmsAuthMiddleware, cmsPermissionMiddleware('popup_global:read'), cmsPopupController.getGlobalConfig);
 router.put('/cms/popup-global', cmsAuthMiddleware, cmsPermissionMiddleware('popup_global:write'), cmsPopupController.updateGlobalConfig);
 
+// CMS 公告/消息中心管理
+router.get('/cms/announcements', cmsAuthMiddleware, cmsPermissionMiddleware('announcement:read'), cmsAnnouncementController.list);
+router.get('/cms/announcements/:id', cmsAuthMiddleware, cmsPermissionMiddleware('announcement:read'), cmsAnnouncementController.getById);
+router.post('/cms/announcements', cmsAuthMiddleware, cmsPermissionMiddleware('announcement:write'), cmsAnnouncementController.create);
+router.put('/cms/announcements/:id', cmsAuthMiddleware, cmsPermissionMiddleware('announcement:write'), cmsAnnouncementController.update);
+router.delete('/cms/announcements/:id', cmsAuthMiddleware, cmsPermissionMiddleware('announcement:write'), cmsAnnouncementController.remove);
+router.post('/cms/announcements/batch-status', cmsAuthMiddleware, cmsPermissionMiddleware('announcement:write'), cmsAnnouncementController.batchStatus);
+router.post('/cms/announcements/batch-delete', cmsAuthMiddleware, cmsPermissionMiddleware('announcement:write'), cmsAnnouncementController.batchDelete);
+
+router.get('/cms/notification-channels', cmsAuthMiddleware, cmsPermissionMiddleware('notification_channel:read'), cmsAnnouncementController.listChannels);
+router.put('/cms/notification-channels/:id', cmsAuthMiddleware, cmsPermissionMiddleware('notification_channel:write'), cmsAnnouncementController.updateChannel);
+
+// CMS 运营数据看板
+router.get('/cms/operation-stats/dashboard', cmsAuthMiddleware, cmsPermissionMiddleware('operation_stats:read'), cmsOperationStatsController.dashboard);
+router.get('/cms/operation-stats/announcements', cmsAuthMiddleware, cmsPermissionMiddleware('operation_stats:read'), cmsOperationStatsController.announcementStats);
+router.get('/cms/operation-stats/popups', cmsAuthMiddleware, cmsPermissionMiddleware('operation_stats:read'), cmsOperationStatsController.popupStats);
+router.get('/cms/operation-stats/templates', cmsAuthMiddleware, cmsPermissionMiddleware('operation_stats:read'), cmsOperationStatsController.templateStats);
+
 // 模板消息
 router.get('/chat/stats', authMiddleware, chatController.getChatStats);
 router.post('/chat/wakeup', authMiddleware, chatController.sendWakeupMessage);
+// 减重建议（首次完善资料/更新身体信息后进入聊聊页时触发）
+router.post('/chat/advice', authMiddleware, chatController.sendAdviceMessage);
+
+// CMS 宠物陪伴配置
+router.get('/cms/pet-config/global', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:read'), cmsPetController.getGlobal);
+router.put('/cms/pet-config/global', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.updateGlobal);
+
+// CMS 宠物时段与限制配置（三餐/运动/逛逛/喂食上限/运动上限）
+router.get('/cms/pet-config/schedules', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:read'), cmsPetController.getSchedules);
+router.put('/cms/pet-config/schedules', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.updateSchedules);
+
+// CMS 宠物形象配置（坐标/序列帧/播放速率）
+router.get('/cms/pet-config/sprite', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:read'), cmsPetController.getSprite);
+router.put('/cms/pet-config/sprite', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.updateSprite);
+
+// CMS 宠物场景配置（场景名称/时段背景图/比例）
+router.get('/cms/pet-config/scenes', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:read'), cmsPetController.getScenes);
+router.put('/cms/pet-config/scenes', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.updateScenes);
+
+router.get('/cms/pet-config/skins', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:read'), cmsPetController.listSkins);
+router.post('/cms/pet-config/skins', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.createSkin);
+router.put('/cms/pet-config/skins/:id', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.updateSkin);
+router.delete('/cms/pet-config/skins/:id', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.removeSkin);
+
+router.get('/cms/pet-config/states', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:read'), cmsPetController.listStates);
+router.post('/cms/pet-config/states', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.createState);
+router.put('/cms/pet-config/states/:id', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.updateState);
+router.delete('/cms/pet-config/states/:id', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.removeState);
+
+// CMS 宠物运动库配置
+router.get('/cms/pet-config/exercises', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:read'), cmsPetController.listExercises);
+router.post('/cms/pet-config/exercises', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.createExercise);
+router.put('/cms/pet-config/exercises/:id', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.updateExercise);
+router.delete('/cms/pet-config/exercises/:id', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.removeExercise);
+
+router.get('/cms/pet-config/dialogues', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:read'), cmsPetController.dialogues.list);
+router.post('/cms/pet-config/dialogues', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.dialogues.create);
+router.put('/cms/pet-config/dialogues/:id', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.dialogues.update);
+router.delete('/cms/pet-config/dialogues/:id', cmsAuthMiddleware, cmsPermissionMiddleware('pet_config:write'), cmsPetController.dialogues.remove);
+
+// CMS 货币经济配置
+router.get('/cms/currency-config/rules', cmsAuthMiddleware, cmsPermissionMiddleware('currency_config:read'), cmsCurrencyController.getRules);
+router.put('/cms/currency-config/rules', cmsAuthMiddleware, cmsPermissionMiddleware('currency_config:write'), cmsCurrencyController.updateRules);
+router.get('/cms/currency-config/analysis-cost', cmsAuthMiddleware, cmsPermissionMiddleware('currency_config:read'), cmsCurrencyController.getAnalysisCost);
+router.put('/cms/currency-config/analysis-cost', cmsAuthMiddleware, cmsPermissionMiddleware('currency_config:write'), cmsCurrencyController.updateAnalysisCost);
+router.get('/cms/currency-config/transactions', cmsAuthMiddleware, cmsPermissionMiddleware('currency_config:read'), cmsCurrencyController.listTransactions);
+router.post('/cms/currency-config/adjust', cmsAuthMiddleware, cmsPermissionMiddleware('currency_config:write'), cmsCurrencyController.adjust);
+
+// CMS 商城配置
+router.get('/cms/shop/items', cmsAuthMiddleware, cmsPermissionMiddleware('shop_config:read'), cmsShopController.list);
+router.post('/cms/shop/items', cmsAuthMiddleware, cmsPermissionMiddleware('shop_config:write'), cmsShopController.create);
+router.get('/cms/shop/items/:id', cmsAuthMiddleware, cmsPermissionMiddleware('shop_config:read'), cmsShopController.getById);
+router.put('/cms/shop/items/:id', cmsAuthMiddleware, cmsPermissionMiddleware('shop_config:write'), cmsShopController.update);
+router.delete('/cms/shop/items/:id', cmsAuthMiddleware, cmsPermissionMiddleware('shop_config:write'), cmsShopController.remove);
+
+// CMS 事件库配置
+router.get('/cms/events', cmsAuthMiddleware, cmsPermissionMiddleware('event_config:read'), cmsEventController.list);
+router.post('/cms/events', cmsAuthMiddleware, cmsPermissionMiddleware('event_config:write'), cmsEventController.create);
+// 事件集合配置（相册 tab 名称），需在 /cms/events/:id 之前注册避免被当作 id 匹配
+router.get('/cms/events/collections', cmsAuthMiddleware, cmsPermissionMiddleware('event_config:read'), cmsEventController.getCollections);
+router.post('/cms/events/collections', cmsAuthMiddleware, cmsPermissionMiddleware('event_config:write'), cmsEventController.createCollection);
+router.put('/cms/events/collections/:id', cmsAuthMiddleware, cmsPermissionMiddleware('event_config:write'), cmsEventController.updateCollection);
+router.delete('/cms/events/collections/:id', cmsAuthMiddleware, cmsPermissionMiddleware('event_config:write'), cmsEventController.removeCollection);
+router.get('/cms/events/:id', cmsAuthMiddleware, cmsPermissionMiddleware('event_config:read'), cmsEventController.getById);
+router.put('/cms/events/:id', cmsAuthMiddleware, cmsPermissionMiddleware('event_config:write'), cmsEventController.update);
+router.delete('/cms/events/:id', cmsAuthMiddleware, cmsPermissionMiddleware('event_config:write'), cmsEventController.remove);
+
+// CMS 陪你动课程库配置
+router.get('/cms/workouts', cmsAuthMiddleware, cmsPermissionMiddleware('workout_config:read'), cmsWorkoutController.list);
+router.post('/cms/workouts', cmsAuthMiddleware, cmsPermissionMiddleware('workout_config:write'), cmsWorkoutController.create);
+router.get('/cms/workouts/:id', cmsAuthMiddleware, cmsPermissionMiddleware('workout_config:read'), cmsWorkoutController.getById);
+router.put('/cms/workouts/:id', cmsAuthMiddleware, cmsPermissionMiddleware('workout_config:write'), cmsWorkoutController.update);
+router.put('/cms/workouts/:id/status', cmsAuthMiddleware, cmsPermissionMiddleware('workout_config:write'), cmsWorkoutController.toggleStatus);
+router.delete('/cms/workouts/:id', cmsAuthMiddleware, cmsPermissionMiddleware('workout_config:write'), cmsWorkoutController.remove);
+
+// CMS 任务配置
+router.get('/cms/tasks', cmsAuthMiddleware, cmsPermissionMiddleware('task_config:read'), cmsTaskController.list);
+router.post('/cms/tasks', cmsAuthMiddleware, cmsPermissionMiddleware('task_config:write'), cmsTaskController.create);
+router.get('/cms/tasks/:id', cmsAuthMiddleware, cmsPermissionMiddleware('task_config:read'), cmsTaskController.getById);
+router.put('/cms/tasks/:id', cmsAuthMiddleware, cmsPermissionMiddleware('task_config:write'), cmsTaskController.update);
+router.delete('/cms/tasks/:id', cmsAuthMiddleware, cmsPermissionMiddleware('task_config:write'), cmsTaskController.remove);
+
+// CMS 成就配置
+router.get('/cms/achievements', cmsAuthMiddleware, cmsPermissionMiddleware('achievement_config:read'), cmsAchievementController.list);
+router.post('/cms/achievements', cmsAuthMiddleware, cmsPermissionMiddleware('achievement_config:write'), cmsAchievementController.create);
+router.get('/cms/achievements/:id', cmsAuthMiddleware, cmsPermissionMiddleware('achievement_config:read'), cmsAchievementController.getById);
+router.put('/cms/achievements/:id', cmsAuthMiddleware, cmsPermissionMiddleware('achievement_config:write'), cmsAchievementController.update);
+router.delete('/cms/achievements/:id', cmsAuthMiddleware, cmsPermissionMiddleware('achievement_config:write'), cmsAchievementController.remove);
+
+// CMS 宠物对话独立入口
+router.get('/cms/dialogues', cmsAuthMiddleware, cmsPermissionMiddleware('dialogue_config:read'), cmsDialogueController.list);
+router.post('/cms/dialogues', cmsAuthMiddleware, cmsPermissionMiddleware('dialogue_config:write'), cmsDialogueController.create);
+router.get('/cms/dialogues/:id', cmsAuthMiddleware, cmsPermissionMiddleware('dialogue_config:read'), cmsDialogueController.getById);
+router.put('/cms/dialogues/:id', cmsAuthMiddleware, cmsPermissionMiddleware('dialogue_config:write'), cmsDialogueController.update);
+router.delete('/cms/dialogues/:id', cmsAuthMiddleware, cmsPermissionMiddleware('dialogue_config:write'), cmsDialogueController.remove);
 
 // 方法库
 router.get('/methods', authMiddleware, methodController.getMethods);
 router.post('/methods', authMiddleware, methodController.addMethod);
 router.put('/methods/:id', authMiddleware, methodController.updateMethod);
 router.delete('/methods/:id', authMiddleware, methodController.deleteMethod);
+
+// 语音输入/输出
+router.post('/voice/transcribe', authMiddleware, voiceController.transcribe);
+router.post('/voice/tts', authMiddleware, voiceController.textToSpeech);
 
 // 照片/对比墙
 router.get('/photos', authMiddleware, photoController.getPhotos);

@@ -17,7 +17,7 @@ export function goBack(fallbackUrl = '/pages/index/index') {
 
   // 没有可返回页面时，按 fallbackUrl 类型处理
   if (fallbackUrl) {
-    const tabPages = ['/pages/index/index', '/pages/record/index', '/pages/museum/index', '/pages/mine/index'];
+    const tabPages = ['/pages/index/index', '/pages/pet/index', '/pages/record/index', '/pages/museum/index'];
     if (tabPages.includes(fallbackUrl)) {
       uni.switchTab({ url: fallbackUrl });
     } else {

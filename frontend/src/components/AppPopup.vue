@@ -6,7 +6,7 @@
         <image
           v-if="!imageError"
           class="popup-center-image"
-          :src="popup.image_url"
+          :src="resolveStaticUrl(popup.image_url)"
           mode="aspectFit"
           @load="onImageLoad"
           @error="onImageError"
@@ -30,7 +30,7 @@
       <image
         v-if="!imageError"
         class="popup-top-image"
-        :src="popup.image_url"
+        :src="resolveStaticUrl(popup.image_url)"
         mode="widthFix"
         @load="onImageLoad"
         @error="onImageError"
@@ -46,6 +46,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
 import popupManager from '@/utils/popupManager';
+import { resolveStaticUrl } from '@/utils/environment';
 
 const visible = ref(false);
 const popup = ref({});

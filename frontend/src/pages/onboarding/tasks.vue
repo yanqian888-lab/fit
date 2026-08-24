@@ -18,19 +18,33 @@
       </view>
 
       <view class="task-list">
-        <view v-for="(task, index) in tasks" :key="index" class="task-item" :class="{ completed: task.completed }">
+        <view v-for="(task, index) in tasks" :key="task.task_key" class="task-item" :class="{ completed: task.status === 'completed' || task.status === 'claimed', claimed: task.status === 'claimed' }">
           <view class="task-day">DAY {{ index + 1 }}</view>
           <view class="task-main">
             <text class="task-title">{{ task.title }}</text>
-            <text class="task-desc">{{ task.desc }}</text>
+            <text class="task-desc">{{ task.description }}</text>
           </view>
-          <view class="task-check" @click="toggle(index)">
-            <text v-if="task.completed">✓</text>
+          <view class="task-check" @click="claim(task)">
+            <text v-if="task.status === 'claimed'">✓</text>
+            <text v-else-if="task.status === 'completed'" class="claim-text">领</text>
           </view>
         </view>
       </view>
 
       <AppButton block type="primary" @click="finish">进入首页</AppButton>
+    </view>
+
+    <!-- 奖励回执弹层 -->
+    <view v-if="receiptVisible" class="receipt-mask" @click="closeReceipt">
+      <view class="receipt-panel" @click.stop>
+        <image class="receipt-avatar" src="/static/image/icon/celebrate01.jpg" mode="aspectFit" />
+        <text class="receipt-title">搭搭给你发奖励啦</text>
+        <text class="receipt-content">{{ receipt.content }}</text>
+        <view class="receipt-rewards">
+          <text v-if="receipt.berries" class="receipt-reward">🫐 {{ receipt.berries }} 浆果</text>
+        </view>
+        <view class="receipt-btn" @click="closeReceipt">开心收下</view>
+      </view>
     </view>
   </AppPage>
 </template>
@@ -40,29 +54,48 @@ import { ref, computed, onMounted } from 'vue';
 import AppPage from '../../components/AppPage.vue';
 import AppHeader from '../../components/AppHeader.vue';
 import AppButton from '../../components/AppButton.vue';
+import { newbieTaskApi } from '../../api';
 
-const tasks = ref([
-  { title: '和搭子打声招呼', desc: '发送第一条消息，让搭子认识你', completed: false },
-  { title: '记录今日饮食', desc: '记录早餐或午餐，体验聊天即记录', completed: false },
-  { title: '记录一次运动', desc: '跑步、散步、瑜伽都可以', completed: false },
-  { title: '称一次体重', desc: '记录当前体重，开启追踪', completed: false },
-  { title: '收藏一条金句', desc: '把搭子的话收藏进博物馆', completed: false },
-  { title: '查看博物馆', desc: '浏览时间轴，回顾进步', completed: false },
-  { title: '完成 3 天打卡', desc: '连续记录，养成习惯', completed: false }
-]);
+const tasks = ref([]);
+const receiptVisible = ref(false);
+const receipt = ref({ content: '', berries: 0 });
 
-const completedCount = computed(() => tasks.value.filter(t => t.completed).length);
+const completedCount = computed(() => tasks.value.filter(t => t.status === 'completed' || t.status === 'claimed').length);
 
 onMounted(() => {
-  const stored = uni.getStorageSync('newbieTasks');
-  if (stored) tasks.value = JSON.parse(stored);
+  load();
 });
 
-function toggle(index) {
-  tasks.value[index].completed = !tasks.value[index].completed;
-  uni.setStorageSync('newbieTasks', JSON.stringify(tasks.value));
-  if (completedCount.value === tasks.value.length) {
-    uni.showToast({ title: '恭喜完成全部任务！', icon: 'none' });
+async function load() {
+  try {
+    const res = await newbieTaskApi.list();
+    tasks.value = res.data.list || [];
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function showReceipt(data) {
+  if (!data || !data.content) return;
+  receipt.value = {
+    content: data.content,
+    berries: data.berries || 0
+  };
+  receiptVisible.value = true;
+}
+
+function closeReceipt() {
+  receiptVisible.value = false;
+}
+
+async function claim(task) {
+  if (task.status !== 'completed') return;
+  try {
+    const res = await newbieTaskApi.claim(task.task_key);
+    showReceipt(res.data?.receipt_message);
+    load();
+  } catch (e) {
+    uni.showToast({ title: e.message || '领取失败', icon: 'none' });
   }
 }
 
@@ -154,6 +187,69 @@ function finish() {
   background: $mint-light;
 }
 
+.task-item.claimed {
+  opacity: 1;
+}
+.receipt-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.receipt-panel {
+  width: 280px;
+  background: #fff;
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.receipt-avatar {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 12px;
+}
+.receipt-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 10px;
+}
+.receipt-content {
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.receipt-rewards {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.receipt-reward {
+  font-size: 14px;
+  color: #e6a23c;
+  font-weight: 500;
+}
+.receipt-btn {
+  width: 100%;
+  padding: 12px 0;
+  background: #8DBB77;
+  color: #fff;
+  text-align: center;
+  border-radius: 22px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .task-day {
   width: 80rpx;
   font-size: $text-xs;
@@ -193,6 +289,16 @@ function finish() {
 }
 
 .task-item.completed .task-check {
+  background: rgba($mint, 0.2);
+  color: $mint;
+}
+
+.task-item.claimed .task-check {
   background: $mint;
+  color: $white;
+}
+
+.claim-text {
+  font-size: 20rpx;
 }
 </style>

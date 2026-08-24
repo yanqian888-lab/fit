@@ -17,7 +17,7 @@ function toNumber(value, fallback = 0) {
  */
 function list(req, res) {
   const page = parseInt(req.query.page) || 1;
-  const size = parseInt(req.query.size) || 20;
+  const size = Math.min(100, Math.max(1, parseInt(req.query.size) || 20));
   const offset = (page - 1) * size;
   const keyword = req.query.keyword || '';
   const category = req.query.category || '';
@@ -46,10 +46,26 @@ function list(req, res) {
     LIMIT ? OFFSET ?
   `).all(...params, size, offset);
 
+  // 分类与子分类映射从实际数据聚合（子分类下拉随分类联动）
+  const catRows = db.prepare(`
+    SELECT DISTINCT category, sub_category FROM exercise_db
+    WHERE category IS NOT NULL AND category != ''
+    ORDER BY category ASC, sub_category ASC
+  `).all();
+  const subCategoryMap = {};
+  for (const r of catRows) {
+    if (!subCategoryMap[r.category]) subCategoryMap[r.category] = [];
+    if (r.sub_category) subCategoryMap[r.category].push(r.sub_category);
+  }
+  const categories = Object.keys(subCategoryMap);
+  // 库里还没有任何运动时，回退到内置默认分类
+  const finalCategories = categories.length > 0 ? categories : CATEGORIES;
+
   return res.json(success({
     list,
     pagination: { page, size, total, has_more: total > page * size },
-    categories: CATEGORIES
+    categories: finalCategories,
+    subCategories: subCategoryMap
   }));
 }
 

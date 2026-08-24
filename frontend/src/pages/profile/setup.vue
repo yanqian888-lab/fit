@@ -7,7 +7,8 @@
       </view>
 
       <view class="form-card">
-        <AppInput v-model="form.nickname" label="昵称" placeholder="怎么称呼你" />
+        <!-- type="nickname"：小程序端调起微信昵称快捷填写；H5/App 端按普通文本处理 -->
+        <AppInput v-model="form.nickname" label="昵称" type="nickname" placeholder="请输入你的昵称" />
         <view class="form-row">
           <view class="form-item">
             <text class="input-label">性别 *</text>
@@ -27,15 +28,15 @@
         <AppInput v-model="form.target_weight" label="目标体重 *" type="digit" placeholder="请输入体重" suffix="kg" />
         <view class="form-item">
           <text class="input-label">目标日期 *</text>
-          <picker mode="date" :value="form.target_date" @change="onDateChange">
+          <picker mode="date" :value="form.target_date" :start="today" @change="onDateChange">
             <view class="picker">{{ form.target_date || '请选择目标日期' }}</view>
           </picker>
         </view>
       </view>
 
       <AppButton block size="lg" :loading="loading" @click="submit">下一步</AppButton>
-      
-      <!-- 未登录用户显示跳过按钮 -->
+
+      <!-- 未登录用户显示跳过按钮（登录前引导流程） -->
       <view v-if="!isLoggedIn" class="skip-wrap">
         <text class="skip-btn" @click="skip">跳过，先去登录</text>
       </view>
@@ -71,11 +72,13 @@ const form = ref({
 });
 
 // 如果已登录，预填充已有信息
+// 后端默认昵称（掉秤搭搭用户/减肥搭子用户）不视为真实昵称，不预填，让用户手动输入或选微信昵称
+const DEFAULT_NICKNAMES = ['掉秤搭搭用户', '减肥搭子用户'];
 onMounted(async () => {
   if (isLoggedIn.value && userStore.userInfo) {
     const user = userStore.userInfo;
     const profile = user.profile || {};
-    form.value.nickname = user.nickname || '';
+    form.value.nickname = user.nickname && !DEFAULT_NICKNAMES.includes(user.nickname) ? user.nickname : '';
     form.value.gender = user.gender || null;
     form.value.birth_date = user.birth_date || '';
     form.value.height = user.height ? String(user.height) : '';
@@ -151,7 +154,12 @@ async function submit() {
       await userStore.fetchUserInfo();
       uni.showToast({ title: '保存成功', icon: 'success' });
       setTimeout(() => {
-        uni.switchTab({ url: '/pages/index/index' });
+        const settings = userStore.userInfo?.settings || uni.getStorageSync('settings') || {};
+        if (!settings.guide_completed) {
+          uni.redirectTo({ url: '/pages/partner/select-mode' });
+        } else {
+          uni.switchTab({ url: '/pages/index/index' });
+        }
       }, 1000);
     } catch (err) {
       console.error(err);
@@ -176,7 +184,7 @@ function skip() {
 <style lang="scss" scoped>
 .setup-page {
   position: relative;
-  padding-top: 100rpx;
+  padding-top: 60rpx;
 }
 
 .page-header {

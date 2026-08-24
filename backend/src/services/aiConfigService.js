@@ -1,8 +1,21 @@
 /**
  * AI 配置管理 & 基于 Prompt Key 的调用链
+ * 支持腾讯云 TokenHub Hy3 思考模式映射
  */
 const OpenAI = require('openai');
 const { db } = require('../db');
+
+/**
+ * PromptKey → Hy3 thinking_mode 映射表
+ * 主Agent: no_think（极速响应聊天）
+ * Helper: think_high（深度推理专业计算）
+ * 沉淀: no_think（快速结构化提取）
+ */
+const PROMPT_THINKING_MODE_MAP = {
+  main_agent: 'no_think',
+  helper_agent: 'think_high',
+  precipitation_agent: 'no_think'
+};
 
 function maskApiKey(key) {
   if (!key) return '';
@@ -58,13 +71,13 @@ function create(data) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.name,
-    data.provider || 'doubao',
-    data.base_url || 'https://ark.cn-beijing.volces.com/api/v3',
+    data.provider || 'hunyuan',
+    data.base_url || 'https://tokenhub.tencentmaas.com/v1',
     data.api_key,
     data.endpoint_id,
     data.temperature ?? 0.7,
-    data.max_tokens ?? 500,
-    data.timeout_ms ?? 30000,
+    data.max_tokens ?? 1000,
+    data.timeout_ms ?? 60000,
     data.role || 'primary',
     data.sort_order ?? 0,
     data.is_enabled !== undefined ? (data.is_enabled ? 1 : 0) : 1
@@ -154,6 +167,19 @@ function getCallChain(promptKey) {
   return chain;
 }
 
+/**
+ * 判断当前配置是否为腾讯云 Hy3 模型
+ * 依据：provider 含 hunyuan/tencent 或 endpoint_id 为 hy3/Hy3
+ */
+function isHy3Config(cfg) {
+  const provider = String(cfg.provider || '').toLowerCase();
+  const endpoint = String(cfg.endpoint_id || '').toLowerCase();
+  return provider.includes('hunyuan') ||
+         provider.includes('tencent') ||
+         provider.includes('hy3') ||
+         endpoint === 'hy3';
+}
+
 async function callWithPrompt(promptKey, messages, options = {}) {
   const chain = getCallChain(promptKey);
   if (chain.length === 0) {
@@ -176,6 +202,17 @@ async function callWithPrompt(promptKey, messages, options = {}) {
     if (options.response_format) {
       requestOptions.response_format = options.response_format;
     }
+
+    // 腾讯云 Hy3：根据 promptKey 自动注入 thinking_mode
+    // 调用方也可以通过 options.thinking_mode 显式覆盖
+    if (isHy3Config(cfg)) {
+      const thinkingMode = options.thinking_mode || PROMPT_THINKING_MODE_MAP[promptKey];
+      if (thinkingMode) {
+        requestOptions.thinking_mode = thinkingMode;
+        console.log(`[callWithPrompt:${promptKey}] Hy3 使用思考模式: ${thinkingMode}`);
+      }
+    }
+
     try {
       const response = await client.chat.completions.create(requestOptions);
       console.log(`[callWithPrompt:${promptKey}] 使用配置 ${cfg.name} 调用成功`);

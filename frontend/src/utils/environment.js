@@ -73,3 +73,22 @@ export function getEnvLabel(env) {
   };
   return labels[env] || env;
 }
+
+/**
+ * 解析静态资源URL为完整可访问地址
+ * 后端存储的是相对路径（如 /static/uploads/xxx.jpg），
+ * 需要在前端拼上后端服务地址才能正常加载
+ * @param {string} url - 原始URL（可能是相对路径或完整URL）
+ * @returns {string} 完整可访问的URL
+ */
+export function resolveStaticUrl(url) {
+  if (!url) return '';
+  // 已经是完整URL，直接返回
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  // 以 // 开头的协议相对URL
+  if (url.startsWith('//')) return url;
+  // 相对路径，拼接服务器地址
+  const serverUrl = getServerUrl().replace(/\/$/, '');
+  const path = url.startsWith('/') ? url : `/${url}`;
+  return `${serverUrl}${path}`;
+}

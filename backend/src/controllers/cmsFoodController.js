@@ -25,7 +25,7 @@ function toNumber(value, fallback = 0) {
  */
 function list(req, res) {
   const page = parseInt(req.query.page) || 1;
-  const size = parseInt(req.query.size) || 20;
+  const size = Math.min(100, Math.max(1, parseInt(req.query.size) || 20));
   const offset = (page - 1) * size;
   const keyword = req.query.keyword || '';
   const category = req.query.category || '';

@@ -7,7 +7,8 @@ import { post, get } from './request.js';
 const DEVICE_ID_KEY = 'trial_device_id';
 const CONFIG_CACHE_KEY = 'trial_config_cache';
 const CONFIG_CACHE_AT_KEY = 'trial_config_cache_at';
-const CONFIG_CACHE_TTL_MS = 60 * 60 * 1000; // 1小时
+const CONFIG_CACHE_TTL_MS = 60 * 1000; // 修复：统一为1分钟，与后端一致
+const CONFIG_MAX_AGE_MS = 5 * 60 * 1000; // 最大缓存时间5分钟
 
 const VALID_FEATURES = ['ai_chat', 'diary'];
 
@@ -66,23 +67,90 @@ export function clearConfigCache() {
 
 /**
  * 从后端拉取全量配置并缓存
+ * 修复：改进异常处理，添加缓存验证
  */
 export async function fetchConfig() {
   try {
     const res = await get('/trial/get-config');
     const config = res.data || {};
+    
+    if (!config || typeof config !== 'object') {
+      throw new Error('配置数据格式错误');
+    }
+    
+    if (!validateConfig(config)) {
+      throw new Error('配置数据验证失败');
+    }
+    
     uni.setStorageSync(CONFIG_CACHE_KEY, JSON.stringify(config));
     uni.setStorageSync(CONFIG_CACHE_AT_KEY, Date.now().toString());
+    
+    console.log('[trial] 配置已更新', config);
     return config;
   } catch (e) {
     console.error('[trial] 拉取配置失败', e);
-    // 异常时读取旧缓存兜底
-    return getCachedConfig();
+    
+    const cached = getCachedConfig();
+    if (cached && validateConfig(cached)) {
+      const cachedAt = parseInt(uni.getStorageSync(CONFIG_CACHE_AT_KEY) || '0', 10);
+      const age = Date.now() - cachedAt;
+      
+      if (age < CONFIG_MAX_AGE_MS) {
+        console.log('[trial] 使用缓存配置（未过期）');
+        return cached;
+      } else {
+        console.warn('[trial] 缓存已过期，返回默认配置');
+        return getDefaultConfig();
+      }
+    }
+    
+    return getDefaultConfig();
   }
 }
 
 /**
+ * 获取默认配置
+ */
+function getDefaultConfig() {
+  return {
+    global_enabled: false,
+    grayscale_percent: 0,
+    features: {
+      ai_chat: { enabled: true, threshold: 30 },
+      diary: { enabled: true, threshold: 2 }
+    },
+    popup: {}
+  };
+}
+
+/**
+ * 验证配置数据完整性
+ * 修复：添加配置验证，确保数据正确性
+ */
+function validateConfig(config) {
+  if (!config || typeof config !== 'object') {
+    return false;
+  }
+  
+  const requiredFields = ['global_enabled', 'grayscale_percent', 'features'];
+  for (const field of requiredFields) {
+    if (!(field in config)) {
+      console.warn(`[trial] 配置缺少必需字段: ${field}`);
+      return false;
+    }
+  }
+  
+  if (!config.features || typeof config.features !== 'object') {
+    console.warn('[trial] 配置features字段格式错误');
+    return false;
+  }
+  
+  return true;
+}
+
+/**
  * 获取本地缓存配置
+ * 修复：添加数据验证
  */
 export function getCachedConfig() {
   try {
@@ -90,9 +158,22 @@ export function getCachedConfig() {
     if (Date.now() - cachedAt > CONFIG_CACHE_TTL_MS) {
       return null;
     }
+    
     const raw = uni.getStorageSync(CONFIG_CACHE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    
+    const config = JSON.parse(raw);
+    
+    if (!config || typeof config !== 'object') {
+      console.warn('[trial] 缓存数据损坏，清除缓存');
+      clearConfigCache();
+      return null;
+    }
+    
+    return config;
   } catch (e) {
+    console.error('[trial] 解析缓存失败', e);
+    clearConfigCache();
     return null;
   }
 }

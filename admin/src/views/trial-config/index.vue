@@ -222,7 +222,16 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="值">
-          <el-input v-model="whitelistForm.value" placeholder="用户ID/账号、版本号或IP" />
+          <div style="display:flex;gap:8px;width:100%;">
+            <el-input v-model="whitelistForm.value" :placeholder="whitelistForm.type === 'user' ? '用户账号或ID' : '版本号或IP'" style="flex:1;" @input="lookupState = ''" />
+            <el-button v-if="whitelistForm.type === 'user'" :loading="lookupLoading" @click="lookupUserAccount">查找</el-button>
+          </div>
+          <div v-if="whitelistForm.type === 'user' && lookupState === 'found'" class="lookup-result found">
+            ✓ 已找到用户：{{ lookupResult.nickname || '-' }}（账号 {{ lookupResult.username }}）
+          </div>
+          <div v-else-if="whitelistForm.type === 'user' && lookupState === 'notfound'" class="lookup-result notfound">
+            ✗ 库中没有该用户，无法添加白名单
+          </div>
         </el-form-item>
         <el-form-item label="过期时间">
           <el-date-picker v-model="whitelistForm.expire_at" type="datetime" placeholder="永久则留空" value-format="YYYY-MM-DD HH:mm:ss" />
@@ -309,7 +318,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { cmsTrialApi } from '../../api/cms.js'
+import { cmsTrialApi, cmsAppUserApi } from '../../api/cms.js'
 
 const activeTab = ref('config')
 const config = reactive({
@@ -347,6 +356,10 @@ const whitelistTotal = ref(0)
 const whitelistQuery = reactive({ type: '', page: 1, size: 20 })
 const whitelistDialogVisible = ref(false)
 const whitelistForm = reactive({ type: 'user', value: '', expire_at: '', remark: '' })
+// 用户账号查找校验（库中无此用户则不允许添加）
+const lookupState = ref('') // '' | 'found' | 'notfound'
+const lookupResult = ref(null)
+const lookupLoading = ref(false)
 const batchDialogVisible = ref(false)
 const batchForm = reactive({ type: 'user', values: '', expire_at: '', remark: '' })
 
@@ -364,7 +377,12 @@ const auditForm = reactive({ app_version: '' })
 async function loadConfig() {
   try {
     const res = await cmsTrialApi.getConfig()
-    Object.assign(config, res.data)
+    // 接口数值字段是字符串，滑杆/数字输入绑定前统一转 Number，避免显示回退为 0 后被误保存
+    const data = { ...res.data }
+    for (const k of Object.keys(data)) {
+      if (typeof data[k] === 'string' && data[k] !== '' && !isNaN(Number(data[k]))) data[k] = Number(data[k])
+    }
+    Object.assign(config, data)
   } catch (e) {
     ElMessage.error('加载配置失败')
   }
@@ -411,12 +429,44 @@ function openWhitelistDialog() {
   whitelistForm.value = ''
   whitelistForm.expire_at = ''
   whitelistForm.remark = ''
+  lookupState.value = ''
+  lookupResult.value = null
   whitelistDialogVisible.value = true
+}
+
+// 用户账号查找：与后端 checkUserExists 一致（username 或 id 精确匹配）
+async function lookupUserAccount() {
+  const value = (whitelistForm.value || '').trim()
+  if (!value) return ElMessage.warning('请输入用户账号')
+  lookupLoading.value = true
+  lookupState.value = ''
+  try {
+    const res = await cmsAppUserApi.list({ keyword: value, page: 1, size: 20 })
+    const match = (res.data?.list || []).find(u => u.username === value || String(u.id) === value)
+    if (match) {
+      lookupState.value = 'found'
+      lookupResult.value = match
+    } else {
+      lookupState.value = 'notfound'
+      lookupResult.value = null
+    }
+  } finally {
+    lookupLoading.value = false
+  }
 }
 
 async function saveWhitelist() {
   if (!whitelistForm.value) {
     return ElMessage.warning('请输入值')
+  }
+  // 用户账号类型：必须先查找并确认用户存在
+  if (whitelistForm.type === 'user') {
+    if (lookupState.value !== 'found') {
+      await lookupUserAccount()
+    }
+    if (lookupState.value !== 'found') {
+      return ElMessage.error('库中没有该用户，无法添加白名单')
+    }
   }
   try {
     await cmsTrialApi.createWhitelist(whitelistForm)
@@ -553,5 +603,15 @@ onMounted(() => {
   margin-left: 12px;
   color: #999;
   font-size: 13px;
+}
+.lookup-result {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.lookup-result.found {
+  color: #67c23a;
+}
+.lookup-result.notfound {
+  color: #f56c6c;
 }
 </style>

@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { db } = require('../db');
+const { safeJsonParse } = require('./safeJson');
 
 const publicDir = path.join(__dirname, '../../public');
 
@@ -47,13 +48,9 @@ function deleteUserLocalFiles(userId) {
   const feedbackRows = db.prepare('SELECT images FROM feedback WHERE user_id = ?').all(userId);
   for (const row of feedbackRows) {
     if (!row.images) continue;
-    try {
-      const images = JSON.parse(row.images);
-      if (Array.isArray(images)) {
-        images.forEach(safeDeleteLocalFile);
-      }
-    } catch (e) {
-      // ignore
+    const images = safeJsonParse(row.images, []);
+    if (Array.isArray(images)) {
+      images.forEach(safeDeleteLocalFile);
     }
   }
 }

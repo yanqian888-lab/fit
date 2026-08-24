@@ -1,7 +1,7 @@
 <template>
   <el-container class="layout">
     <el-aside width="220px" class="sidebar">
-      <div class="logo">减肥搭子 CMS</div>
+      <div class="logo">掉秤搭搭 CMS</div>
       <el-menu :default-active="activeMenu" router class="menu" background-color="#ffffff" text-color="#333" active-text-color="#8DBB77">
         <template v-for="item in menuList" :key="item.path">
           <el-sub-menu v-if="item.children && item.children.length" :index="item.path">

@@ -18,14 +18,15 @@
       </view>
 
       <view class="gauge-wrap">
-        <svg viewBox="0 0 300 170" class="gauge-arc">
-          <!-- 刻度圈 -->
-          <path d="M 55 145 A 95 95 0 0 1 245 145" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" stroke-dasharray="4 8" stroke-linecap="round" />
-          <!-- 白色轨道 -->
-          <path d="M 40 145 A 110 110 0 0 1 260 145" fill="none" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" />
-          <!-- 绿色进度 -->
-          <path d="M 40 145 A 110 110 0 0 1 260 145" fill="none" stroke="#8DBB77" stroke-width="18" stroke-linecap="round" :stroke-dasharray="arcLength" :stroke-dashoffset="arcOffset" />
-        </svg>
+        <view class="gauge-arc">
+          <!-- 白色轨道（半圆，下半部分被容器截断） -->
+          <view class="gauge-track"></view>
+          <!-- 绿色进度弧（conic-gradient 上半圆） -->
+          <view
+            class="gauge-progress"
+            :style="{ background: `conic-gradient(from 270deg, #8DBB77 ${gaugeProgressDeg}deg, rgba(255,255,255,0) ${gaugeProgressDeg}deg 180deg, rgba(255,255,255,0) 180deg 360deg)` }"
+          ></view>
+        </view>
         <view class="gauge-info gauge-info-left">
           <text class="gauge-label">初始体重</text>
           <text class="gauge-value">{{ formatWeight(overview.initial_weight) }}kg</text>
@@ -105,10 +106,10 @@ const todayDate = computed(() => {
   return `${year}年${month}月${date}日 · ${weekdays[d.getDay()]}`;
 });
 
-const arcLength = 345.575; // π * 110（半圆弧长）
-const arcOffset = computed(() => {
+// 仪表盘进度角（半圆 = 180°，小程序用 conic-gradient 模拟）
+const gaugeProgressDeg = computed(() => {
   const p = Math.max(0, Math.min(100, overview.value.completion_rate || 0));
-  return arcLength * (1 - p / 100);
+  return 180 * p / 100;
 });
 
 const statsList = computed(() => [
@@ -188,7 +189,7 @@ async function saveTargetWeight() {
 onMounted(load);
 onShow(() => {
   load();
-  uni.$emit('tabbar-select', 2);
+  uni.$emit('tabbar-select', 3);
   uni.hideTabBar({ animation: false }).catch(() => {});
 });
 </script>
@@ -203,6 +204,10 @@ onShow(() => {
 
 .status-bar {
   height: var(--status-bar-height);
+  /* #ifdef MP-WEIXIN */
+  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
+  height: calc(var(--status-bar-height) + 88rpx);
+  /* #endif */
 }
 
 .page-header {
@@ -277,9 +282,29 @@ onShow(() => {
   left: 50%;
   transform: translateX(-50%);
   width: 70%;
-  height: auto;
+  /* 维持原 viewBox 300:170 比例，圆下半部分由 overflow 截断 */
+  aspect-ratio: 300 / 170;
   z-index: 1;
+  overflow: hidden;
 }
+
+/* 半圆轨道：圆心贴容器底部中心，上半圆可见 */
+.gauge-track,
+.gauge-progress {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+
+.gauge-track {
+  background: #FFFFFF;
+}
+
+/* .gauge-progress 由内联 style 注入 conic-gradient 进度，from 270deg 让 0° 起点在 9 点钟方向 */
 
 .gauge-info {
   position: absolute;

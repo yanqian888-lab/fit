@@ -18,23 +18,35 @@
       </view>
       <view class="form-item">
         <text class="form-label">密码</text>
-        <input
-          v-model="form.password"
-          class="form-input"
-          type="password"
-          placeholder="请设置6位密码"
-          maxlength="6"
-        />
+        <view class="password-wrap">
+          <input
+            v-model="form.password"
+            class="form-input password-input"
+            :password="!showPassword"
+            placeholder="请设置6位以上字母+数字组合密码"
+            maxlength="20"
+          />
+          <view class="eye-toggle" @click="showPassword = !showPassword">
+            <image v-if="showPassword" class="eye-icon" src="/static/image/icon/eye_open.svg" mode="aspectFit" />
+            <image v-else class="eye-icon" src="/static/image/icon/eye_close.svg" mode="aspectFit" />
+          </view>
+        </view>
       </view>
       <view class="form-item">
         <text class="form-label">确认密码</text>
-        <input
-          v-model="form.confirmPassword"
-          class="form-input"
-          type="password"
-          placeholder="请再次输入密码"
-          maxlength="6"
-        />
+        <view class="password-wrap">
+          <input
+            v-model="form.confirmPassword"
+            class="form-input password-input"
+            :password="!showConfirmPassword"
+            placeholder="请再次输入密码"
+            maxlength="20"
+          />
+          <view class="eye-toggle" @click="showConfirmPassword = !showConfirmPassword">
+            <image v-if="showConfirmPassword" class="eye-icon" src="/static/image/icon/eye_open.svg" mode="aspectFit" />
+            <image v-else class="eye-icon" src="/static/image/icon/eye_close.svg" mode="aspectFit" />
+          </view>
+        </view>
       </view>
       <view class="form-item">
         <text class="form-label">手机号</text>
@@ -71,6 +83,10 @@ const form = ref({
   phone: ''
 });
 
+// 密码明文/密文切换（默认关闭，点击小眼睛查看）
+const showPassword = ref(false);
+const showConfirmPassword = ref(false);
+
 onMounted(() => {
   const pages = getCurrentPages();
   const currentPage = pages[pages.length - 1];
@@ -87,6 +103,10 @@ const USERNAME_REGEX = /^[a-zA-Z0-9]{6,10}$/;
 function validateUsernameCombo(username) {
   return USERNAME_REGEX.test(username) && /[a-zA-Z]/.test(username) && /[0-9]/.test(username);
 }
+const PASSWORD_REGEX = /^[a-zA-Z0-9]{6,12}$/;
+function validatePassword(password) {
+  return PASSWORD_REGEX.test(password) && /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
+}
 
 async function register() {
   const { username, password, confirmPassword, phone } = form.value;
@@ -99,8 +119,8 @@ async function register() {
     uni.showToast({ title: '账号需同时包含字母和数字', icon: 'none' });
     return;
   }
-  if (!password || password.length !== 6) {
-    uni.showToast({ title: '请输入6位密码', icon: 'none' });
+  if (!validatePassword(password)) {
+    uni.showToast({ title: '请输入6-12位数字+字母密码', icon: 'none' });
     return;
   }
   if (password !== confirmPassword) {
@@ -178,6 +198,30 @@ async function register() {
   padding: 0 24rpx;
   font-size: 28rpx;
   box-sizing: border-box;
+}
+
+.password-wrap {
+  position: relative;
+}
+
+.password-input {
+  padding-right: 88rpx;
+}
+
+.eye-toggle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 88rpx;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eye-icon {
+  width: 36rpx;
+  height: 36rpx;
 }
 
 .register-btn {

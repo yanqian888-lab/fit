@@ -46,6 +46,18 @@
     </scroll-view>
 
     <view class="add-method-btn" @click="goAdd">添加方法</view>
+
+    <!-- 删除确认弹框 -->
+    <AppModal
+      v-model:visible="showDeleteModal"
+      icon="none"
+      title="确认删除"
+      text="删除后无法恢复"
+      confirmText="删除"
+      confirmDanger
+      cancelText="取消"
+      @confirm="confirmDelete"
+    />
   </view>
 </template>
 
@@ -56,9 +68,14 @@ import { museumApi } from '../../api';
 import { goBack as navigateBack } from '../../utils/navigate';
 import AppEmpty from '../../components/AppEmpty.vue';
 import AppLoadMore from '../../components/AppLoadMore.vue';
+import AppModal from '../../components/AppModal.vue';
 import { formatDateTime } from '../../utils/date';
 
 const statusBarHeight = ref(44);
+
+// 删除确认弹框状态
+const showDeleteModal = ref(false);
+let pendingDeleteId = null;
 
 function goBack() {
   navigateBack('/pages/museum/index');
@@ -126,20 +143,24 @@ function goAdd() {
 }
 
 async function remove(id) {
-  uni.showModal({
-    title: '确认删除',
-    content: '删除后无法恢复',
-    confirmColor: '#E57373',
-    success: async (res) => {
-      if (!res.confirm) return;
-      try {
-        await museumApi.deleteItem(id);
-        load();
-      } catch (err) {
-        uni.showToast({ title: '删除失败', icon: 'none' });
-      }
-    }
-  });
+  pendingDeleteId = id;
+  showDeleteModal.value = true;
+}
+
+/**
+ * 确认删除方法
+ */
+async function confirmDelete() {
+  showDeleteModal.value = false;
+  const id = pendingDeleteId;
+  pendingDeleteId = null;
+  if (id == null) return;
+  try {
+    await museumApi.deleteItem(id);
+    load();
+  } catch (err) {
+    uni.showToast({ title: '删除失败', icon: 'none' });
+  }
 }
 
 </script>

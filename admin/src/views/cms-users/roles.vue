@@ -57,7 +57,14 @@ const allPermissions = [
   'food_lib:read', 'food_lib:write',
   'exercise_lib:read', 'exercise_lib:write',
   'cms_user:read', 'cms_user:write',
-  'log:read'
+  'log:read',
+  'pet_config:read', 'pet_config:write',
+  'currency_config:read', 'currency_config:write',
+  'shop_config:read', 'shop_config:write',
+  'event_config:read', 'event_config:write',
+  'task_config:read', 'task_config:write',
+  'achievement_config:read', 'achievement_config:write',
+  'dialogue_config:read', 'dialogue_config:write'
 ]
 
 const loading = ref(false)

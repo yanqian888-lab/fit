@@ -38,37 +38,88 @@ loadEnvFile(defaultEnvFile, { override: false, skipPlaceholder: true });
 // 但跳过形如 your-* / xxxxx / change-in-production 的占位符，防止覆盖真实密钥
 loadEnvFile(envFile, { override: true, skipPlaceholder: true });
 
+/**
+ * 获取/生成一个跨进程共享且持久化的 JWT 密钥。
+ * - 优先使用显式配置的环境变量 JWT_SECRET
+ * - 若未配置（或为占位符），则尝试读取 projectRoot/.jwt-secret.txt
+ * - 若文件也不存在，则生成一个安全随机密钥并写入该文件
+ * 这样即使 PM2 多 worker 并发启动，也能共享同一个 secret，
+ * 避免 A 进程签发的 token 到 B 进程 verify 失败（导致随机401"登录已过期"）。
+ */
+function resolveJwtSecret(env, projectRoot, isPlaceholderFn) {
+  const explicit = process.env.JWT_SECRET;
+  if (explicit && !isPlaceholderFn(explicit)) return explicit;
+
+  if (env === 'production' && (!explicit || isPlaceholderFn(explicit))) {
+    // 生产环境仍然强制显式配置，避免误部署
+    throw new Error('[FATAL] 生产环境必须在 .env 或系统环境变量中显式配置 JWT_SECRET，且不能使用占位符值');
+  }
+
+  const secretFile = path.join(projectRoot, '.jwt-secret.txt');
+  try {
+    if (fs.existsSync(secretFile)) {
+      const saved = fs.readFileSync(secretFile, 'utf8').trim();
+      if (saved && saved.length >= 16) return saved;
+    }
+    // 生成一个安全的随机密钥并持久化
+    const crypto = require('crypto');
+    const newSecret = crypto.randomBytes(48).toString('base64url');
+    try { fs.mkdirSync(path.dirname(secretFile), { recursive: true }); } catch (_) {}
+    try { fs.writeFileSync(secretFile, newSecret, { mode: 0o600 }); } catch (_) {}
+    // 顺便同步到 .env（如果 .env 文件存在且里面没有 JWT_SECRET 行）
+    try {
+      if (fs.existsSync(defaultEnvFile)) {
+        const dotenvContent = fs.readFileSync(defaultEnvFile, 'utf8');
+        if (!/^\s*JWT_SECRET\s*=/m.test(dotenvContent)) {
+          fs.appendFileSync(defaultEnvFile, `\n# 自动生成的 JWT 持久化密钥（PM2多worker共享）\nJWT_SECRET=${newSecret}\n`);
+        }
+      }
+    } catch (_) {}
+    console.warn(`[INFO] ${env} 环境未显式配置 JWT_SECRET，已生成持久化密钥并保存到 ${secretFile}（多进程共享）`);
+    return newSecret;
+  } catch (e) {
+    // 极端兜底：如果文件也写不了（只读文件系统）就崩溃退出，避免 Math.random 型 bug
+    throw new Error(`[FATAL] 无法解析 JWT 密钥且无法生成持久化密钥: ${e.message}`);
+  }
+}
+
+// JWT 密钥：生产环境必须显式配置；开发/测试环境若缺失则生成持久化共享密钥（防止多 worker 不一致）
+const jwtSecret = resolveJwtSecret(env, projectRoot, isPlaceholder);
+
 module.exports = {
   port: process.env.PORT || 3000,
   env,
   jwt: {
-    secret: process.env.JWT_SECRET || 'default-secret-change-me',
+    secret: jwtSecret,
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
   },
-  doubao: {
-    apiKey: process.env.DOUBAO_API_KEY,
-    baseURL: process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+  // LLM 统一配置（腾讯云 TokenHub Hy3 混元大模型）
+  // 优先级：TENCENT_* 环境变量 > 默认值
+  llm: {
+    apiKey: process.env.TENCENT_LLM_API_KEY,
+    baseURL: process.env.TENCENT_LLM_BASE_URL || 'https://tokenhub.tencentmaas.com/v1',
+    model: process.env.TENCENT_LLM_MODEL || 'hy3',
     endpoints: {
       main: {
-        id: process.env.DOUBAO_MAIN_AGENT_ENDPOINT,
-        apiKey: process.env.DOUBAO_MAIN_AGENT_API_KEY || process.env.DOUBAO_API_KEY
+        id: process.env.TENCENT_MAIN_AGENT_MODEL || 'hy3',
+        apiKey: process.env.TENCENT_MAIN_AGENT_API_KEY || process.env.TENCENT_LLM_API_KEY
       },
       precipitation: {
-        id: process.env.DOUBAO_PRECIPITATION_ENDPOINT,
-        apiKey: process.env.DOUBAO_PRECIPITATION_API_KEY || process.env.DOUBAO_API_KEY
+        id: process.env.TENCENT_PRECIPITATION_MODEL || 'hy3',
+        apiKey: process.env.TENCENT_PRECIPITATION_API_KEY || process.env.TENCENT_LLM_API_KEY
       },
       helper: {
-        id: process.env.DOUBAO_HELPER_ENDPOINT,
-        apiKey: process.env.DOUBAO_HELPER_API_KEY || process.env.DOUBAO_API_KEY
+        id: process.env.TENCENT_HELPER_MODEL || 'hy3',
+        apiKey: process.env.TENCENT_HELPER_API_KEY || process.env.TENCENT_LLM_API_KEY
       }
     }
   },
   // 备用大模型配置（所有密钥均从环境变量读取，禁止在源码中写死）
   backup: {
     apiKey: process.env.BACKUP_API_KEY,
-    baseURL: process.env.BACKUP_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+    baseURL: process.env.BACKUP_BASE_URL || 'https://tokenhub.tencentmaas.com/v1',
     endpoint: {
-      id: process.env.BACKUP_ENDPOINT
+      id: process.env.BACKUP_ENDPOINT || 'hy3'
     }
   },
   wechat: {

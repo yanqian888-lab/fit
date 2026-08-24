@@ -1,22 +1,18 @@
 <template>
   <view class="custom-tab-bar">
-    <view class="tab-bar-inner">
-      <view
-        v-for="(item, index) in list"
-        :key="item.pagePath"
-        class="tab-item"
-        :class="{ active: currentSelected === index }"
-        @click="switchTab(index)"
-      >
-        <view class="circle">
-          <image
-            class="tab-icon"
-            :src="currentSelected === index ? item.selectedIconPath : item.iconPath"
-            mode="aspectFit"
-          />
-          <text class="tab-label">{{ item.text }}</text>
-        </view>
-      </view>
+    <view
+      v-for="(item, index) in list"
+      :key="item.pagePath"
+      class="tab-item"
+      :class="{ active: currentSelected === index }"
+      :style="itemStyle(index)"
+      @click="switchTab(index)"
+    >
+      <image
+        class="tab-icon"
+        :src="currentSelected === index ? item.selectedIconPath : item.iconPath"
+        mode="aspectFit"
+      />
     </view>
   </view>
 </template>
@@ -28,37 +24,49 @@ const props = defineProps({
   selected: Number
 });
 
-
 const innerSelected = ref(0);
 
 const list = [
   {
     pagePath: '/pages/index/index',
-    text: '搭子',
-    iconPath: '/static/image/icon/dazi.png',
-    selectedIconPath: '/static/image/icon/dazi_hover.png'
+    text: '聊聊',
+    iconPath: '/static/image/icon/liaoliao@3x.png',
+    selectedIconPath: '/static/image/icon/liaoliao_hover@3x.png'
+  },
+  {
+    pagePath: '/pages/pet/index',
+    text: '搭搭',
+    iconPath: '/static/image/icon/dada@3x.png',
+    selectedIconPath: '/static/image/icon/dada_hover@3x.png'
   },
   {
     pagePath: '/pages/record/index',
-    text: '今日',
-    iconPath: '/static/image/icon/jinri.png',
-    selectedIconPath: '/static/image/icon/jinri_hover.png'
+    text: '工具箱',
+    iconPath: '/static/image/icon/gongjvxiang@3x.png',
+    selectedIconPath: '/static/image/icon/gongjvxiang_hover@3x.png'
   },
   {
     pagePath: '/pages/museum/index',
     text: '博物馆',
-    iconPath: '/static/image/icon/bowuguan.png',
-    selectedIconPath: '/static/image/icon/bowuguan_hover.png'
-  },
-  {
-    pagePath: '/pages/user/index',
-    text: '我的',
-    iconPath: '/static/image/icon/wode.png',
-    selectedIconPath: '/static/image/icon/wode_hover.png'
+    iconPath: '/static/image/icon/bowuguan@3x.png',
+    selectedIconPath: '/static/image/icon/bowuguan_hover@3x.png'
   }
 ];
 
 const currentSelected = computed(() => props.selected ?? innerSelected.value);
+
+const centers = [164, 304, 444, 584]; // 82, 152, 222, 292 px -> rpx
+const itemSize = 88; // 44 px radius -> 88 rpx diameter
+const top = 34; // center y 39 px -> 78 rpx, top = 78 - 44 = 34 rpx
+
+function itemStyle(index) {
+  return {
+    left: `${centers[index] - itemSize / 2}rpx`,
+    top: `${top}rpx`,
+    width: `${itemSize}rpx`,
+    height: `${itemSize}rpx`
+  };
+}
 
 function switchTab(index) {
   const url = list[index].pagePath;
@@ -90,67 +98,30 @@ onMounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
+  width: 750rpx;
+  height: 156rpx;
+  background: #F7FBF4;
   z-index: 999;
   pointer-events: none;
-  background: transparent;
-  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
-}
-
-.tab-bar-inner {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 460rpx;
-  height: 112rpx;
-  padding: 6rpx;
-  background: #FFFFFF;
-  border-radius: 56rpx;
-  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.08);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .tab-item {
-  position: relative;
-  width: 100rpx;
-  height: 100rpx;
+  position: absolute;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.circle {
-  width: 100rpx;
-  height: 100rpx;
   border-radius: 50%;
-  background: #FFFFFF;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   transition: background 0.2s;
 }
 
+.tab-item.active {
+  background: #563E22;
+}
+
 .tab-icon {
-  width: 36rpx;
-  height: 36rpx;
-}
-
-.tab-label {
-  margin-top: 4rpx;
-  font-size: 20rpx;
-  color: #9CA3AF;
-  line-height: 1.2;
-}
-
-.tab-item.active .circle {
-  background: #1F2937;
-}
-
-.tab-item.active .tab-label {
-  color: #FFFFFF;
-  font-weight: 600;
+  width: 72rpx;
+  height: 72rpx;
 }
 </style>

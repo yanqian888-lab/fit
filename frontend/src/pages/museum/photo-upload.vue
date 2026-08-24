@@ -36,7 +36,9 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { onLoad } from '@dcloudio/uni-app';
 import { photoApi } from '../../api';
+import { uploadFile } from '../../utils/request';
 import { getToday } from '../../utils/date';
 import AppPage from '../../components/AppPage.vue';
 import AppHeader from '../../components/AppHeader.vue';
@@ -55,20 +57,27 @@ const form = ref({
 
 const angleIndex = computed(() => angleValues.indexOf(form.value.angle));
 
+/**
+ * 提审阶段：照片上传功能（相机/读取相册）暂未开放，进入页面立刻提示并返回
+ * 后续开放时恢复 chooseImage 调用 + submit 上传即可
+ */
+onLoad(() => {
+  uni.showToast({ title: '该功能暂未开放', icon: 'none' });
+  setTimeout(() => {
+    const pages = getCurrentPages();
+    if (pages.length > 1) {
+      uni.navigateBack();
+    } else {
+      uni.switchTab({ url: '/pages/museum/index' });
+    }
+  }, 600);
+});
+
 onMounted(() => {
   const pages = getCurrentPages();
   const query = pages[pages.length - 1].$page?.options || {};
   if (query.url) imageUrl.value = decodeURIComponent(query.url);
 });
-
-function chooseImage() {
-  uni.chooseImage({
-    count: 1,
-    success: (res) => {
-      imageUrl.value = res.tempFilePaths[0];
-    }
-  });
-}
 
 function onAngleChange(e) {
   form.value.angle = angleValues[parseInt(e.detail.value)];
@@ -76,30 +85,6 @@ function onAngleChange(e) {
 
 function onDateChange(e) {
   form.value.record_date = e.detail.value;
-}
-
-async function submit() {
-  if (!imageUrl.value) {
-    uni.showToast({ title: '请先选择照片', icon: 'none' });
-    return;
-  }
-  uploading.value = true;
-  try {
-    // 演示：本地路径直接作为 url 保存，真实场景需先上传到服务器
-    await photoApi.upload({
-      url: imageUrl.value,
-      angle: form.value.angle,
-      weight: form.value.weight ? parseFloat(form.value.weight) : null,
-      record_date: form.value.record_date,
-      description: form.value.description
-    });
-    uni.showToast({ title: '保存成功', icon: 'success' });
-    setTimeout(() => uni.navigateBack(), 800);
-  } catch (err) {
-    uni.showToast({ title: '保存失败', icon: 'none' });
-  } finally {
-    uploading.value = false;
-  }
 }
 </script>
 

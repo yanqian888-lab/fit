@@ -15,9 +15,15 @@
     "pm2:restart:test": "pm2 restart fit-backend-test",
     "pm2:restart:prod": "pm2 restart fit-backend-prod",
     "init-db": "node src/scripts/init-db.js",
+    "smoke-test": "NODE_ENV=test node scripts/smoke-test.js",
     "import-foods": "node src/scripts/import-foods.js",
     "import-exercises": "node src/scripts/import-exercises.js",
-    "backup:db": "node scripts/backup-db.js"
+    "backup:db": "node scripts/backup-db.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "check-config": "node scripts/check-config-security.js",
+    "generate-key": "node scripts/generate-secure-key.js"
   },
   "keywords": [
     "diet",
@@ -41,6 +47,7 @@
     "openai": "^4.28.4"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0"
+    "nodemon": "^3.1.0",
+    "vitest": "^3.2.7"
   }
 }

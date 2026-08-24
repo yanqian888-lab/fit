@@ -7,7 +7,7 @@
 const { db } = require('../db');
 const { isQuestionContent, hasNegativeRecordIntent } = require('../utils/intent');
 
-const DIET_MARKERS = ['吃', '喝', '早餐', '午餐', '晚餐', '饭', '菜', '肉', '蛋', '奶', '水果', '零食', '卡路里', '千卡', '热量', '碳水', '蛋白质', '脂肪', '糖', '油'];
+const DIET_MARKERS = ['吃', '喝', '早餐', '午餐', '晚餐', '饭', '菜', '肉', '蛋', '奶', '水果', '零食', '卡路里', '千卡', '热量', '碳水', '蛋白质', '脂肪', '糖', '油', '咖啡', '饮料', '果汁', '奶茶', '豆浆', '牛奶', '酸奶', '豆奶', '奶昔', '茶', '啤酒', '红酒', '白酒', '葡萄酒', '鸡尾酒', '椰汁', '核桃露', '杏仁露', '燕麦奶', '养乐多', '优酸乳', '气泡水', '苏打水', '碳酸饮料', '可乐', '雪碧', '汽水'];
 const EXERCISE_ACTIONS = [
   '运动', '健身', '跑步', '跑了', '慢跑', '快跑', '超慢跑', '变速跑', '间歇跑', '长跑', '短跑', '冲刺跑', '夜跑', '晨跑',
   '走路', '走了', '快走', '慢走', '散步', '健走', '徒步', '逛街', '爬楼梯', '爬山', '登山',
@@ -33,12 +33,12 @@ function escapeLike(str) {
 const SENTENCE_PREFIXES = [
   '我今天早上', '我今天中午', '我今天下午', '我今天晚上', '我今天', '我早上', '我中午',
   '我下午', '我晚上', '我昨晚', '我刚', '我刚才', '我刚刚', '我吃了', '我喝了', '我吃',
-  '我喝', '早上', '中午', '下午', '晚上', '昨晚', '刚才', '刚刚', '今天', '昨天', '明天'
+  '我喝', '刚', '早上', '中午', '下午', '晚上', '昨晚', '刚才', '刚刚', '今天', '昨天', '明天'
 ];
 
 function extractKeywords(text) {
   const cleaned = text
-    .replace(/[,，、\s]+/g, ' ')
+    .replace(/[,，、。！？!?；;：:…~～\s]+/g, ' ')
     .trim();
 
   const rawParts = cleaned.split(/\s+/).filter(p => p && p.length >= 2);
@@ -55,6 +55,8 @@ function extractKeywords(text) {
     }
 
     sub = sub
+      // 去掉句首吃/喝动词（如"吃了一袋方便面"→"方便面"）
+      .replace(/^(吃了|喝过|喝了|吃|喝)/, '')
       // 去掉常见量词/修饰词（不再锚定开头，可在片段任意位置出现）
       .replace(/(?:一份|一个|一只|一片|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一盘|一碟|一点|一些|少量|适量|多|少|大|小|中|新|旧|生|熟|干|湿|个|两)/g, '')
       // 去掉结构助词"的"
@@ -68,9 +70,15 @@ function extractKeywords(text) {
   return result.sort((a, b) => b.length - a.length);
 }
 
+// 纯字母/数字且长度过短的词不参与模糊匹配（避免 "hi" 命中 "HIIT" 这类误判）
+function isWeakKeyword(kw) {
+  return /^[a-zA-Z0-9]+$/.test(kw) && kw.length < 4;
+}
+
 function matchFoodInDb(text) {
   const keywords = extractKeywords(text);
   for (const kw of keywords) {
+    if (isWeakKeyword(kw)) continue;
     const row = db.prepare(`
       SELECT food_name, category FROM food_db
       WHERE food_name = ? OR food_name LIKE ? ESCAPE '\\' OR food_name LIKE ? ESCAPE '\\'
@@ -100,6 +108,7 @@ function matchExerciseInDb(text) {
   // 再用内容关键词兜底
   const keywords = extractKeywords(text);
   for (const kw of keywords) {
+    if (isWeakKeyword(kw)) continue;
     const row = db.prepare(`
       SELECT exercise_name FROM exercise_db
       WHERE exercise_name LIKE ? ESCAPE '\\'

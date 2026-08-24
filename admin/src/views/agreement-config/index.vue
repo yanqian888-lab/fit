@@ -17,6 +17,10 @@
           <el-input v-model="form.privacy_policy_url" placeholder="https://example.com/privacy.html" />
         </el-form-item>
 
+        <el-form-item label="注销协议内容">
+          <el-input v-model="form.delete_account_agreement" type="textarea" :rows="8" placeholder="注销账号协议全文，为空时 App 使用内置默认文案" />
+        </el-form-item>
+
         <el-form-item label="隐私版本">
           <el-input v-model="form.privacy_version" />
         </el-form-item>
@@ -55,6 +59,7 @@ const form = ref({
   user_agreement_url: '',
   privacy_policy: '',
   privacy_policy_url: '',
+  delete_account_agreement: '',
   privacy_version: '',
   force_privacy_update: false,
   about_us_content: ''

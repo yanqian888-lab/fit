@@ -2,15 +2,23 @@
  * 聊天控制器
  * 核心：接收用户消息，调用主协调 Agent，异步沉淀信息
  */
-const { db } = require('../db');
+const { db, withTransaction } = require('../db');
 const { success, error } = require('../utils/response');
 const mainAgent = require('../services/agents/mainAgent');
 const precipitationAgent = require('../services/agents/precipitationAgent');
 const helperAgent = require('../services/agents/helperAgent');
 const partnerAssetAgent = require('../services/agents/partnerAssetAgent');
 const templateMessageService = require('../services/templateMessageService');
+const promptService = require('../services/promptService');
+const { callWithPrompt } = require('../services/aiClient');
 const chatState = require('../services/chatState');
 const tagMatcher = require('../services/tagMatcher');
+const taskService = require('../services/taskService');
+const achievementService = require('../services/achievementService');
+const petService = require('../services/petService');
+const newbieTaskService = require('../services/newbieTaskService');
+const rewardService = require('../services/rewardService');
+const { safeJsonParse } = require('../utils/safeJson');
 
 /**
  * 将搭子回复中的食谱提取为沉淀记录，走和饮食/运动一致的「待确认 → 已记录」流程
@@ -38,31 +46,37 @@ async function savePartnerRecipes(userId, content, chatMessageId = null) {
         content: contentText,
         ingredients: recipe.ingredients || [],
         steps: recipe.steps || '',
-        tip: recipe.tip || ''
+        tip: recipe.tip || '',
+        meal_type: recipe.meal_type || '',
+        total_weight: recipe.total_weight || 0,
+        total_calorie: recipe.total_calorie || 0
       };
       const extractedJson = JSON.stringify(extractedData);
 
-      // 为每条食谱创建沉淀记录，让用户可以像饮食/运动一样走「待确认 → 已记录」流程
-      const precipitationId = insertPrecipitation.run(
-        userId,
-        chatMessageId || null,
-        subType,
-        contentText,
-        extractedJson,
-        recipe.confidence || 0.9,
-        null,
-        null
-      ).lastInsertRowid;
+      // 每条食谱的沉淀记录与聊天消息关联放在同一事务
+      withTransaction(() => {
+        // 为每条食谱创建沉淀记录，让用户可以像饮食/运动一样走「待确认 → 已记录」流程
+        const precipitationId = insertPrecipitation.run(
+          userId,
+          chatMessageId || null,
+          subType,
+          contentText,
+          extractedJson,
+          recipe.confidence || 0.9,
+          null,
+          null
+        ).lastInsertRowid;
 
-      // 聊天消息只关联第一条食谱的沉淀记录（消息只能有一个 precipitation_id）
-      if (chatMessageId && !linkedChatMsg) {
-        db.prepare(`
-          UPDATE chat_messages
-          SET precipitation_status = 2, precipitation_type = 'recipe', precipitation_id = ?
-          WHERE id = ? AND user_id = ?
-        `).run(precipitationId, chatMessageId, userId);
-        linkedChatMsg = true;
-      }
+        // 聊天消息只关联第一条食谱的沉淀记录（消息只能有一个 precipitation_id）
+        if (chatMessageId && !linkedChatMsg) {
+          db.prepare(`
+            UPDATE chat_messages
+            SET precipitation_status = 2, precipitation_type = 'recipe', precipitation_id = ?
+            WHERE id = ? AND user_id = ?
+          `).run(precipitationId, chatMessageId, userId);
+          linkedChatMsg = true;
+        }
+      });
 
       console.log('[搭子食谱] 已提取待确认:', subType);
     }
@@ -185,6 +199,9 @@ function saveStreamingPartnerMessages(userId, partnerMode, chunks, onDone, optio
 /**
  * 发送消息
  */
+const MAX_MESSAGE_LENGTH = 2000;
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
 async function sendMessage(req, res) {
   const userId = req.userId;
   const { content, content_type = 'text', record_date } = req.body;
@@ -193,6 +210,15 @@ async function sendMessage(req, res) {
   if (!content || !content.trim()) {
     return res.status(400).json(error('消息内容不能为空', 400));
   }
+  if (content.length > MAX_MESSAGE_LENGTH) {
+    return res.status(400).json(error(`消息内容不能超过 ${MAX_MESSAGE_LENGTH} 字`, 400));
+  }
+  if (!DATE_REGEX.test(today)) {
+    return res.status(400).json(error('记录日期格式不正确', 400));
+  }
+
+  let userMessageId = null;
+  let partner = null;
 
   try {
     // 获取用户信息和搭子信息
@@ -205,35 +231,46 @@ async function sendMessage(req, res) {
       WHERE u.id = ?
     `).get(userId);
 
-    let partner = db.prepare('SELECT * FROM partners WHERE user_id = ?').get(userId);
-    
-    // 如果没有搭子，自动创建一个默认搭子
-    if (!partner) {
-      const insertPartner = db.prepare(`
-        INSERT INTO partners (user_id, name, mode, avatar_url)
-        VALUES (?, '你的搭子', 'gentle', '/static/partner-avatar.png')
+    partner = db.prepare('SELECT * FROM partners WHERE user_id = ?').get(userId);
+
+    // 把「创建搭子 + 保存用户消息 + 标签 + 统计 + 任务」包入同一事务
+    const initResult = withTransaction(() => {
+      // 如果没有搭子，自动创建一个默认搭子
+      if (!partner) {
+        db.prepare(`
+          INSERT INTO partners (user_id, name, mode, avatar_url)
+          VALUES (?, '你的搭子', 'gentle', '/static/partner-avatar.png')
+        `).run(userId);
+        partner = db.prepare('SELECT * FROM partners WHERE user_id = ?').get(userId);
+      }
+
+      // 保存用户消息
+      const insertUserMsg = db.prepare(`
+        INSERT INTO chat_messages (user_id, role, content, content_type, mode)
+        VALUES (?, 'user', ?, ?, ?)
       `);
-      insertPartner.run(userId);
-      partner = db.prepare('SELECT * FROM partners WHERE user_id = ?').get(userId);
-    }
+      const messageId = insertUserMsg.run(userId, content, content_type, partner.mode).lastInsertRowid;
 
-    // 保存用户消息
-    const insertUserMsg = db.prepare(`
-      INSERT INTO chat_messages (user_id, role, content, content_type, mode)
-      VALUES (?, 'user', ?, ?, ?)
-    `);
-    const userMessageId = insertUserMsg.run(userId, content, content_type, partner.mode).lastInsertRowid;
+      // 同步标签匹配
+      const preliminaryTag = tagMatcher.matchMessageTags(content);
+      if (preliminaryTag) {
+        db.prepare('UPDATE chat_messages SET precipitation_status = ?, precipitation_type = ? WHERE id = ?')
+          .run(preliminaryTag.status, preliminaryTag.type, messageId);
+        console.log('[TagMatcher] 消息已打标签:', messageId, preliminaryTag.type, preliminaryTag.status);
+      }
 
-    // 同步标签匹配：不依赖 Agent，直接根据食物库/运动库/方法库等列表给消息打标签
-    const preliminaryTag = tagMatcher.matchMessageTags(content);
-    if (preliminaryTag) {
-      db.prepare('UPDATE chat_messages SET precipitation_status = ?, precipitation_type = ? WHERE id = ?')
-        .run(preliminaryTag.status, preliminaryTag.type, userMessageId);
-      console.log('[TagMatcher] 消息已打标签:', userMessageId, preliminaryTag.type, preliminaryTag.status);
-    }
+      // 更新用户聊天统计（模板消息系统）
+      templateMessageService.onUserMessage(userId);
 
-    // 更新用户聊天统计（模板消息系统）
-    templateMessageService.onUserMessage(userId);
+      // 推进「和搭搭聊天」任务
+      taskService.updateTaskProgress(userId, 'chat', 1);
+      newbieTaskService.checkAction(userId, 'chat');
+
+      return { messageId, preliminaryTag };
+    });
+
+    userMessageId = initResult.messageId;
+    const preliminaryTag = initResult.preliminaryTag;
 
     // 获取最近历史消息（排除刚保存的当前消息）
     const history = db.prepare(`
@@ -264,15 +301,28 @@ async function sendMessage(req, res) {
     const precipitationPromise = precipitationAgent.callPrecipitationAgent(content, userId, userMessageId, today)
       .then(result => {
         console.log('沉淀结果:', JSON.stringify(result));
-        if (result && result.precipitation_id) {
+        if (result && result.precipitation_id && result.status !== 2) {
           const status = result.status === 1 ? 1 : 2;
           try {
-            db.prepare('UPDATE chat_messages SET precipitation_status = ?, precipitation_id = ?, precipitation_type = ? WHERE id = ?')
-              .run(status, result.precipitation_id, result.type || null, userMessageId);
+            // 关键修复：不覆盖 finalReconcilePrecipitations 已设置的最佳 precipitation_id
+            // 当批量处理多个食物 item 时，finalReconcilePrecipitations 会选择食物数最多的 precipitation_id
+            // chatMessage.precipitation_id 可能已被设置为该最佳 ID，不能被最后一个 item 的 ID 覆盖
+            db.prepare(`
+              UPDATE chat_messages
+              SET precipitation_status = ?,
+                  precipitation_id = CASE WHEN precipitation_id IS NULL OR precipitation_id = 0 THEN ? ELSE precipitation_id END,
+                  precipitation_type = ?
+              WHERE id = ?
+            `).run(status, result.precipitation_id, result.type || null, userMessageId);
             console.log('沉淀状态已更新:', userMessageId, status, result.precipitation_id, result.type);
           } catch (dbErr) {
             console.error('沉淀状态更新失败:', dbErr.message);
           }
+        } else if (result && result.precipitation_id && result.status === 2) {
+          // 低置信度沉淀已按设计自动忽略（precipitation_records.status=2）：
+          // 不把该记录关联到消息，避免用户点击「待确认」卡片时确认到一条已忽略的记录（无法写入业务表）；
+          // 同时保留同步标签给出的待确认状态，用户仍可走手动确认路径
+          console.log('沉淀置信度不足自动忽略，不更新消息状态:', result.precipitation_id);
         } else {
           // 沉淀 Agent 未提取到有效内容时：
           // - 如果同步标签已命中食物/运动库，保留「待确认」状态，让用户可手动确认，避免漏记
@@ -460,6 +510,13 @@ async function sendMessage(req, res) {
       }
     }
 
+    // 检查聊天里程碑（异步，不阻塞返回）
+    try {
+      achievementService.checkChatCount(userId);
+    } catch (e) {
+      console.error('[聊天里程碑] 检查失败:', e.message);
+    }
+
     return res.json(success({
       user_message: {
         id: userMessageId,
@@ -483,6 +540,18 @@ async function sendMessage(req, res) {
     }));
   } catch (err) {
     console.error('发送消息失败:', err);
+    // 用户消息已落库但 AI 异常，补一条兜底 partner 消息，避免「有问无答」
+    try {
+      if (userMessageId && partner) {
+        const fallbackContent = '搭搭刚才有点走神，能再说一遍吗？😅';
+        db.prepare(`
+          INSERT INTO chat_messages (user_id, role, content, content_type, mode)
+          VALUES (?, 'partner', ?, 'text', ?)
+        `).run(userId, fallbackContent, partner.mode);
+      }
+    } catch (fallbackErr) {
+      console.error('兜底消息写入失败:', fallbackErr.message);
+    }
     return res.status(500).json(error('发送消息失败', 500));
   }
 }
@@ -493,7 +562,7 @@ async function sendMessage(req, res) {
 function getMessages(req, res) {
   const userId = req.userId;
   const page = parseInt(req.query.page) || 1;
-  const size = parseInt(req.query.size) || 20;
+  const size = Math.min(parseInt(req.query.size) || 20, 100);
   const offset = (page - 1) * size;
 
   // 进入聊天页（第一页）时主动检查是否需要发送当前时段模板消息
@@ -587,39 +656,73 @@ function confirmPrecipitation(req, res) {
   if (!precipitation_id) {
     return res.status(400).json(error('缺少沉淀 ID', 400));
   }
+  if (typeof confirmed !== 'boolean') {
+    return res.status(400).json(error('confirmed 必须是布尔值', 400));
+  }
+  if (modified_data !== undefined && modified_data !== null && typeof modified_data !== 'object') {
+    return res.status(400).json(error('modified_data 格式不正确', 400));
+  }
 
   const record = db.prepare('SELECT * FROM precipitation_records WHERE id = ? AND user_id = ?').get(precipitation_id, userId);
   if (!record) {
     return res.status(404).json(error('沉淀记录不存在', 404));
   }
 
+  // 幂等：已确认/已忽略的沉淀不再重复处理
+  if (record.status === 1) {
+    return res.json(success(null, '记录已确认'));
+  }
+  if (record.status === 2 || record.status === 3) {
+    return res.json(success(null, '记录已忽略'));
+  }
+
   if (confirmed) {
-    // 更新沉淀记录为已确认
-    db.prepare('UPDATE precipitation_records SET status = 1, extracted_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(modified_data ? JSON.stringify(modified_data) : record.extracted_data, precipitation_id);
+    const result = withTransaction(() => {
+      // 更新沉淀记录为已确认
+      db.prepare('UPDATE precipitation_records SET status = 1, extracted_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(modified_data ? JSON.stringify(modified_data) : record.extracted_data, precipitation_id);
 
-    // 食谱需要像饮食/运动一样，在确认时才同步到 museum_items；
-    // 其他个人资产类（方法/感悟/踩坑/金句）已经在沉淀时以 pending 状态写入 museum_items，避免重复入库。
-    if (record.type === 'recipe') {
-      const extractedData = modified_data || JSON.parse(record.extracted_data || '{}');
-      precipitationAgent.syncToBusinessTable(userId, 'recipe', record.content, extractedData, null, record.sub_type, precipitation_id, record.chat_id);
-    } else if (!['method', 'insight', 'pitfall'].includes(record.type)) {
-      // 同步到业务表
-      const extractedData = modified_data || JSON.parse(record.extracted_data || '{}');
-      precipitationAgent.syncToBusinessTable(userId, record.type, record.content, extractedData, null, record.sub_type, precipitation_id, record.chat_id);
-    }
+      const extractedData = modified_data || safeJsonParse(record.extracted_data, {});
+      // 判断是否为用户编辑场景（modified_data 存在表示用户修改了数据）
+      const isUserEdit = modified_data !== undefined && modified_data !== null;
 
-    // 更新聊天消息状态
-    if (record.chat_id) {
-      db.prepare('UPDATE chat_messages SET precipitation_status = 1, precipitation_type = ? WHERE id = ?').run(record.type, record.chat_id);
-    }
+      // 食谱需要像饮食/运动一样，在确认时才同步到 museum_items；
+      // 其他个人资产类（方法/感悟/踩坑/金句）已经在沉淀时以 pending 状态写入 museum_items，避免重复入库。
+      if (record.type === 'recipe') {
+        precipitationAgent.syncToBusinessTable(userId, 'recipe', record.content, extractedData, null, record.sub_type, precipitation_id, record.chat_id, isUserEdit);
+      } else if (!['method', 'insight', 'pitfall'].includes(record.type)) {
+        // 同步到业务表
+        precipitationAgent.syncToBusinessTable(userId, record.type, record.content, extractedData, null, record.sub_type, precipitation_id, record.chat_id, isUserEdit);
+      }
 
-    return res.json(success(null, '已确认记录'));
+      // 更新聊天消息状态：同一消息可能沉淀多条记录（如一条回复含多个食谱），
+      // 全部处理完才翻转消息为「已记录」，否则保持「待确认」
+      if (record.chat_id) {
+        const remaining = db.prepare('SELECT COUNT(*) as c FROM precipitation_records WHERE chat_id = ? AND status = 0').get(record.chat_id).c;
+        if (remaining === 0) {
+          db.prepare('UPDATE chat_messages SET precipitation_status = 1, precipitation_type = ? WHERE id = ?').run(record.type, record.chat_id);
+        }
+      }
+
+      // 发放浆果奖励 + 任务进度 + 里程碑检查 + 小确幸事件
+      const rewardResult = rewardService.rewardForPrecipitationRecord(userId, record.type, record.sub_type, extractedData, record.id);
+      const rewardMessages = rewardResult?.reward_messages || [];
+
+      return { reward_messages: rewardMessages };
+    });
+
+    return res.json(success(result, '已确认记录'));
   } else {
     // 拒绝沉淀
     db.prepare('UPDATE precipitation_records SET status = 2, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(precipitation_id);
     if (record.chat_id) {
-      db.prepare('UPDATE chat_messages SET precipitation_status = 3, precipitation_type = ? WHERE id = ?').run(record.type, record.chat_id);
+      // 同一消息的全部待确认记录都处理完才翻转消息状态：有已确认的记为「已记录」，否则「已忽略」
+      const remaining = db.prepare('SELECT COUNT(*) as c FROM precipitation_records WHERE chat_id = ? AND status = 0').get(record.chat_id).c;
+      if (remaining === 0) {
+        const anyConfirmed = db.prepare('SELECT COUNT(*) as c FROM precipitation_records WHERE chat_id = ? AND status = 1').get(record.chat_id).c;
+        db.prepare('UPDATE chat_messages SET precipitation_status = ?, precipitation_type = ? WHERE id = ?')
+          .run(anyConfirmed > 0 ? 1 : 3, record.type, record.chat_id);
+      }
     }
     return res.json(success(null, '已忽略记录'));
   }
@@ -700,11 +803,94 @@ function sendWakeupMessage(req, res) {
   }));
 }
 
+/**
+ * 生成减重建议消息
+ * 触发场景：新用户首次填写完身体信息、或更新身体信息后进入聊聊页
+ * 通过 user_profiles.advice_pending 标记保证幂等，仅在有标记时生成一次
+ */
+async function sendAdviceMessage(req, res) {
+  const userId = req.userId;
+
+  // 原子清除标记，避免并发/重复进入页面时重复生成
+  const claimed = db.prepare(`
+    UPDATE user_profiles SET advice_pending = 0 WHERE user_id = ? AND advice_pending = 1
+  `).run(userId);
+  if (claimed.changes === 0) {
+    return res.json(success(null, '无需生成'));
+  }
+
+  const restorePending = () => {
+    try {
+      db.prepare('UPDATE user_profiles SET advice_pending = 1 WHERE user_id = ?').run(userId);
+    } catch (e) {
+      console.error('恢复减重建议标记失败:', e.message);
+    }
+  };
+
+  try {
+    const user = db.prepare('SELECT gender, age, height FROM users WHERE id = ?').get(userId);
+    const profile = db.prepare(`
+      SELECT initial_weight, current_weight, target_weight, target_date FROM user_profiles WHERE user_id = ?
+    `).get(userId);
+
+    const complete = user && profile
+      && (user.gender === 1 || user.gender === 2) && user.age && user.height
+      && profile.current_weight && profile.target_weight;
+    if (!complete) {
+      return res.json(success(null, '身体信息不完整，暂不生成'));
+    }
+
+    const userInfoStr = [
+      `性别：${user.gender === 1 ? '男' : '女'}`,
+      `年龄：${user.age}岁`,
+      `身高：${user.height}cm`,
+      `当前体重：${profile.current_weight}kg`,
+      profile.initial_weight ? `初始体重：${profile.initial_weight}kg` : null,
+      `目标体重：${profile.target_weight}kg`,
+      profile.target_date ? `目标日期：${profile.target_date}` : null
+    ].filter(Boolean).join('；');
+
+    const systemPrompt = promptService.getPrompt('weight_loss_advice', { user_info: userInfoStr });
+    const response = await callWithPrompt('weight_loss_advice', [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: '请根据我的身体数据，严格按照【输出结构】给出完整的减重方案。' }
+    ], { temperature: 0.7, max_tokens: 4000, timeout: 60000 });
+
+    const content = (response.choices?.[0]?.message?.content || '').trim();
+    if (!content) {
+      restorePending();
+      return res.status(500).json(error('生成减重建议失败', 500));
+    }
+
+    const partner = db.prepare('SELECT mode FROM partners WHERE user_id = ?').get(userId);
+    const result = db.prepare(`
+      INSERT INTO chat_messages (user_id, role, content, content_type, mode)
+      VALUES (?, 'partner', ?, 'text', ?)
+    `).run(userId, content, partner?.mode || 'gentle');
+
+    return res.json(success({
+      message: {
+        id: result.lastInsertRowid,
+        role: 'partner',
+        content,
+        content_type: 'text',
+        created_at: new Date().toISOString()
+      }
+    }));
+  } catch (err) {
+    // 生成失败恢复标记，下次进入聊聊页可重试
+    restorePending();
+    console.error('生成减重建议失败:', err.message);
+    return res.status(500).json(error('生成减重建议失败', 500));
+  }
+}
+
 module.exports = {
   sendMessage,
   getMessages,
   getPendingAssets,
   confirmPrecipitation,
   getChatStats,
-  sendWakeupMessage
+  sendWakeupMessage,
+  sendAdviceMessage
 };

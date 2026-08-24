@@ -116,6 +116,17 @@
 
     <!-- 授权引导弹窗 -->
     <AuthPopup ref="authPopupRef" />
+
+    <!-- 生成今日分析确认弹框 -->
+    <AppModal
+      v-model:visible="showGenerateModal"
+      icon="none"
+      title="生成今日分析"
+      text="每天只能分析一次，请确认饮食、运动等相关数据已经记录完全，点击确认进入分析～"
+      confirmText="确认"
+      cancelText="取消"
+      @confirm="confirmGenerateToday"
+    />
   </view>
 </template>
 
@@ -124,9 +135,13 @@ import { ref, computed, onMounted } from 'vue';
 import { aiApi, museumApi, recordApi } from '../../api';
 import { checkPermission, reportCount } from '../../utils/trial.js';
 import AuthPopup from '../../components/AuthPopup.vue';
+import AppModal from '../../components/AppModal.vue';
 
 import { goBack as navigateBack } from '../../utils/navigate';
 import { showGlobalLoading, hideGlobalLoading } from '../../utils/loading';
+
+// 生成今日分析确认弹框
+const showGenerateModal = ref(false);
 
 function formatFastingTime(ts) {
   if (!ts) return '';
@@ -152,8 +167,10 @@ function getFastingParams(date) {
     const settingsRaw = uni.getStorageSync(settingsKey);
     if (settingsRaw) {
       const settings = JSON.parse(settingsRaw);
-      if (settings.selectedMode) {
-        params.fasting_mode = `${24 - settings.selectedMode}:${settings.selectedMode}`;
+      const legacyMap = { 16: '16:8', 18: '18:6', 20: '20:4', 14: '14:10' };
+      const mode = legacyMap[settings.selectedMode] || settings.selectedMode;
+      if (mode && typeof mode === 'string') {
+        params.fasting_mode = mode;
       }
     }
   } catch (e) {
@@ -228,7 +245,11 @@ const calendarDays = computed(() => {
 });
 
 const selectedDiary = computed(() => {
-  return selectedDate.value ? diaries.value[selectedDate.value] : '';
+  return selectedDate.value ? diaries.value[selectedDate.value]?.content : '';
+});
+
+const selectedDiaryId = computed(() => {
+  return selectedDate.value ? diaries.value[selectedDate.value]?.id : null;
 });
 
 function prevMonth() {
@@ -299,16 +320,13 @@ function parseTags(tags) {
 async function loadDiaries() {
   showGlobalLoading();
   try {
-    const res = await museumApi.getItems({ type: 'insight', sub_type: 'daily_diary', month: monthStr.value, size: 200 });
+    const res = await aiApi.getDiaryHistory({ month: monthStr.value, size: 200 });
     const list = res.data.list || [];
     const map = {};
     list.forEach(item => {
-      if (item.sub_type === 'daily_diary' && item.tags) {
-        const tags = parseTags(item.tags);
-        const dateTag = tags.find(t => /^\d{4}-\d{2}-\d{2}$/.test(t));
-        if (dateTag) {
-          map[dateTag] = item.content;
-        }
+      if (item.date) {
+        // 日记内容在列表页完整展示，不再跳详情页
+        map[item.date] = { id: item.id, content: item.content || item.summary || '' };
       }
     });
     diaries.value = map;
@@ -324,6 +342,19 @@ function goBack() {
 }
 
 function goToGenerateToday() {
+  // 已生成：直接查看（服务端幂等返回当天日记）；首次生成：二次确认后进入生成页
+  if (diaries.value[todayStr.value]) {
+    uni.navigateTo({ url: `/pages/museum/diary-generate?date=${todayStr.value}` });
+    return;
+  }
+  showGenerateModal.value = true;
+}
+
+/**
+ * 确认进入生成今日分析页
+ */
+function confirmGenerateToday() {
+  showGenerateModal.value = false;
   uni.navigateTo({ url: `/pages/museum/diary-generate?date=${todayStr.value}` });
 }
 
@@ -336,7 +367,7 @@ const todayDiaryDesc = computed(() => {
 });
 
 const todayDiaryContent = computed(() => {
-  return diaries.value[todayStr.value] || '';
+  return diaries.value[todayStr.value]?.content || '';
 });
 
 async function generateDailyDiary() {
@@ -382,7 +413,8 @@ async function generateDailyDiary() {
     // 成功后上报日记生成次数
     reportCount('diary');
   } catch (err) {
-    uni.showToast({ title: '生成失败', icon: 'none' });
+    console.error('生成日记失败:', err);
+    // 具体错误文案（余额不足、记录不全、AI/网络异常等）已在 request.js 中提示
   } finally {
     loading.value = false;
     hideGlobalLoading();
