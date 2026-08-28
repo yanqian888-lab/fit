@@ -2,7 +2,7 @@
   <view class="pet-page">
     <view class="status-bar"></view>
 
-    <!-- 底层：可滑动场景地图 -->
+    <!-- 底层：可滑动场景地图（设置兜底背景色，避免背景图加载失败时整页空白） -->
     <view
       class="scene-stage"
       @touchstart="onTouchStart"
@@ -17,7 +17,12 @@
           class="scene-map"
           :style="mapStyle"
         >
-          <image class="scene-bg" :src="currentBgImage" mode="aspectFill" />
+          <image
+            class="scene-bg"
+            :src="currentBgImage"
+            mode="aspectFill"
+            @error="onSceneBgError"
+          />
 
           <!-- 场景物品 -->
           <view
@@ -235,7 +240,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import PetSprite from '../../components/PetSprite.vue';
 import TaskPanel from './panels/TaskPanel.vue';
@@ -387,6 +392,27 @@ const mapWidth = computed(() => Math.max(750, Math.round(stageHeightRpx.value * 
 // 底图默认在屏幕中水平居中展示
 function centerMap() {
   translateX.value = clampTranslateX((viewportWidth.value - mapWidth.value) / 2);
+}
+
+/**
+ * 场景背景图加载失败处理
+ * 带重试机制：最多重试 3 次，避免后端短暂抖动导致背景空白
+ */
+let sceneBgErrorCount = 0;
+const MAX_SCENE_BG_ERROR_RETRIES = 3;
+function onSceneBgError() {
+  console.error('[PetScene] 背景图加载失败:', currentBgImage.value);
+  if (sceneBgErrorCount < MAX_SCENE_BG_ERROR_RETRIES) {
+    sceneBgErrorCount++;
+    setTimeout(() => {
+      // 通过切换 key 强制 image 组件重新加载
+      const originalKey = currentSceneKey.value;
+      currentSceneKey.value = `${originalKey}_retry_${sceneBgErrorCount}`;
+      nextTick(() => {
+        currentSceneKey.value = originalKey;
+      });
+    }, 500);
+  }
 }
 
 const mapStyle = computed(() => ({
@@ -1489,6 +1515,8 @@ onUnmounted(() => {
   overflow: hidden;
   touch-action: none;
   user-select: none;
+  /* 兜底背景色：场景图加载失败时至少显示浅绿色，避免整页空白 */
+  background: #E8F6D7;
 }
 
 .scene-map {

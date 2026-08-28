@@ -146,19 +146,23 @@ const hasValidFrames = computed(() => {
   return currentAnim.value.frames.length > 0;
 });
 
+const frameUrls = computed(() => currentAnim.value.frames || []);
+
 /**
- * 兜底占位图：优先使用传入的 fallbackSrc，其次使用 pet_moren.png 作为内置兜底
+ * 兜底占位图：优先使用传入的 fallbackSrc，其次使用当前动画的第一帧，
+ * 最后回退到 pet_moren.png，避免因为默认文件缺失导致完全空白。
  */
 const fallbackImage = computed(() => {
   if (props.fallbackSrc) {
     return resolveStaticUrl(props.fallbackSrc);
   }
-  // 内置兜底：使用 pet_moren.png（默认宠物形象），路径会被 resolveStaticUrl 处理
-  // 注意：文件实际在后端 public/uploads/ 目录，通过 /static/uploads/ 对外暴露
+  const firstFrame = frameUrls.value[0];
+  if (firstFrame) {
+    return resolveStaticUrl(firstFrame);
+  }
+  // 最终兜底：使用 pet_moren.png（默认宠物形象）
   return resolveStaticUrl('/static/uploads/pet_moren.png');
 });
-
-const frameUrls = computed(() => currentAnim.value.frames || []);
 
 /**
  * 计算当前显示帧索引（取模实现循环）
