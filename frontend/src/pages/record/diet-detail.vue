@@ -1,5 +1,5 @@
 <template>
-  <AppPage :showHeader="true" title="今日饮食">
+  <AppPage :showHeader="true" :fixed="true" title="今日饮食">
   <view class="diet-page">
     <!-- 日期模块 -->
     <view class="date-module">
@@ -158,7 +158,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi } from '../../api';
 import { MEAL_OPTIONS, isDescriptiveUnit } from '../../utils/constants';
-import { getToday, formatDate } from '../../utils/date';
+import { getToday, formatDate, isFutureDate } from '../../utils/date';
 import AppModal from '../../components/AppModal.vue';
 
 // 删除食物确认弹框
@@ -195,8 +195,8 @@ const calendarDays = computed(() => getCalendarDays(currentMonth.value).map(d =>
 const headerDate = computed(() => {
   const d = currentMonth.value;
   const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  return `${y}年${m}月`;
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}.${m}`;
 });
 
 function parseLocalDate(dateStr) {
@@ -288,6 +288,10 @@ function getCalendarDays(monthDate) {
 }
 
 function selectDate(date) {
+  if (isFutureDate(date)) {
+    uni.showToast({ title: '不能添加未来日期的记录', icon: 'none' });
+    return;
+  }
   selectedDate.value = date;
   currentMonth.value = parseLocalDate(date);
   load();
@@ -530,8 +534,7 @@ onShow(() => {
 
 <style lang="scss" scoped>
 .diet-page {
-  min-height: 100vh;
-  height: 100vh;
+  flex: 1;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -874,7 +877,7 @@ onShow(() => {
 }
 
 .bottom-placeholder {
-  height: 160rpx;
+  height: 32rpx;
 }
 
 /* 底部按钮 */

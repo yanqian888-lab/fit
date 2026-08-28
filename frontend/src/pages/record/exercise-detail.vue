@@ -1,5 +1,5 @@
 <template>
-  <AppPage :showHeader="true" title="记运动">
+  <AppPage :showHeader="true" :fixed="true" title="记运动">
   <view class="exercise-page">
     <!-- 日期模块 -->
     <view class="date-module">
@@ -166,7 +166,7 @@ import { ref, computed, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi } from '../../api';
 import { EXERCISE_TYPES } from '../../utils/constants';
-import { getToday, formatDate } from '../../utils/date';
+import { getToday, formatDate, isFutureDate } from '../../utils/date';
 import AppModal from '../../components/AppModal.vue';
 
 // 删除确认弹框
@@ -198,11 +198,10 @@ const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 const weekDays = computed(() => getWeekDays(selectedDate.value).map(d => ({ ...d, hasRecord: recordDates.value.has(d.date) })));
 const calendarDays = computed(() => getCalendarDays(currentMonth.value).map(d => ({ ...d, hasRecord: recordDates.value.has(d.date) })));
 const headerDate = computed(() => {
-  const d = parseLocalDate(selectedDate.value);
+  const d = currentMonth.value;
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}.${m}.${day}`;
+  return `${y}.${m}`;
 });
 
 const todayRecords = computed(() => {
@@ -315,6 +314,10 @@ function getCalendarDays(monthDate) {
 }
 
 function selectDate(date) {
+  if (isFutureDate(date)) {
+    uni.showToast({ title: '不能添加未来日期的记录', icon: 'none' });
+    return;
+  }
   selectedDate.value = date;
   currentMonth.value = parseLocalDate(date);
   load(date);
@@ -468,8 +471,7 @@ onShow(() => {
 
 <style lang="scss" scoped>
 .exercise-page {
-  min-height: 100vh;
-  height: 100vh;
+  flex: 1;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -777,7 +779,7 @@ onShow(() => {
 }
 
 .bottom-placeholder {
-  height: 160rpx;
+  height: 32rpx;
 }
 
 /* 底部按钮 */

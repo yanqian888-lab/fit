@@ -44,3 +44,26 @@ export function getToday() {
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+/**
+ * 判断日期字符串是否为未来日期（大于今天）
+ * @param {string} dateStr 格式 YYYY-MM-DD
+ * @returns {boolean}
+ */
+export function isFutureDate(dateStr) {
+  if (!dateStr) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.getTime() > today.getTime();
+}
+
+/**
+ * 如果日期是未来日期，返回今天；否则返回原日期
+ * @param {string} dateStr 格式 YYYY-MM-DD
+ * @returns {string}
+ */
+export function clampFutureDate(dateStr) {
+  if (!dateStr) return getToday();
+  return isFutureDate(dateStr) ? getToday() : dateStr;
+}

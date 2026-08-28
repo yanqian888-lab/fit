@@ -1,5 +1,5 @@
 <template>
-  <AppPage :showHeader="true" title="身体数据">
+  <AppPage :showHeader="true" :fixed="true" title="身体数据">
   <view class="body-page">
     <view class="body-scroll">
       <!-- 日期模块 -->
@@ -114,7 +114,12 @@
             </view>
           </view>
           <view class="x-axis">
-            <text v-for="(point, idx) in chartPoints" :key="idx" class="x-label">{{ point.date }}</text>
+            <text
+              v-for="(point, idx) in chartPoints"
+              :key="idx"
+              class="x-label"
+              :style="{ left: (point.x / 320 * 100) + '%' }"
+            >{{ point.date }}</text>
           </view>
         </view>
 
@@ -228,7 +233,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi } from '../../api';
 import { showRewardToast } from '../../utils/rewardToast.js';
-import { getToday, formatDate } from '../../utils/date';
+import { getToday, formatDate, isFutureDate } from '../../utils/date';
 
 // 日期相关
 const today = getToday();
@@ -243,8 +248,8 @@ const calendarDays = computed(() => getCalendarDays(currentMonth.value));
 const headerDate = computed(() => {
   const d = currentMonth.value;
   const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  return `${y}年${m}月`;
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}.${m}`;
 });
 
 // 数据
@@ -469,6 +474,10 @@ function getCalendarDays(monthDate) {
 }
 
 function selectDate(date) {
+  if (isFutureDate(date)) {
+    uni.showToast({ title: '不能添加未来日期的记录', icon: 'none' });
+    return;
+  }
   selectedDate.value = date;
   currentMonth.value = parseLocalDate(date);
   loadData();
@@ -670,7 +679,7 @@ watch(selectedDate, updateCurrentData);
 
 <style lang="scss" scoped>
 .body-page {
-  height: 100vh;
+  flex: 1;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -1058,28 +1067,33 @@ watch(selectedDate, updateCurrentData);
 }
 
 .x-axis {
-  display: flex;
-  justify-content: space-between;
-  padding: 0 8rpx;
+  position: relative;
+  height: 30rpx;
+  margin-top: 8rpx;
+  padding: 0;
 }
 
 .x-label {
+  position: absolute;
+  transform: translateX(-50%);
   font-size: 22rpx;
   color: #999999;
   line-height: 30rpx;
+  text-align: center;
+  white-space: nowrap;
 }
 
-/* 围度网格 —— 与上面"当前数据"3列完全对齐：width 32%（商店弹层同款跨屏稳定写法）+ flex-start + gap */
+/* 围度网格 —— 3列一行，使用 calc 精确计算宽度避免 gap + 百分比溢出 */
 .measurement-grid {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-start; /* 关键：去掉 space-between，避免 6 个围度（2行×3列）第二行 space-between 算法把元素拆成左1+中空+右2 → 视觉变成2列中间空白 */
+  justify-content: flex-start;
   gap: 16rpx;
   margin-bottom: 32rpx;
 }
 
 .measurement-item {
-  width: 32%; /* 3列一行：32% × 3 = 96%，剩余 4% 由 gap 16rpx 分摊，跨屏幕稳定 */
+  width: calc((100% - 32rpx) / 3);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1105,7 +1119,7 @@ watch(selectedDate, updateCurrentData);
 }
 
 .bottom-placeholder {
-  height: 40rpx;
+  height: 0;
 }
 
 /* 弹窗 */

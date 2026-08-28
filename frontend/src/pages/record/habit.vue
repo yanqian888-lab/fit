@@ -151,7 +151,7 @@ import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { onShow, onLoad } from '@dcloudio/uni-app';
 import { recordApi } from '../../api';
-import { getToday } from '../../utils/date';
+import { getToday, isFutureDate } from '../../utils/date';
 
 const tabs = [
   { label: '喝水', value: 'water' },
@@ -228,7 +228,9 @@ const currentMonth = ref(new Date(today + 'T00:00:00'));
 
 const monthTitle = computed(() => {
   const d = currentMonth.value;
-  return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}.${m}`;
 });
 
 const calendarDays = computed(() => getCalendarDays(currentMonth.value));
@@ -358,6 +360,10 @@ function showHabitReward(res, defaultTitle) {
 }
 
 function selectDate(date) {
+  if (isFutureDate(date)) {
+    uni.showToast({ title: '不能添加未来日期的记录', icon: 'none' });
+    return;
+  }
   selectedDate.value = date;
   currentMonth.value = new Date(date + 'T00:00:00');
   loadHabits();

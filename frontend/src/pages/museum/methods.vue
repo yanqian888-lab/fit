@@ -156,7 +156,7 @@ async function confirmDelete() {
   z-index: 1;
   display: flex;
   align-items: center;
-  margin: 0 48rpx 24rpx;
+  margin: 0 32rpx 24rpx;
   padding: 0 24rpx;
   height: 84rpx;
   background: #FFFFFF;

@@ -259,7 +259,7 @@ onReachBottom(() => {
   z-index: 1;
   display: flex;
   align-items: center;
-  margin: 0 48rpx 24rpx;
+  margin: 0 32rpx 24rpx;
   padding: 0 24rpx;
   height: 84rpx;
   background: #FFFFFF;
@@ -282,19 +282,23 @@ onReachBottom(() => {
 .category-tabs {
   display: flex;
   align-items: center;
-  gap: 16rpx;
-  padding: 0 48rpx 24rpx;
+  gap: 12rpx;
+  padding: 0 32rpx 24rpx;
   position: relative;
   z-index: 1;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .tab-item {
-  padding: 12rpx 24rpx;
+  padding: 12rpx 20rpx;
   border-radius: 32rpx;
   background: #FFFFFF;
-  font-size: 26rpx;
+  font-size: 24rpx;
   color: #666666;
   border: 2rpx solid #E5E7EB;
+  flex-shrink: 0;
 }
 
 .tab-item.active {
