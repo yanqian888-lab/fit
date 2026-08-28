@@ -2075,8 +2075,13 @@ async function onPendingTag(msg) {
   flex: 1;
   min-height: 0;
   padding: 20rpx 40rpx;
-  /* 底部预留空间：输入框高度约 100rpx + 底部偏移 124rpx，最后一条消息刚好显示在输入框上方 */
-  padding-bottom: calc(210rpx + env(safe-area-inset-bottom));
+  /*
+   * 底部预留空间：
+   * 输入区(input-area)总高约 100rpx（input-bar 72rpx + 上下 padding 28rpx），
+   * 要求输入框上方只保留 8rpx（4px）浅绿色间距，
+   * 所以 padding-bottom = 100rpx + 8rpx + 安全区。
+   */
+  padding-bottom: calc(108rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   background: #F7FBF4;
 }
