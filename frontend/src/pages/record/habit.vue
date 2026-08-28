@@ -548,10 +548,12 @@ function goMood() {
 .calendar-day {
   width: 14.2857%;
   flex: 0 0 14.2857%;
+  aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12rpx 0;
+  margin-bottom: 24rpx;
+  border-radius: 50%;
 }
 
 .calendar-day-text {

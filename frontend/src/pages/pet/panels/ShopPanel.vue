@@ -363,22 +363,23 @@ async function buy(item) {
 .item-grid {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: flex-start;
   row-gap: 32rpx;
+  column-gap: 16rpx;
   /*
    * 右侧预留 16rpx 滚动条避让区，确保第三列卡片不会被滚动条遮挡。
-   * 3 张卡片各占 32%，剩余宽度由 space-between 自动分配为列间距。
+   * 使用 flex-start + gap 替代 space-between，最后一行不足3个时左对齐。
    */
   padding-right: 16rpx;
 }
 .item-card {
   /*
    * 固定 32% 百分比宽度：弹层占满屏幕宽度（750rpx 基准）下每卡 ≈ 219rpx，
-   * 3×32% = 96%，剩余宽度由 space-between 分配为列间距，任何设备宽度永不折成 2 列 ✅
+   * 3×32% = 96%，剩余宽度由 gap 分配为列间距，任何设备宽度永不折成 2 列 ✅
    * 内部子元素尺寸（图/字/max-width）统一按百分比约束，避免超出卡边缘
    */
-  width: 32%;
-  flex: 0 0 32%;
+  width: calc((100% - 32rpx) / 3);
+  flex: 0 0 calc((100% - 32rpx) / 3);
   height: 340rpx;
   background: #DDF3D2;
   border-radius: 20rpx;

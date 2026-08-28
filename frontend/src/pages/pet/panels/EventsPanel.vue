@@ -186,7 +186,7 @@ onMounted(load);
 
 .progress-tip {
   display: block;
-  padding: 4rpx 32rpx 8rpx;
+  padding: 4rpx 32rpx 24rpx;
   font-size: 24rpx;
   color: #8EBB77;
 }

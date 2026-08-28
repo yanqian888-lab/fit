@@ -41,3 +41,31 @@ if (env === 'production') {
 
 export default config;
 export const API_BASE_URL = config.apiBaseUrl;
+
+/**
+ * 根据 API_BASE_URL 推导服务器根域名（去除 /api 路径）
+ * 用于拼接静态资源（图片、文件）的完整访问地址
+ * @returns {string} 服务器根域名，如 https://api.fit.mianyan.xin
+ */
+export function getServerRoot() {
+  const base = config.apiBaseUrl || '';
+  return base.replace(/\/api\/?$/, '');
+}
+
+/**
+ * 将相对路径转换为完整 URL
+ * 前端返回的静态资源路径（如 /static/uploads/xxx.jpg）需要拼接服务器域名
+ * @param {string} path - 相对路径，如 /static/uploads/xxx.jpg
+ * @returns {string} 完整 URL，如 https://api.fit.mianyan.xin/static/uploads/xxx.jpg
+ */
+export function getFullUrl(path) {
+  if (!path) return '';
+  // 已经是完整 URL 的直接返回
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  // 相对路径以 / 开头，拼接服务器根域名
+  if (path.startsWith('/')) {
+    return getServerRoot() + path;
+  }
+  // 其他情况，直接拼接
+  return getServerRoot() + '/' + path;
+}

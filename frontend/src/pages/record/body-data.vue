@@ -229,7 +229,7 @@
 
 <script setup>
 import AppPage from '../../components/AppPage.vue';
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi } from '../../api';
 import { showRewardToast } from '../../utils/rewardToast.js';
@@ -473,6 +473,10 @@ function getCalendarDays(monthDate) {
   return days;
 }
 
+/**
+ * 选择日期并加载该日期的数据
+ * @param {string} date - 日期字符串 YYYY-MM-DD
+ */
 function selectDate(date) {
   if (isFutureDate(date)) {
     uni.showToast({ title: '不能添加未来日期的记录', icon: 'none' });
@@ -480,6 +484,9 @@ function selectDate(date) {
   }
   selectedDate.value = date;
   currentMonth.value = parseLocalDate(date);
+  // 清空旧的记录日期，避免重复
+  recordDates.value.clear();
+  // 加载数据（loadWeight 内部会调用 updateCurrentData 更新UI）
   loadData();
 }
 
@@ -502,26 +509,53 @@ function nextMonth() {
   currentMonth.value = d;
 }
 
+/**
+ * 加载所有身体数据（体重、围度、个人资料）
+ * 顺序加载确保数据一致性
+ */
 async function loadData() {
-  await Promise.all([loadWeight(), loadMeasurements(), loadProfile()]);
+  await loadWeight();
+  await loadMeasurements();
+  await loadProfile();
 }
 
+/**
+ * 加载体重数据并更新UI
+ */
 async function loadWeight() {
   try {
+    // 清空旧数据，确保显示最新数据
+    recordDates.value.clear();
     const res = await recordApi.getBody({ type: 'weight', days: 365 });
     weightList.value = res.data.list || [];
+    // 更新记录日期集合，用于日历显示
     (res.data.list || []).forEach(item => recordDates.value.add(item.date));
+    // 根据当前选中日期更新UI显示
     updateCurrentData();
   } catch (err) {
     console.error(err);
   }
 }
 
+/**
+ * 根据选中日期更新当前显示的体重数据
+ * 优先显示选中日期当天的记录，若无则显示该日期之前最近的一条
+ */
 function updateCurrentData() {
-  // 找到 selectedDate 当天或之前的最新体重记录
+  // 如果 weightList 还未加载完成，延迟更新
+  if (!weightList.value || weightList.value.length === 0) {
+    currentWeight.value = null;
+    bodyFatRate.value = null;
+    return;
+  }
+  
   const selected = selectedDate.value;
-  const record = weightList.value.find(item => item.date === selected) ||
-    weightList.value.find(item => item.date < selected);
+  // 优先查找选中日期当天的记录
+  let record = weightList.value.find(item => item.date === selected);
+  // 如果没有当天记录，查找该日期之前最近的一条
+  if (!record) {
+    record = weightList.value.find(item => item.date < selected);
+  }
 
   if (record) {
     currentWeight.value = record.value;
@@ -673,8 +707,9 @@ onMounted(() => {
 onShow(() => {
   loadData();
 });
-
-watch(selectedDate, updateCurrentData);
+// 注意：不再使用 watch(selectedDate, updateCurrentData) 
+// 因为 loadWeight 完成后会自动调用 updateCurrentData
+// 避免在数据未加载完成时显示过时数据
 </script>
 
 <style lang="scss" scoped>
