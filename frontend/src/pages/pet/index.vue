@@ -91,10 +91,8 @@
         </view>
       </view>
 
-      <!-- 底部功能面板底层的浅绿色衬底（通栏，向下接到 tabbar） -->
-      <view class="bottom-panel-bg"></view>
+      <!-- 底部功能面板：上半部分透明透出背景图，下半部分保留浅绿色衬底 -->
 
-      <!-- 底部功能面板 -->
       <view class="bottom-panel">
         <view class="bottom-item" @click="goTasks">
           <image class="bottom-icon" src="/static/image/icon/renwu@3x.png" mode="aspectFit" />
@@ -114,8 +112,6 @@
         </view>
       </view>
     </view>
-
-    <CustomTabBar />
 
     <!-- 弹窗层：吃饭/运动提示 -->
     <view v-if="hintBubbleVisible" class="hint-mask" @click="closeHintBubble">
@@ -162,40 +158,6 @@
       </view>
     </view>
 
-    <!-- 弹窗层：背包喂食 -->
-    <view v-if="feedPanelVisible" class="feed-mask">
-      <view class="feed-backdrop" @click="closeBag"></view>
-      <view class="feed-panel">
-        <text class="panel-title">我的背包</text>
-        <text class="panel-subtitle">今日还可喂 {{ feedRemaining }} 次，每次最多选 {{ maxFeedItems }} 种</text>
-        <view v-if="foods.length === 0" class="empty-tip">
-          <text>背包里没有食物，</text>
-          <text class="link" @click="goShop">去商城买点吧</text>
-        </view>
-        <view v-else class="food-list">
-          <view
-            v-for="food in foods"
-            :key="food.id"
-            class="food-item"
-            :class="{ selected: selectedFoodIds.includes(food.id) }"
-            @click="toggleFood(food.id)"
-          >
-            <image class="food-icon" :src="resolveStaticUrl(food.icon_url) || '/static/image/icon/jiyinshi@3x.png'" mode="aspectFit" />
-            <view class="food-info">
-              <text class="food-name">{{ food.name }}</text>
-              <text class="food-effect">{{ foodEffectText(food.effect_json) }}</text>
-            </view>
-            <text class="food-count">x{{ food.quantity }}</text>
-            <view class="food-check">{{ selectedFoodIds.includes(food.id) ? '✓' : '' }}</view>
-          </view>
-        </view>
-        <view v-if="selectedFoodIds.length > 0" class="feed-submit" @click="onFeedSelected">
-          喂给搭搭（已选 {{ selectedFoodIds.length }} 种）
-        </view>
-        <view class="panel-close" @click="closeBag">关闭</view>
-      </view>
-    </view>
-
     <!-- 弹窗层：事件相册（集合 tab + 解锁进度 + 缺省槽位） -->
     <EventsPanel v-if="eventPanelVisible" @close="eventPanelVisible = false" @select-event="onViewEvent" />
 
@@ -226,7 +188,15 @@
           <text v-if="newEvent.collection_name" class="event-coll-pill">{{ newEvent.collection_name }}</text>
           <text class="event-title">{{ newEvent.title }}</text>
           <text class="event-content">{{ newEvent.content || '暂无详细内容' }}</text>
-          <!-- 该功能暂未开放（提审阶段先隐藏 saveImageToPhotosAlbum 写入相册权限声明） -->
+          <!-- 底部操作栏：保存到相册 + 关闭 -->
+          <view class="card-actions">
+            <view class="btn btn-ghost" @click="closeNewEvent">
+              <text>关闭</text>
+            </view>
+            <view class="btn btn-primary" @click="downloadEventPhoto">
+              <text>保存到相册</text>
+            </view>
+          </view>
         </view>
       </view>
     </view>
@@ -267,7 +237,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import CustomTabBar from '../../custom-tab-bar/index.vue';
 import PetSprite from '../../components/PetSprite.vue';
 import TaskPanel from './panels/TaskPanel.vue';
 import BagPanel from './panels/BagPanel.vue';
@@ -278,6 +247,17 @@ import AppModal from '../../components/AppModal.vue';
 import { petApi } from '../../api';
 import { fallbackScenes, defaultSceneKey } from './sceneConfig.js';
 import { resolveStaticUrl } from '../../utils/environment';
+import { getSystemInfoSafe } from '../../utils/systemInfo';
+import { useUserStore } from '../../store';
+import { usePageCacheStore, CACHE_KEYS } from '../../store/page-cache';
+
+const userStore = useUserStore();
+const pageCache = usePageCacheStore();
+
+// 数据加载状态
+const loading = ref(false);
+// 是否有缓存数据
+const hasCachedData = ref(false);
 
 function noop() {}
 
@@ -294,11 +274,8 @@ let pendingWorkoutKey = '';
 const pet = ref({});
 const state = ref({});
 const currency = ref({});
-const foods = ref([]);
-const feedPanelVisible = ref(false);
 const eventPanelVisible = ref(false);
 const hintBubbleVisible = ref(false);
-const selectedFoodIds = ref([]);
 const newEvent = ref(null);
 const newEventReward = ref(null);
 // 首喂掉落的食谱弹窗
@@ -335,12 +312,12 @@ const stageHeightRpx = ref(DESIGN_HEIGHT_RPX);
 
 function measureStage() {
   try {
-    const info = uni.getSystemInfoSync();
+    const info = getSystemInfoSafe();
     const windowWidth = info.windowWidth || 375;
     const windowHeight = info.windowHeight || 667;
     const safeBottom = (info.safeAreaInsets && info.safeAreaInsets.bottom) || 0;
-    // tabbar 高度 156rpx + 底部衬底 55rpx，背景下沿贴到衬底上沿
-    const tabbarPx = ((156 + 55) / 750) * windowWidth + safeBottom;
+    // 背景下沿下拉到功能区一半的位置（功能区底部 16rpx + 高度的一半 80rpx = 96rpx）
+    const tabbarPx = (96 / 750) * windowWidth + safeBottom;
     const stagePx = Math.max(0, windowHeight - tabbarPx);
     stageHeightRpx.value = (stagePx / windowWidth) * 750;
   } catch (e) {}
@@ -358,7 +335,14 @@ const coordScale = computed(() => stageHeightRpx.value / designHeightRpx.value);
 
 // 背景图真实宽高比（运行时测量），避免后台配置值与图片实际比例不符导致拉伸/错位
 const bgAspect = ref(0);
+let bgAspectRetryCount = 0;
+const MAX_BG_ASPECT_RETRIES = 3;
 
+/**
+ * 测量背景图真实宽高比
+ * 带重试机制，避免首次加载时图片缓存未就绪导致的测量失败
+ * @param {string} url - 背景图 URL
+ */
 function measureBgAspect(url) {
   if (!url) return;
   uni.getImageInfo({
@@ -367,19 +351,38 @@ function measureBgAspect(url) {
       // 仅当测量的仍是当前背景时采纳，防止时段切换后旧图结果覆盖
       if (info && info.width && info.height && currentBgImage.value === url) {
         bgAspect.value = info.width / info.height;
+        bgAspectRetryCount = 0; // 成功后重置重试计数
       }
     },
-    fail: () => {}
+    fail: () => {
+      // 重试机制：最多重试 3 次，每次间隔 500ms
+      if (bgAspectRetryCount < MAX_BG_ASPECT_RETRIES) {
+        bgAspectRetryCount++;
+        setTimeout(() => {
+          // 重试前再次确认 URL 未变
+          if (currentBgImage.value === url) {
+            measureBgAspect(url);
+          }
+        }, 500);
+      }
+    }
   });
 }
 
+/**
+ * 有效宽高比：优先使用实测值，回退到场景配置，最后使用通用默认值
+ */
 const effectiveAspect = computed(() => {
   const scene = currentScene.value || {};
-  return bgAspect.value || scene.bg_aspect || scene.bgAspect || (1871 / 1930);
+  if (bgAspect.value > 0) return bgAspect.value;
+  if (scene.bg_aspect && scene.bg_aspect > 0) return scene.bg_aspect;
+  if (scene.bgAspect && scene.bgAspect > 0) return scene.bgAspect;
+  // 通用默认值：基于常见竖屏背景图比例
+  return 1871 / 1930;
 });
 
 // 地图宽度 = 舞台高度 × 宽高比（等比缩放，不拉伸）
-const mapWidth = computed(() => Math.round(stageHeightRpx.value * effectiveAspect.value));
+const mapWidth = computed(() => Math.max(750, Math.round(stageHeightRpx.value * effectiveAspect.value)));
 
 // 底图默认在屏幕中水平居中展示
 function centerMap() {
@@ -444,44 +447,111 @@ watch(bgAspect, () => {
 });
 
 // ==================== 宠物形象配置（后台 pet_sprite） ====================
-// CMS 可配置坐标/尺寸/序列帧/播放速率；缺省时用前端默认形象
-const DEFAULT_SPRITE = {
-  x: 375,
-  y: 500,
-  width: 380,
-  height: 380,
-  fps: 2,
-  frames: ['/static/image/icon/dada@3x.png', '/static/image/icon/dada02@3x.png']
-};
+// CMS 可配置坐标/尺寸/序列帧/播放速率；不再使用前端兜底图片，
+// 若后台未配置形象，则宠物不显示，避免展示错误的默认剪影。
+
+/**
+ * 规范化帧数组：支持多种格式
+ * - 字符串数组: ['url1', 'url2']
+ * - 对象数组: [{ url: 'url1' }, { url: 'url2' }]
+ * - 混合格式
+ * 同时将相对路径解析为完整 URL，确保小程序可访问
+ * @param {Array} raw - 原始帧数据
+ * @returns {string[]} 规范化后的完整 URL 字符串数组
+ */
+function normalizeFrames(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(item => {
+      let url = '';
+      if (typeof item === 'string') url = item.trim();
+      else if (item && typeof item === 'object') url = (item.url || item.src || '').trim();
+      // 解析相对路径为完整 URL
+      url = resolveStaticUrl(url);
+      return url;
+    })
+    .filter(url => url.length > 0);
+}
+
 const spriteConfig = computed(() => {
-  // 吃饭/运动时段且该时段还未进食/运动：打断居家状态（看书/冥想等），
-  // 显示默认形象并顶气泡，引导用户喂食/运动；完成后恢复原状态
-  if (!showHint.value) {
-    // 优先使用当前状态库的序列帧/坐标/尺寸配置
-    const activity = pet.value.home_activity || {};
-    const activityFrames = Array.isArray(activity.frames) ? activity.frames.filter(f => f) : [];
-    if (activityFrames.length > 0) {
-      return {
-        x: typeof activity.pos_x === 'number' ? activity.pos_x : DEFAULT_SPRITE.x,
-        y: typeof activity.pos_y === 'number' ? activity.pos_y : DEFAULT_SPRITE.y,
-        width: typeof activity.width === 'number' ? activity.width : DEFAULT_SPRITE.width,
-        height: typeof activity.height === 'number' ? activity.height : DEFAULT_SPRITE.height,
-        fps: typeof activity.frame_rate === 'number' && activity.frame_rate > 0 ? activity.frame_rate : DEFAULT_SPRITE.fps,
-        frames: activityFrames
-      };
-    }
+  const s = pet.value.sprite || {};
+  const activity = pet.value.home_activity || {};
+  const skin = pet.value.skin || {};
+
+  // 空配置兜底（坐标/尺寸默认值，frames 由最后一层兜底填充）
+  const EMPTY_CONFIG = { x: 375, y: 500, width: 380, height: 380, fps: 2, frames: [] };
+
+  /**
+   * 按当前选中的形象来源构建最终配置
+   * @param {object} source - 原始配置对象
+   * @param {string[]} frames - 已规范化的帧 URL 数组
+   * @param {string} label - 日志标识
+   * @returns {object} 宠物形象配置
+   */
+  function buildFrom(source, frames, label) {
+    const x = typeof source.x === 'number' ? source.x : EMPTY_CONFIG.x;
+    const y = typeof source.y === 'number' ? source.y : EMPTY_CONFIG.y;
+    const width = typeof source.width === 'number' ? source.width : EMPTY_CONFIG.width;
+    const height = typeof source.height === 'number' ? source.height : EMPTY_CONFIG.height;
+    const fps = typeof source.fps === 'number' && source.fps > 0 ? source.fps : EMPTY_CONFIG.fps;
+    console.log(`[PetSprite] source=${label}, frames=${frames.length}, first=${frames[0] || 'empty'}`);
+    return { x, y, width, height, fps, frames };
   }
 
-  const s = pet.value.sprite || {};
-  const frames = Array.isArray(s.frames) ? s.frames.filter(f => f) : [];
-  return {
-    x: typeof s.x === 'number' ? s.x : DEFAULT_SPRITE.x,
-    y: typeof s.y === 'number' ? s.y : DEFAULT_SPRITE.y,
-    width: typeof s.width === 'number' ? s.width : DEFAULT_SPRITE.width,
-    height: typeof s.height === 'number' ? s.height : DEFAULT_SPRITE.height,
-    fps: typeof s.fps === 'number' && s.fps > 0 ? s.fps : DEFAULT_SPRITE.fps,
-    frames: frames.length > 0 ? frames : DEFAULT_SPRITE.frames
-  };
+  // 吃饭/运动时段：始终使用 CMS pet_sprite 主形象并顶气泡
+  if (showHint.value) {
+    const frames = normalizeFrames(s.frames);
+    if (frames.length === 0) {
+      console.warn('[PetSprite] 提示时段但 pet_sprite.frames 为空，使用兜底形象');
+      return buildFallbackConfig();
+    }
+    return buildFrom(s, frames, 'pet_sprite(hint)');
+  }
+
+  // 非吃饭/运动时段：按优先级选择形象来源
+  // 1. CMS 形象配置（pet_sprite）：用户主动上传的默认形象，优先级最高
+  const spriteFrames = normalizeFrames(s.frames);
+  if (spriteFrames.length > 0) {
+    return buildFrom(s, spriteFrames, 'pet_sprite');
+  }
+
+  // 2. 当前穿戴皮肤（pet_skins 表）：当 pet_sprite 未配置时的兜底
+  const skinFrames = normalizeFrames(skin.frames || (skin.static_url ? [skin.static_url] : []));
+  if (skinFrames.length > 0) {
+    return buildFrom({ ...EMPTY_CONFIG, ...skin }, skinFrames, 'pet_skin');
+  }
+
+  // 3. 状态库活动形象（home_activity）：按时段/概率随机触发的特殊状态
+  // 注意：状态库使用 frame_rate 字段表示播放速率，需要映射为 fps
+  const activityFrames = normalizeFrames(activity.frames);
+  if (activityFrames.length > 0) {
+    return buildFrom(
+      { ...activity, fps: activity.frame_rate },
+      activityFrames,
+      'home_activity'
+    );
+  }
+
+  // 4. 最终兜底：使用内置默认宠物图，保证宠物永远可见（避免完全空白）
+  console.warn('[PetSprite] 所有形象来源均为空（pet_sprite/skin/home_activity），使用内置兜底形象');
+  return buildFallbackConfig();
+
+  /**
+   * 构建兜底配置：使用 pet_moren.png 作为最后一道防线
+   * @returns {object} 宠物形象配置
+   */
+  function buildFallbackConfig() {
+    // 注意：文件实际在后端 public/uploads/ 目录，通过 /static/uploads/ 对外暴露
+    const fallbackUrl = resolveStaticUrl('/static/uploads/pet_moren.png');
+    return {
+      x: EMPTY_CONFIG.x,
+      y: EMPTY_CONFIG.y,
+      width: EMPTY_CONFIG.width,
+      height: EMPTY_CONFIG.height,
+      fps: 1,
+      frames: [fallbackUrl]
+    };
+  }
 });
 // 后台只配置主形象序列帧（1 张即静态）；其他动作名由 PetSprite 回退到 idle
 const spriteAnimations = computed(() => ({
@@ -549,6 +619,7 @@ function onItemBubbleClick(item) {
 }
 
 function onPetBubbleClick() {
+  if (!userStore.requireAuth()) return;
   if (isNight.value) {
     showNightToast();
     return;
@@ -580,7 +651,7 @@ function onTouchStart(e) {
 
 function applyDrag(clientX) {
   // clientX 单位是 px，需要按 rpx 换算：1px = 750 / 屏幕宽度 px rpx
-  const screenWidthPx = uni.getSystemInfoSync().windowWidth;
+  const screenWidthPx = getSystemInfoSafe().windowWidth;
   const deltaPx = clientX - dragStartX;
   const deltaRpx = (deltaPx / screenWidthPx) * 750;
   if (Math.abs(deltaRpx) > 4) hasDragged.value = true;
@@ -612,7 +683,7 @@ function onMouseDown(e) {
 
 function onMouseMove(e) {
   if (!isDragging.value) return;
-  const screenWidthPx = uni.getSystemInfoSync().windowWidth;
+  const screenWidthPx = getSystemInfoSafe().windowWidth;
   const deltaRpx = ((e.clientX - dragStartX) / screenWidthPx) * 750;
   if (Math.abs(deltaRpx) > 4) hasDragged.value = true;
   translateX.value = clampTranslateX(dragStartTranslateX + deltaRpx);
@@ -645,11 +716,73 @@ function switchScene(key) {
 }
 
 // ==================== 数据加载 ====================
+/**
+ * 加载宠物公共展示配置（无需登录）
+ * 填充 pet.value.sprite / pet.value.scenes / pet.value.anim，
+ * 让未登录游客也能看到搭搭形象和场景背景
+ * 使用 Object.assign 合并赋值，确保触发 Vue 响应式更新
+ */
+async function loadPetConfig() {
+  try {
+    const res = await petApi.getPetConfig();
+    const cfg = res.data || {};
+    // 用 Object.assign 合并赋值，确保触发 Vue 响应式更新
+    pet.value = Object.assign({}, pet.value, {
+      sprite: cfg.sprite || pet.value.sprite || {},
+      scenes: cfg.scenes || pet.value.scenes || {},
+      anim: cfg.anim || pet.value.anim || 'idle'
+    });
+    console.log('[PetConfig] 公共配置加载成功, sprite.frames:', cfg.sprite?.frames?.length || 0);
+  } catch (e) {
+    console.warn('[PetConfig] 公共配置加载失败（不影响主流程）:', e.message);
+  }
+}
+
+/**
+ * 加载宠物完整数据（需登录）
+ * 包含状态、互动、事件等用户专属数据
+ */
 async function loadPet() {
   try {
     const res = await petApi.getPet({ scene: currentSceneKey.value });
     pet.value = res.data || {};
     state.value = pet.value.state || {};
+    // 调试日志：查看 API 返回的形象来源数据
+    const spriteData = pet.value.sprite || {};
+    const homeActivityData = pet.value.home_activity || {};
+    const skinData = pet.value.skin || {};
+    const spriteFrames = Array.isArray(spriteData.frames) ? spriteData.frames : [];
+    const skinFrames = Array.isArray(skinData.frames) ? skinData.frames : (skinData.static_url ? [skinData.static_url] : []);
+    const activityFrames = Array.isArray(homeActivityData.frames) ? homeActivityData.frames : [];
+
+    console.log('[Pet] API response - sprite:', JSON.stringify({
+      x: spriteData.x, y: spriteData.y, width: spriteData.width, height: spriteData.height,
+      fps: spriteData.fps,
+      framesCount: spriteFrames.length,
+      firstFrame: spriteFrames[0] || 'N/A'
+    }));
+    console.log('[Pet] API response - skin:', JSON.stringify({
+      skin_id: skinData.skin_id,
+      name: skinData.name,
+      static_url: skinData.static_url,
+      framesCount: skinFrames.length,
+      firstFrame: skinFrames[0] || 'N/A'
+    }));
+    console.log('[Pet] API response - home_activity:', JSON.stringify({
+      state_key: homeActivityData.state_key,
+      framesCount: activityFrames.length,
+      firstFrame: activityFrames[0] || 'N/A'
+    }));
+
+    if (spriteFrames.length === 0) {
+      console.warn('[Pet] ⚠️ API 返回的 pet_sprite.frames 为空，将尝试使用 pet_skin / home_activity / 前端兜底');
+    }
+    // 更新缓存
+    pageCache.setCache(CACHE_KEYS.PET_INFO, {
+      pet: pet.value,
+      state: state.value,
+      sceneKey: currentSceneKey.value
+    });
 
     // 同步后台配置的默认场景；当前场景不在配置列表时回退到第一个场景
     const cfgDefault = pet.value.scenes && pet.value.scenes.default;
@@ -693,20 +826,56 @@ async function loadPet() {
       stopExploreTimer();
       remainingTime.value = '';
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('[Pet] loadPet FAILED:', e.message, '请检查：①后端是否启动 ②开发者工具是否勾选"不校验合法域名"');
+    // 加载失败时保留已有的缓存数据，不强制清空
+  }
+}
+
+/**
+ * 从缓存恢复数据
+ * @returns {boolean} 是否有缓存数据
+ */
+function initFromCache() {
+  const cached = pageCache.getCache(CACHE_KEYS.PET_INFO);
+  if (cached) {
+    pet.value = cached.pet || {};
+    state.value = cached.state || {};
+    if (cached.sceneKey && sceneList.value.some(s => s.key === cached.sceneKey)) {
+      currentSceneKey.value = cached.sceneKey;
+    }
+    hasCachedData.value = true;
+  }
+  const cachedCurrency = pageCache.getCache(CACHE_KEYS.PET_CURRENCY);
+  if (cachedCurrency) {
+    currency.value = cachedCurrency;
+    hasCachedData.value = true;
+  }
+  return hasCachedData.value;
+}
+
+/**
+ * 检查是否需要刷新缓存
+ */
+function needRefresh() {
+  if (pageCache.consumeForceRefresh(CACHE_KEYS.PET_INFO)) {
+    return true;
+  }
+  if (!hasCachedData.value) {
+    return true;
+  }
+  if (pageCache.isExpired(CACHE_KEYS.PET_INFO)) {
+    return true;
+  }
+  return false;
 }
 
 async function loadCurrency() {
   try {
     const res = await petApi.getCurrency();
     currency.value = res.data || {};
-  } catch (e) {}
-}
-
-async function loadInventory() {
-  try {
-    const res = await petApi.getInventory({ category: 'food' });
-    foods.value = (res.data?.list || []).filter(i => i.quantity > 0);
+    // 更新缓存
+    pageCache.setCache(CACHE_KEYS.PET_CURRENCY, currency.value);
   } catch (e) {}
 }
 
@@ -751,6 +920,7 @@ function pickRandomDialogue() {
 
 async function onPetSpriteClick() {
   // 喂食/运动提示优先，不弹对话
+  if (!userStore.requireAuth()) return;
   if (showHint.value) return;
   await loadPetDialogues();
   const text = pickRandomDialogue();
@@ -760,11 +930,13 @@ async function onPetSpriteClick() {
 }
 
 function onFindFood() {
+  if (!userStore.requireAuth()) return;
   closeHintBubble();
-  openBag();
+  goInventory();
 }
 
 async function onExercise(option) {
+  if (!userStore.requireAuth()) return;
   if (isNight.value) {
     showNightToast();
     closeHintBubble();
@@ -810,68 +982,6 @@ function onPetAnimationEnd(anim) {
   }
 }
 
-// ==================== 背包 / 喂食 ====================
-function openBag() {
-  loadInventory();
-  selectedFoodIds.value = [];
-  feedPanelVisible.value = true;
-}
-
-function closeBag() {
-  feedPanelVisible.value = false;
-  selectedFoodIds.value = [];
-}
-
-function toggleFood(id) {
-  const index = selectedFoodIds.value.indexOf(id);
-  if (index >= 0) {
-    selectedFoodIds.value.splice(index, 1);
-  } else {
-    if (selectedFoodIds.value.length >= maxFeedItems.value) {
-      uni.showToast({ title: `每次最多喂 ${maxFeedItems.value} 种食物`, icon: 'none' });
-      return;
-    }
-    selectedFoodIds.value.push(id);
-  }
-}
-
-async function onFeedSelected() {
-  if (selectedFoodIds.value.length === 0) return;
-  if (isNight.value) {
-    showNightToast();
-    return;
-  }
-  try {
-    const res = await petApi.feed(selectedFoodIds.value);
-    pet.value.daily_feed_count = res.data.daily_feed_count;
-    closeBag();
-    loadInventory();
-    loadPet();
-    loadCurrency();
-    petAnim.value = 'happy';
-    // 喂食奖励提示（浆果/鲜花）
-    const reward = res.data.reward || {};
-    const rewardParts = [];
-    if (reward.berries) rewardParts.push(`+${reward.berries} 浆果`);
-    if (reward.flowers) rewardParts.push(`+${reward.flowers} 鲜花`);
-    uni.showToast({ title: `喂食成功${rewardParts.length ? '，' + rewardParts.join(' ') : ''}`, icon: 'none', duration: 2500 });
-    // 首次喂食掉落食谱：弹窗展示
-    const unlocked = res.data.recipes_unlocked || [];
-    if (unlocked.length > 0) {
-      recipeUnlock.value = unlocked[0];
-    }
-  } catch (e) {}
-}
-
-function foodEffectText(effectJson) {
-  try {
-    const effect = JSON.parse(effectJson || '{}');
-    return effect.recipe ? '可能掉落食谱' : '普通食物';
-  } catch (e) {
-    return '普通食物';
-  }
-}
-
 function rewardText(reward) {
   if (!reward) return '';
   const parts = [];
@@ -882,6 +992,7 @@ function rewardText(reward) {
 
 // ==================== 事件 ====================
 function openEventsPanel() {
+  if (!userStore.requireAuth()) return;
   eventPanelVisible.value = true;
 }
 
@@ -1097,25 +1208,46 @@ async function buildEventShareImage(ev, photoUrl) {
 }
 
 /**
- * 保存分享图到相册：提审阶段写入相册权限暂不声明，按钮入口已隐藏
- * 后续开放时恢复下面的 uni.saveImageToPhotosAlbum 调用（原函数体保留在注释里）
+ * 保存分享图到相册：合成事件海报（事件图 + 事件集合名 + 标题 + 说明 + 二维码 + 小程序名和副标题）
  */
 function saveShareImage(filePath) {
-  uni.hideLoading();
-  uni.showToast({ title: '该功能暂未开放', icon: 'none' });
-  /*
   uni.saveImageToPhotosAlbum({
     filePath,
     success: () => {
       uni.hideLoading();
       uni.showToast({ title: '已保存到相册', icon: 'success' });
     },
-    fail: () => {
+    fail: (err) => {
       uni.hideLoading();
-      onAlbumSaveFail();
+      onAlbumSaveFail(err);
     }
   });
-  */
+}
+
+/**
+ * 保存到相册失败兜底：用户拒绝授权时弹确认引导去系统设置页开启相册权限
+ */
+function onAlbumSaveFail(err) {
+  const errMsg = (err && err.errMsg) ? String(err.errMsg) : '';
+  // 拒绝授权 / 未授权场景
+  if (errMsg.includes('auth deny') || errMsg.includes('authorize') || errMsg.includes('cancel')) {
+    uni.showModal({
+      title: '需要相册权限',
+      content: '为了把这张美好瞬间保存到相册，请在设置中开启「保存到相册」权限',
+      confirmText: '去设置',
+      confirmColor: '#8EBB77',
+      cancelText: '取消',
+      success: (r) => {
+        if (r.confirm) {
+          try { uni.openSetting(); } catch (_) {
+            uni.showToast({ title: '请在设置里手动开启相册权限', icon: 'none' });
+          }
+        }
+      }
+    });
+    return;
+  }
+  uni.showToast({ title: '保存失败，请稍后再试', icon: 'none' });
 }
 
 function downloadEventPhoto() {
@@ -1157,14 +1289,17 @@ const shopPanelVisible = ref(false);
 const shopInitialCategory = ref('');
 
 function goTasks() {
+  if (!userStore.requireAuth()) return;
   taskPanelVisible.value = true;
 }
 
 function goInventory() {
+  if (!userStore.requireAuth()) return;
   bagPanelVisible.value = true;
 }
 
 function goShop() {
+  if (!userStore.requireAuth()) return;
   shopPanelVisible.value = true;
 }
 
@@ -1185,8 +1320,6 @@ function onBagFed() {
 
 function onShopClose() {
   shopPanelVisible.value = false;
-  // 商店买完回到喂食面板时刷新库存
-  if (feedPanelVisible.value) loadInventory();
 }
 function goMood() {
   uni.navigateTo({ url: '/pages/record/mood' });
@@ -1224,17 +1357,31 @@ function updateRemaining(endAt) {
   return false;
 }
 
-// 喂食限制
-const maxFeedItems = computed(() => pet.value.feed_limits?.max_items_per_feed || 2);
-const feedRemaining = computed(() =>
-  Math.max(0, (pet.value.feed_limits?.max_feeds_per_day || 6) - (pet.value.daily_feed_count || 0))
-);
-
 // ==================== 生命周期 ====================
 onShow(() => {
   timePeriod.value = getTimePeriod();
-  loadPet();
-  loadCurrency();
+  
+  // 先从缓存恢复数据（避免白屏）
+  if (!hasCachedData.value) {
+    initFromCache();
+  }
+  
+  // 无论登录与否，都加载公共展示配置（让未登录游客也能看到搭搭形象）
+  loadPetConfig();
+  
+  // 已登录用户额外加载完整数据（状态/互动/事件等）
+  if (userStore.isLoggedIn && needRefresh()) {
+    if (!hasCachedData.value) {
+      loading.value = true;
+    }
+    nextTick(() => {
+      loadPet();
+      loadCurrency();
+      loading.value = false;
+      hasCachedData.value = true;
+    });
+  }
+  
   measureStage();
   centerMap();
   // 其他页面引导打开商店并定位分类（如跟练课程未解锁 → 运动器材 tab）
@@ -1247,12 +1394,29 @@ onShow(() => {
   // 每次进入页面刷新点击对话缓存，确保 CMS 配置变更生效
   petDialogues.value = [];
   petDialogueVisible.value = false;
-  uni.$emit('tabbar-select', 1);
-  uni.hideTabBar({ animation: false }).catch(() => {});
 });
 
 onMounted(() => {
-  loadCheckin();
+  // 1. 先从缓存恢复数据（避免白屏）
+  const hasCache = initFromCache();
+  
+  // 2. 无论登录与否，都加载公共展示配置（让未登录游客也能看到搭搭形象）
+  loadPetConfig();
+  
+  // 3. 已登录用户额外加载完整数据
+  if (userStore.isLoggedIn) {
+    if (!hasCache) {
+      loading.value = true;
+    }
+    nextTick(() => {
+      loadPet();
+      loadCurrency();
+      loadCheckin();
+      loading.value = false;
+      hasCachedData.value = true;
+    });
+  }
+  
   measureStage();
   centerMap();
   measureBgAspect(currentBgImage.value);
@@ -1260,11 +1424,13 @@ onMounted(() => {
   if (typeof uni.onWindowResize === 'function') {
     uni.onWindowResize(onWindowResize);
   }
-  // H5 桌面预览：鼠标拖拽查看地图
+  // #ifdef H5
+  // H5 桌面预览：鼠标拖拽查看地图（仅 H5 端生效，小程序端用 touch 事件处理，避免 addListener of undefined 空指针）
   if (typeof window !== 'undefined' && window.addEventListener) {
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
   }
+  // #endif
   // 每分钟刷新时段，跨 19:00 / 22:00 / 6:00 边界自动切换背景与互动限制
   periodTimer = setInterval(() => {
     timePeriod.value = getTimePeriod();
@@ -1276,10 +1442,13 @@ onUnmounted(() => {
   if (typeof uni.offWindowResize === 'function') {
     uni.offWindowResize(onWindowResize);
   }
+  // #ifdef H5
+  // H5 桌面端：移除 mouse 事件监听（小程序端不执行，避免 removeListener 调用到 undefined 对象）
   if (typeof window !== 'undefined' && window.removeEventListener) {
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
   }
+  // #endif
   if (periodTimer) {
     clearInterval(periodTimer);
     periodTimer = null;
@@ -1293,17 +1462,20 @@ onUnmounted(() => {
   width: 100%;
   height: 100vh;
   overflow: hidden;
-  background: #F7FBF4;
+  /* 页面背景透明，让 scene-stage 的背景图从顶部状态栏位置显示 */
+  background: transparent;
 }
 
 .status-bar {
-  height: var(--status-bar-height);
-  /* #ifdef MP-WEIXIN */
-  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
-  height: calc(var(--status-bar-height) + 88rpx);
-  /* #endif */
+  /* 标杆第一行硬码兜底：44px + 88rpx，--status-bar-height 未注入前几帧不塌缩 */
+  height: calc(44px + 88rpx);
+  /* 标杆第二行：兼容非小程序端 var 注入真实高度，覆盖第一行 */
+  height: calc(var(--status-bar-height, 44px) + 88rpx);
+  /* 背景透明，让底层场景图从顶部通顶显示 */
+  background: transparent;
   position: relative;
   z-index: 100;
+  flex-shrink: 0;
 }
 
 /* 底层：场景地图 */
@@ -1312,8 +1484,8 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   right: 0;
-  /* 背景下沿贴到底部衬底（55rpx）的上沿，完整展示背景图 */
-  bottom: calc(156rpx + 55rpx + env(safe-area-inset-bottom));
+  /* 背景下沿下拉到功能区一半的位置（底部 16rpx + 高度的一半 80rpx = 96rpx） */
+  bottom: calc(96rpx + env(safe-area-inset-bottom));
   overflow: hidden;
   touch-action: none;
   user-select: none;
@@ -1503,24 +1675,14 @@ onUnmounted(() => {
 }
 
 /* 底部功能面板 */
-/* 通栏浅绿色衬底：从工具面板中下部延伸到 tabbar 上沿，让面板"落"在绿色底座上 */
-.bottom-panel-bg {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(156rpx + env(safe-area-inset-bottom));
-  height: 55rpx;
-  background: #F7FBF4; /* 与底部 tabbar 同色，视觉上连成一体 */
-  z-index: 59;
-  pointer-events: none; /* 纯装饰层，不拦截地图拖拽 */
-}
-
 .bottom-panel {
   position: absolute;
   left: 32rpx;
   right: 32rpx;
-  bottom: calc(156rpx + env(safe-area-inset-bottom) + 20rpx);
+  /* 功能区底部与 tabBar 顶部保持 8px（16rpx）间距 */
+  bottom: 16rpx;
   height: 160rpx;
+  /* 功能区保持完整的浅绿色背景 */
   background: #E8F6D7;
   border-radius: 24rpx;
   display: flex;
@@ -1758,151 +1920,6 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
-/* 背包弹窗 */
-.feed-mask {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  display: flex;
-  align-items: flex-end;
-  z-index: 1000;
-}
-
-.feed-backdrop {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
-}
-
-.feed-panel {
-  position: relative;
-  width: 100%;
-  background: #FFFFFF;
-  border-radius: 32rpx 32rpx 0 0;
-  padding: 32rpx;
-  padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
-}
-
-.panel-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #1A1A1A;
-}
-
-.panel-subtitle {
-  display: block;
-  margin-top: 8rpx;
-  margin-bottom: 24rpx;
-  font-size: 24rpx;
-  color: #9CA3AF;
-}
-
-.empty-tip {
-  padding: 40rpx 0;
-  text-align: center;
-  font-size: 26rpx;
-  color: #9CA3AF;
-}
-
-.empty-tip .link {
-  color: #8DBB77;
-}
-
-.food-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-  max-height: 600rpx;
-  overflow-y: auto;
-}
-
-.food-item {
-  display: flex;
-  align-items: center;
-  background: #F9FAFB;
-  border: 2rpx solid transparent;
-  border-radius: 16rpx;
-  padding: 20rpx;
-  gap: 16rpx;
-}
-
-.food-item.selected {
-  background: #F0F8E8;
-  border-color: #8DBB77;
-}
-
-.food-icon {
-  width: 64rpx;
-  height: 64rpx;
-}
-
-.food-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.food-name {
-  font-size: 28rpx;
-  color: #1A1A1A;
-}
-
-.food-effect {
-  font-size: 24rpx;
-  color: #6B7280;
-  margin-top: 4rpx;
-}
-
-.food-count {
-  font-size: 28rpx;
-  color: #8DBB77;
-  font-weight: 500;
-}
-
-.food-check {
-  width: 40rpx;
-  height: 40rpx;
-  border: 2rpx solid #D1D5DB;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 26rpx;
-  color: #8DBB77;
-  background: #FFFFFF;
-}
-
-.food-item.selected .food-check {
-  border-color: #8DBB77;
-  background: #8DBB77;
-  color: #FFFFFF;
-}
-
-.feed-submit {
-  margin-top: 24rpx;
-  height: 88rpx;
-  background: #8DBB77;
-  border-radius: 44rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28rpx;
-  color: #FFFFFF;
-  font-weight: 500;
-}
-
-.panel-close {
-  margin-top: 24rpx;
-  text-align: center;
-  font-size: 26rpx;
-  color: #9CA3AF;
-}
-
 /* 新事件弹窗（设计稿 334×558px，掉落入场） */
 .event-mask {
   position: fixed;
@@ -2021,6 +2038,35 @@ onUnmounted(() => {
   color: #563E22;
   text-align: center;
   line-height: 44rpx;
+}
+
+/* 底部操作栏：左"关闭"幽灵按钮 + 右"保存到相册"主按钮 */
+.card-actions {
+  margin-top: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+.card-actions .btn {
+  flex: 1;
+  height: 88rpx;
+  border-radius: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+.card-actions .btn text { pointer-events: none; }
+.card-actions .btn.btn-ghost {
+  background: #F1F5E8;
+  color: #8EBB77;
+}
+.card-actions .btn.btn-primary {
+  background: linear-gradient(180deg, #9DCB87 0%, #8EBB77 100%);
+  color: #FFFFFF;
+  box-shadow: 0 8rpx 20rpx rgba(142, 187, 119, 0.28);
 }
 
 /* 下载按钮：148×44px #8EBB77 胶囊 */

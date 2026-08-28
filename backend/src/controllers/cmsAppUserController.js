@@ -37,9 +37,9 @@ function list(req, res) {
   const params = [];
 
   if (keyword) {
-    where += ' AND (u.nickname LIKE ? OR u.phone LIKE ? OR u.username LIKE ? OR u.user_id LIKE ?)';
+    where += ' AND (u.nickname LIKE ? OR u.phone LIKE ? OR u.username LIKE ? OR u.user_id LIKE ? OR u.openid LIKE ? OR u.unionid LIKE ?)';
     const like = `%${keyword}%`;
-    params.push(like, like, like, like);
+    params.push(like, like, like, like, like, like);
   }
 
   if (status !== undefined && status !== '') {
@@ -51,7 +51,7 @@ function list(req, res) {
 
   const list = db.prepare(`
     SELECT
-      u.id, u.user_id, u.openid, u.username, u.nickname, u.avatar_url, u.phone,
+      u.id, u.user_id, u.openid, u.unionid, u.username, u.nickname, u.avatar_url, u.phone,
       u.gender, u.age, u.birth_date, u.height, u.role, u.status, u.source,
       u.created_at, u.last_login_at,
       p.initial_weight, p.current_weight, p.target_weight,
@@ -125,7 +125,7 @@ function getById(req, res) {
   const { id } = req.params;
   const user = db.prepare(`
     SELECT
-      u.id, u.user_id, u.openid, u.username, u.nickname, u.avatar_url, u.phone,
+      u.id, u.user_id, u.openid, u.unionid, u.username, u.nickname, u.avatar_url, u.phone,
       u.gender, u.age, u.birth_date, u.height, u.role, u.status, u.source,
       u.created_at, u.last_login_at,
       p.*,

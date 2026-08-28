@@ -2,7 +2,7 @@
   <div class="page-container">
     <div class="card">
       <div class="search-bar">
-        <el-input v-model="query.keyword" placeholder="用户ID/昵称/手机号/账号" clearable style="width:220px;" />
+        <el-input v-model="query.keyword" placeholder="用户ID/昵称/手机号/账号/OpenID/UnionID" clearable style="width:260px;" />
         <el-select v-model="query.status" placeholder="状态" clearable style="width:120px;">
           <el-option label="正常" :value="1" />
           <el-option label="禁用" :value="0" />
@@ -22,6 +22,11 @@
         <el-table-column prop="openid" label="OpenID" width="180" show-overflow-tooltip>
           <template #default="{ row }">
             {{ row.openid || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="unionid" label="UnionID" width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.unionid || '-' }}
           </template>
         </el-table-column>
         <el-table-column prop="phone" label="手机号" width="130">

@@ -72,7 +72,7 @@ function createUserWithInit(username, passwordHash, phone, nickname, source = 'a
     db.prepare(`
       INSERT INTO chat_messages (user_id, role, content, content_type, mode)
       VALUES (?, 'partner', ?, 'text', 'gentle')
-    `).run(userId, '你好呀，我是搭搭，你的专属减脂小熊猫～\n从今天开始，我会陪你一起记录饮食、运动、体重，一起瘦下来！有什么想聊的，随时告诉我吧～');
+    `).run(userId, '你好呀，我是搭搭，你的专属减脂搭子～\n从今天开始，我会陪你一起记录饮食、运动、体重，一起瘦下来！有什么想聊的，随时告诉我吧～');
 
     return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   });
@@ -282,9 +282,25 @@ async function wechatLogin(req, res) {
   let user = db.prepare('SELECT * FROM users WHERE openid = ?').get(openid);
   let isNewUser = false;
   let staleReturning = false;
+  let linkedByUnionId = false;
 
   if (user && user.status !== 1) {
     return res.status(403).json(error('账号已被禁用', 403));
+  }
+
+  // openid 未命中且拿到 unionid 时，尝试关联同一微信主体下的已有账号
+  if (!user && unionid) {
+    user = db.prepare('SELECT * FROM users WHERE unionid = ?').get(unionid);
+    if (user) {
+      if (user.status !== 1) {
+        return res.status(403).json(error('账号已被禁用', 403));
+      }
+      // 将当前 openid 绑定到已有账号，实现微信登录与历史账号打通
+      db.prepare('UPDATE users SET openid = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(openid, user.id);
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+      linkedByUnionId = true;
+    }
   }
 
   if (!user) {
@@ -316,7 +332,7 @@ async function wechatLogin(req, res) {
       db.prepare(`
         INSERT INTO chat_messages (user_id, role, content, content_type, mode)
         VALUES (?, 'partner', ?, 'text', 'gentle')
-      `).run(userId, '你好呀，我是搭搭，你的专属减脂小熊猫～\n从今天开始，我会陪你一起记录饮食、运动、体重，一起瘦下来！有什么想聊的，随时告诉我吧～');
+      `).run(userId, '你好呀，我是搭搭，你的专属减脂搭子～\n从今天开始，我会陪你一起记录饮食、运动、体重，一起瘦下来！有什么想聊的，随时告诉我吧～');
 
       return db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     });
@@ -356,6 +372,7 @@ async function wechatLogin(req, res) {
     need_bind_phone: needBindPhone,
     is_new_user: isNewUser,
     stale_returning: staleReturning,
+    linked_by_unionid: linkedByUnionId,
     user: (() => { const u = serializeUser(user.id); if (u) u.stale_returning = staleReturning; return u; })()
   }));
 }

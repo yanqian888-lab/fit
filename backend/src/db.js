@@ -33,7 +33,6 @@ function initTables() {
       unionid VARCHAR(64) DEFAULT NULL,
       username VARCHAR(16) UNIQUE DEFAULT NULL,
       password_hash VARCHAR(255) DEFAULT NULL,
-      plain_password VARCHAR(16) DEFAULT NULL,
       nickname VARCHAR(64) DEFAULT '掉秤搭搭用户',
       avatar_url VARCHAR(255) DEFAULT NULL,
       phone VARCHAR(20) DEFAULT NULL,
@@ -55,6 +54,7 @@ function initTables() {
     ) AND phone IS NOT NULL AND phone != '';
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_unique ON users(phone);
+    CREATE INDEX IF NOT EXISTS idx_users_unionid ON users(unionid);
 
     CREATE TABLE IF NOT EXISTS user_profiles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1340,11 +1340,11 @@ function migrateTables() {
     // 列已存在时忽略
   }
 
-  // 保留明文密码字段供 CMS 查看（内部管理使用）
+  // 移除明文凭据列 plain_password（安全整改），SQLite < 3.35 不支持 DROP COLUMN 则忽略
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN plain_password VARCHAR(16) DEFAULT NULL;`);
+    db.exec(`ALTER TABLE users DROP COLUMN plain_password;`);
   } catch (err) {
-    // 列已存在时忽略
+    // 老版本 SQLite 不支持 DROP COLUMN 时静默跳过，该列已从新库 CREATE TABLE 中移除
   }
 
   // 新增 AI 配置表相关迁移
@@ -2249,29 +2249,31 @@ function initSeedData() {
   const cmsSeeded = getSystemMeta('cms_seeded') === '1';
   if (!cmsSeeded) {
     // 默认宠物外观
-  const defaultSkin = db.prepare("SELECT id FROM pet_skins WHERE skin_id = 'default'").get();
-  if (!defaultSkin) {
-    db.prepare(`
-      INSERT INTO pet_skins (skin_id, species, name, static_url, sort_order, is_enabled)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run('default', 'red_panda', '默认小熊猫', '/static/image/pet/default.png', 0, 1);
-  }
-
-  // 默认居家状态库
-  const stateKeys = ['idle', 'sleep', 'read', 'phone', 'exercise', 'hungry', 'sad'];
-  for (const key of stateKeys) {
-    const exists = db.prepare('SELECT id FROM pet_states_lib WHERE state_key = ?').get(key);
-    if (!exists) {
-      const nameMap = {
-        idle: '发呆', sleep: '睡觉', read: '看书', phone: '刷手机',
-        exercise: '运动', hungry: '饿了', sad: '低落'
-      };
+    // 2026-08-27 修复：默认皮肤不再绑定兜底图片，static_url 留空，避免未配置时展示错误默认图
+    const defaultSkin = db.prepare("SELECT id FROM pet_skins WHERE skin_id = 'default'").get();
+    if (!defaultSkin) {
       db.prepare(`
-        INSERT INTO pet_states_lib (state_key, name, static_url, sort_order, is_enabled)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(key, nameMap[key] || key, `/static/image/pet/${key}.png`, 0, 1);
+        INSERT INTO pet_skins (skin_id, species, name, static_url, sort_order, is_enabled)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run('default', 'red_panda', '默认小熊猫', '', 0, 1);
     }
-  }
+
+    // 默认居家状态库
+    // 2026-08-27 修复：默认状态图片不再绑定兜底图片，static_url 留空
+    const stateKeys = ['idle', 'sleep', 'read', 'phone', 'exercise', 'hungry', 'sad'];
+    for (const key of stateKeys) {
+      const exists = db.prepare('SELECT id FROM pet_states_lib WHERE state_key = ?').get(key);
+      if (!exists) {
+        const nameMap = {
+          idle: '发呆', sleep: '睡觉', read: '看书', phone: '刷手机',
+          exercise: '运动', hungry: '饿了', sad: '低落'
+        };
+        db.prepare(`
+          INSERT INTO pet_states_lib (state_key, name, static_url, sort_order, is_enabled)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(key, nameMap[key] || key, '', 0, 1);
+      }
+    }
 
   // 默认运动库（独立模块配置：非器械/器械运动，器械来源于商城器材类商品，可关联跟练课程）
   const exerciseLibCount = db.prepare('SELECT COUNT(*) as count FROM pet_exercise_lib').get().count;
