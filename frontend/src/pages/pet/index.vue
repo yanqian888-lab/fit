@@ -321,11 +321,10 @@ function measureStage() {
     const windowHeight = info.windowHeight || 667;
     const safeBottom = (info.safeAreaInsets && info.safeAreaInsets.bottom) || 0;
     /*
-     * 背景下沿在功能区一半位置基础上再下移 16px（32rpx）：
-     * 功能区底部距 tabBar 16rpx，高度 160rpx，一半为 80rpx，
-     * 原舞台下沿 = 16rpx + 80rpx = 96rpx，再下移 32rpx 后为 128rpx。
+     * 向下扩展背景图高度，减少浅绿色底色区域：
+     * 背景图下沿接近功能区底部，舞台下沿设为 16rpx。
      */
-    const tabbarPx = (128 / 750) * windowWidth + safeBottom;
+    const tabbarPx = (16 / 750) * windowWidth + safeBottom;
     const stagePx = Math.max(0, windowHeight - tabbarPx);
     stageHeightRpx.value = (stagePx / windowWidth) * 750;
   } catch (e) {}
@@ -1517,11 +1516,11 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   /*
-   * 背景下沿在功能区一半位置基础上再下移 16px（32rpx）：
-   * 功能区底部距 tabBar 16rpx，高度 160rpx，一半为 80rpx，
-   * 原场景舞台下沿 = 16rpx + 80rpx = 96rpx，再下移 32rpx 后为 128rpx。
+   * 向下扩展背景图高度，减少浅绿色底色区域：
+   * 背景图下沿接近功能区底部，仅保留功能区本身所需的浅绿色背景。
+   * 功能区底部距 tabBar 16rpx，因此场景舞台下沿设为 16rpx。
    */
-  bottom: calc(128rpx + env(safe-area-inset-bottom));
+  bottom: calc(16rpx + env(safe-area-inset-bottom));
   overflow: hidden;
   touch-action: none;
   user-select: none;
