@@ -321,11 +321,11 @@ function measureStage() {
     const windowHeight = info.windowHeight || 667;
     const safeBottom = (info.safeAreaInsets && info.safeAreaInsets.bottom) || 0;
     /*
-     * 背景下沿下拉到功能区一半的位置：
+     * 背景下沿在功能区一半位置基础上再下移 16px（32rpx）：
      * 功能区底部距 tabBar 16rpx，高度 160rpx，一半为 80rpx，
-     * 所以舞台下沿 = 16rpx + 80rpx = 96rpx。
+     * 原舞台下沿 = 16rpx + 80rpx = 96rpx，再下移 32rpx 后为 128rpx。
      */
-    const tabbarPx = (96 / 750) * windowWidth + safeBottom;
+    const tabbarPx = (128 / 750) * windowWidth + safeBottom;
     const stagePx = Math.max(0, windowHeight - tabbarPx);
     stageHeightRpx.value = (stagePx / windowWidth) * 750;
   } catch (e) {}
@@ -1517,11 +1517,11 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   /*
-   * 背景下沿下拉到功能区一半的位置：
+   * 背景下沿在功能区一半位置基础上再下移 16px（32rpx）：
    * 功能区底部距 tabBar 16rpx，高度 160rpx，一半为 80rpx，
-   * 所以场景舞台下沿 = 16rpx + 80rpx = 96rpx。
+   * 原场景舞台下沿 = 16rpx + 80rpx = 96rpx，再下移 32rpx 后为 128rpx。
    */
-  bottom: calc(96rpx + env(safe-area-inset-bottom));
+  bottom: calc(128rpx + env(safe-area-inset-bottom));
   overflow: hidden;
   touch-action: none;
   user-select: none;
