@@ -257,17 +257,13 @@ onMounted(load);
   height: 0;
   overflow-y: auto;
   /*
-   * [搭搭页4弹层滚动条避让最终版（与ShopPanel完全一致，对齐overlay真实父宽750rpx）]
-   *
-   * 对齐基准：overlay-header padding 左右 32rpx / close right:32rpx → 内容左右必须 32rpx 对齐头部
-   * 左视觉边距 = padding-left 32rpx
-   * 右视觉边距 = padding-right 72(32+40避让) - |margin-right|(40) = 32rpx → 完全对称
-   * box-sizing: content-box → 负margin真正外伸40rpx避让带，滚动条画在避让区，不压任务卡 ✅
+   * 弹层内容区左右边距对称 32rpx，避免整体靠右。
+   * 任务列表通过 task-list 的 padding-right 为右侧滚动条预留空间，
+   * 防止滚动条压到"去完成"按钮。
    */
   padding-left: 32rpx;
-  padding-right: 72rpx;
-  margin-right: -40rpx;
-  box-sizing: content-box;
+  padding-right: 32rpx;
+  box-sizing: border-box;
 }
 .bottom-safe {
   /* 列表末尾任务能完整滚入视口，不被底部手势条/tab 遮挡 */
@@ -283,6 +279,8 @@ onMounted(load);
   justify-content: space-between;
   padding: 0 32rpx;
   box-sizing: border-box;
+  /* 为 scroll-view 右侧滚动条预留空间，避免压到签到按钮 */
+  margin-right: 16rpx;
 }
 .checkin-left {
   display: flex;
@@ -346,6 +344,8 @@ onMounted(load);
   display: flex;
   flex-direction: column;
   gap: 32rpx;
+  /* 为 scroll-view 右侧滚动条预留空间，避免压到任务操作按钮 */
+  padding-right: 16rpx;
 }
 .task-item {
   min-height: 84rpx;
