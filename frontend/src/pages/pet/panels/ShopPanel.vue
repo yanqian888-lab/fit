@@ -330,31 +330,13 @@ async function buy(item) {
   height: 0;
   overflow-y: auto;
   /*
-   * [搭搭页4弹层滚动条避让最终版（已对齐全屏overlay真实父宽750rpx，非之前错误的AppModal 540rpx！）]
-   *
-   * 【对齐基准】头部 overlay-header padding 左右 32rpx / close 按钮 right:32rpx
-   *   → 内容区必须严格 32rpx 对齐头部，避免用户截图的"内容整体左移更不居中"（之前写 24rpx 错差 8rpx 正是根因）
-   *
-   * 【左右视觉边距像素级对称】
-   *   padding-left  : 32rpx                         → 左视觉边距 = 32rpx（和头部对齐）
-   *   padding-right : 72rpx = 32rpx(右视觉对称边距) + 40rpx(滚动条避让区)
-   *   margin-right  : -40rpx                        → 避让区"凸"出父容器
-   *   box-sizing    : content-box                   → 关键！让 padding/margin 不计入 width，负 margin 真正外伸
-   *   右视觉边距    = padding-right(72) - |margin-right|(40) = 32rpx
-   *   → 左右 32rpx : 32rpx 完全对称，和头部完美对齐 ✅
-   *
-   * 【滚动条移出内容区，绝不压卡】
-   *   滚动条画在负 margin 外伸的 40rpx 避让带，与第三列卡片右边缘有 32rpx 空气带，
-   *   肉眼明显分开，用户截图红框的滚动条压卡问题彻底解决 ✅
-   *
-   * 【商店食物Tab永远3列】
-   *   item-card width 32% + justify-content: space-between（无 column-gap）
-   *   3×32%=96%，剩余4%自动分配列间距，任何设备宽度永不折2列 ✅
+   * 商品网格水平居中，左右边距对称 32rpx。
+   * 右侧额外通过 item-grid 的 padding-right 为滚动条预留空间，
+   * 避免滚动条压到第三列商品。
    */
   padding-left: 32rpx;
-  padding-right: 72rpx;
-  margin-right: -40rpx;
-  box-sizing: content-box;
+  padding-right: 32rpx;
+  box-sizing: border-box;
 }
 .empty-state {
   display: flex;
@@ -377,17 +359,16 @@ async function buy(item) {
   justify-content: space-between;
   row-gap: 32rpx;
   /*
-   * 关键：删掉 column-gap。
-   * 真实 item-grid 可用宽 = modal-body 540rpx - 左 pad24 - 右 pad(64-40避让) = 492rpx
-   *   3 卡 × 32%(472.32) + column-gap:16 × 2(32) = 504.32 > 492 → 必然折成 2 列
-   *   justify-content: space-between 会自动在 3 个 32% 卡间分匀剩余 4%，不用额外 gap
+   * 右侧预留 16rpx 滚动条避让区，确保第三列卡片不会被滚动条遮挡。
+   * 3 张卡片各占 32%，剩余宽度由 space-between 自动分配为列间距。
    */
+  padding-right: 16rpx;
 }
 .item-card {
   /*
-   * 固定 32% 百分比宽度：弹层 modal-body 540rpx 下每卡 ≈ 172rpx，
-   * 3×32% = 96%，剩余 4% ≈ 21.6rpx 消化 column-gap 16rpx → 绝不折成 2 列 ✅
-   * 内部子元素尺寸（图/字/max-width）统一按卡宽 172rpx 约束，避免超出卡边缘
+   * 固定 32% 百分比宽度：弹层占满屏幕宽度（750rpx 基准）下每卡 ≈ 219rpx，
+   * 3×32% = 96%，剩余宽度由 space-between 分配为列间距，任何设备宽度永不折成 2 列 ✅
+   * 内部子元素尺寸（图/字/max-width）统一按百分比约束，避免超出卡边缘
    */
   width: 32%;
   flex: 0 0 32%;
