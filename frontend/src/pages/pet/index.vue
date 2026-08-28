@@ -451,9 +451,12 @@ let periodTimer = null;
 // 当前场景背景按时段切换，缺傍晚/夜晚图时回退白天图
 const currentBgImage = computed(() => {
   const s = currentScene.value || {};
-  if (timePeriod.value === 'night') return s.bg_night || s.bg_day || '';
-  if (timePeriod.value === 'evening') return s.bg_evening || s.bg_day || '';
-  return s.bg_day || '';
+  let url = '';
+  if (timePeriod.value === 'night') url = s.bg_night || s.bg_day || '';
+  else if (timePeriod.value === 'evening') url = s.bg_evening || s.bg_day || '';
+  else url = s.bg_day || '';
+  // 统一解析为完整 URL，避免微信小程序相对路径请求异常
+  return resolveStaticUrl(url);
 });
 
 function showNightToast() {
