@@ -9,7 +9,8 @@ const taskService = require('../services/taskService');
  * 上传照片
  */
 const VALID_ANGLES = ['front', 'side', 'back'];
-const URL_REGEX = /^https?:\/\/.+/;
+// 接受完整 http(s) URL 或 /static/uploads/ 相对路径（与 uploadController 返回格式一致）
+const URL_REGEX = /^(https?:\/\/.+|\/static\/uploads\/.+)/;
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 function uploadPhoto(req, res) {

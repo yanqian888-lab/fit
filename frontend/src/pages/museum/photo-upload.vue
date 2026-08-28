@@ -1,7 +1,7 @@
 <template>
   <AppPage :showHeader="true" title="上传照片">
     <view class="upload-page">
-      <view class="preview-card" @click="chooseImage">
+      <view class="preview-card">
         <image v-if="imageUrl" :src="imageUrl" mode="aspectFill" />
         <text v-else class="upload-hint">点击选择照片</text>
       </view>
@@ -27,7 +27,7 @@
           <text class="input-label">描述</text>
           <textarea v-model="form.description" placeholder="记录一下此刻的心情..." />
         </view>
-        <AppButton block type="primary" :loading="uploading" @click="submit">保存照片</AppButton>
+        <AppButton block type="primary" :loading="uploading">保存照片</AppButton>
       </view>
     </view>
   </AppPage>
@@ -36,11 +36,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
-import { photoApi } from '../../api';
-import { uploadFile } from '../../utils/request';
 import { getToday } from '../../utils/date';
 import AppPage from '../../components/AppPage.vue';
-import AppHeader from '../../components/AppHeader.vue';
 import AppButton from '../../components/AppButton.vue';
 
 const angles = ['正面', '侧面', '背面'];
