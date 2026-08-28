@@ -2077,11 +2077,11 @@ async function onPendingTag(msg) {
   padding: 20rpx 40rpx;
   /*
    * 底部预留空间：
-   * 输入区(input-area)总高约 100rpx（input-bar 72rpx + 上下 padding 28rpx），
-   * 要求输入框上方只保留 8rpx（4px）浅绿色间距，
-   * 所以 padding-bottom = 100rpx + 8rpx + 安全区。
+   * 输入区(input-area)总高约 100rpx（input-bar 72rpx + 上下 padding 28rpx）。
+   * 为最大化聊天记录展示区域，输入框上方不再保留额外浅绿色间距，
+   * padding-bottom 与输入区高度对齐即可。
    */
-  padding-bottom: calc(108rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(100rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   background: #F7FBF4;
 }
