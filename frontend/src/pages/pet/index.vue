@@ -540,20 +540,9 @@ const spriteConfig = computed(() => {
   }
 
   // 非吃饭/运动时段：按优先级选择形象来源
-  // 1. CMS 形象配置（pet_sprite）：用户主动上传的默认形象，优先级最高
-  const spriteFrames = normalizeFrames(s.frames);
-  if (spriteFrames.length > 0) {
-    return buildFrom(s, spriteFrames, 'pet_sprite');
-  }
-
-  // 2. 当前穿戴皮肤（pet_skins 表）：当 pet_sprite 未配置时的兜底
-  const skinFrames = normalizeFrames(skin.frames || (skin.static_url ? [skin.static_url] : []));
-  if (skinFrames.length > 0) {
-    return buildFrom({ ...EMPTY_CONFIG, ...skin }, skinFrames, 'pet_skin');
-  }
-
-  // 3. 状态库活动形象（home_activity）：按时段/概率随机触发的特殊状态
-  // 注意：状态库使用 frame_rate 字段表示播放速率，需要映射为 fps
+  // 【2026-08-28 修复：home_activity 特殊居家状态优先级最高】
+  // 1. 状态库活动形象（home_activity）：按时段/概率随机触发的特殊状态（看书/冥想/看窗外等）
+  //    有值时必须优先展示，否则用户永远只看到默认形象，看不到在家其他状态
   const activityFrames = normalizeFrames(activity.frames);
   if (activityFrames.length > 0) {
     return buildFrom(
@@ -563,9 +552,20 @@ const spriteConfig = computed(() => {
     );
   }
 
+  // 2. CMS 形象配置（pet_sprite）：用户主动上传的默认形象
+  const spriteFrames = normalizeFrames(s.frames);
+  if (spriteFrames.length > 0) {
+    return buildFrom(s, spriteFrames, 'pet_sprite');
+  }
+
+  // 3. 当前穿戴皮肤（pet_skins 表）：当 pet_sprite 未配置时的兜底
+  const skinFrames = normalizeFrames(skin.frames || (skin.static_url ? [skin.static_url] : []));
+  if (skinFrames.length > 0) {
+    return buildFrom({ ...EMPTY_CONFIG, ...skin }, skinFrames, 'pet_skin');
+  }
+
   // 4. 最终兜底：所有形象来源均为空时，返回空帧配置
-  // 不再请求已不存在的 pet_moren.png，避免控制台 404 报错
-  console.warn('[PetSprite] 所有形象来源均为空（pet_sprite/skin/home_activity），宠物暂不显示');
+  console.warn('[PetSprite] 所有形象来源均为空（home_activity/pet_sprite/skin），宠物暂不显示');
   return {
     x: EMPTY_CONFIG.x,
     y: EMPTY_CONFIG.y,

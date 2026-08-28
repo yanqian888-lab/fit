@@ -31,7 +31,7 @@
         <el-table-column prop="content" label="说明" show-overflow-tooltip />
         <el-table-column label="图片" width="70">
           <template #default="{ row }">
-            <el-image v-if="row.first_photo || row.image_url" :src="row.first_photo || row.image_url" fit="cover" style="width:44px;height:44px;border-radius:6px;" :preview-src-list="[row.first_photo || row.image_url]" preview-teleported />
+            <el-image v-if="row.first_photo || row.image_url" :src="getFullUrl(row.first_photo || row.image_url)" fit="cover" style="width:44px;height:44px;border-radius:6px;" :preview-src-list="[getFullUrl(row.first_photo || row.image_url)]" preview-teleported />
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -82,7 +82,7 @@
         <el-form-item label="事件照片">
           <div class="photo-list">
             <div v-for="(p, idx) in form.photos" :key="p.id || p.photo_url || idx" class="photo-item">
-              <el-image :src="p.photo_url" fit="cover" style="width:64px;height:64px;border-radius:6px;" />
+              <el-image :src="getFullUrl(p.photo_url)" fit="cover" style="width:64px;height:64px;border-radius:6px;" />
               <div class="photo-fields">
                 <el-input v-model="p.photo_url" placeholder="照片地址" size="small" />
                 <div class="photo-actions">
@@ -166,6 +166,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { cmsEventConfigApi, cmsShopConfigApi } from '@/api/cms'
 import ImageUpload from '@/components/ImageUpload.vue'
 import { useAuthStore } from '@/store/auth'
+import { getFullUrl } from '@/config/env'
 
 const auth = useAuthStore()
 const vPerm = {
