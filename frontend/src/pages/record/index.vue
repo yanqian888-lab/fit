@@ -1147,7 +1147,7 @@ function confirmGenerateDiary() {
 .record-page {
   background: #F7FbF4;
   min-height: 100vh;
-  padding: 0 32rpx calc(48rpx + env(safe-area-inset-bottom));
+  padding: 0 32rpx calc(20rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
