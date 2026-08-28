@@ -47,7 +47,19 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-const menuList = computed(() => routes.filter(r => auth.hasPermission(r.perm)))
+const menuList = computed(() => {
+  return routes
+    // 父级菜单按 perm 过滤
+    .filter(r => auth.hasPermission(r.perm))
+    // 子菜单按 perm 过滤，过滤后无子项的父级整体移除（避免空 sub-menu）
+    .map(r => {
+      if (r.children) {
+        return { ...r, children: r.children.filter(c => auth.hasPermission(c.perm)) }
+      }
+      return r
+    })
+    .filter(r => !r.children || r.children.length > 0)
+})
 const pageTitle = computed(() => route.meta.title || '')
 
 const activeMenu = computed(() => {

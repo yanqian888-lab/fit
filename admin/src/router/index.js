@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
 
 const routes = [
@@ -66,6 +67,12 @@ router.beforeEach((to, from, next) => {
   }
   if (to.path === '/login' && auth.isLogin) {
     return next('/')
+  }
+  // 权限校验：目标路由声明了 perm 且用户无该权限时拦截
+  // dashboard 作为首页兜底放行，避免无权限时跳转死循环
+  if (to.meta.perm && to.path !== '/dashboard' && !auth.hasPermission(to.meta.perm)) {
+    ElMessage.warning('无权限访问该页面')
+    return next('/dashboard')
   }
   next()
 })
