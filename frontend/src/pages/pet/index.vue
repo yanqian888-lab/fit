@@ -157,7 +157,7 @@
         <view v-if="taskPopup.type === 'video'" class="popup-video-wrap">
           <video class="popup-video" :src="taskPopup.url" controls autoplay loop muted />
         </view>
-        <image v-else class="popup-gif" :src="taskPopup.url" mode="widthFix" />
+        <image v-else-if="taskPopup.url" class="popup-gif" :src="taskPopup.url" mode="widthFix" />
         <view class="popup-desc">{{ taskPopup.description || '完成这个任务，搭搭会更开心哦～' }}</view>
         <view class="popup-btn" @click="onTaskPopupConfirm">去完成</view>
       </view>
@@ -175,7 +175,7 @@
     <RecipeUnlockPopup v-if="recipeUnlock" :recipe="recipeUnlock" @close="recipeUnlock = null" />
 
     <!-- 弹窗层：运动动画（运动配置的运动动画，展示 3 秒） -->
-    <view v-if="exerciseAnimVisible" class="exercise-anim-mask">
+    <view v-if="exerciseAnimVisible && exerciseAnimUrl" class="exercise-anim-mask">
       <image class="exercise-anim-img" :src="exerciseAnimUrl" mode="aspectFit" />
     </view>
 

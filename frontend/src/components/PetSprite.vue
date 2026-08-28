@@ -37,9 +37,10 @@
         mode="aspectFit"
       />
     </template>
-    <!-- 兜底：无可用帧图时显示占位剪影，避免完全空白 -->
+    <!-- 兜底：无可用帧图时显示占位剪影，避免完全空白；src 为空时不渲染 image 节点，防止 addListener 空指针 -->
     <view v-else class="pet-sprite-placeholder">
       <image
+        v-if="fallbackImage"
         :src="fallbackImage"
         mode="aspectFit"
         class="pet-sprite-placeholder-img"
@@ -61,7 +62,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onUnmounted, onMounted } from 'vue';
 import { resolveStaticUrl } from '../utils/environment';
 
 const props = defineProps({
@@ -320,8 +321,10 @@ watch(() => currentAnim.value, () => {
   preloadAllFrames();
 }, { deep: true });
 
-// 组件挂载时立即预加载所有帧
-preloadAllFrames();
+// 组件挂载后再预加载帧，避免 setup 阶段异步回调触发 "Expected updated data but get first rendering data"
+onMounted(() => {
+  preloadAllFrames();
+});
 
 onUnmounted(() => {
   stopFrameTimer();
