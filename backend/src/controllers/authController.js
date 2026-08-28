@@ -378,10 +378,78 @@ async function wechatLogin(req, res) {
 }
 
 /**
+ * 判断用户是否已产生不可迁移的业务数据
+ * 用于账号合并前评估是否可以安全删除该用户
+ * @param {number} userId 用户 ID
+ * @returns {boolean} true 表示有业务数据，不可删除
+ */
+function hasBusinessData(userId) {
+  const tables = [
+    'chat_messages',
+    'diet_records',
+    'exercise_records',
+    'body_measurements',
+    'mood_records',
+    'habit_records',
+    'user_inventory',
+    'user_events',
+    'user_tasks',
+    'checkins',
+    'currency_transactions',
+    'pet_explorations',
+    'user_achievements'
+  ];
+  for (const table of tables) {
+    const row = db.prepare(`SELECT 1 FROM ${table} WHERE user_id = ? LIMIT 1`).get(userId);
+    if (row) return true;
+  }
+  return false;
+}
+
+/**
+ * 合并两个用户账号：保留主账号，将被合并账号的微信标识迁移到主账号并删除被合并账号
+ * 要求被合并账号没有业务数据，否则不执行删除
+ * @param {object} primaryUser 主账号
+ * @param {object} mergedUser 被合并账号
+ * @returns {object} 合并后的主账号
+ */
+function mergeUserAccounts(primaryUser, mergedUser) {
+  if (primaryUser.id === mergedUser.id) return primaryUser;
+
+  const tx = db.transaction(() => {
+    // 迁移微信标识：被合并账号的 openid/unionid 更新到主账号（仅当主账号为空时）
+    const updates = [];
+    const params = [];
+    if (mergedUser.openid && !primaryUser.openid) {
+      updates.push('openid = ?');
+      params.push(mergedUser.openid);
+    }
+    if (mergedUser.unionid && !primaryUser.unionid) {
+      updates.push('unionid = ?');
+      params.push(mergedUser.unionid);
+    }
+    if (updates.length > 0) {
+      params.push(primaryUser.id);
+      db.prepare(`UPDATE users SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...params);
+    }
+
+    // 仅当被合并账号无业务数据时才删除，防止数据丢失
+    if (!hasBusinessData(mergedUser.id)) {
+      db.prepare('DELETE FROM users WHERE id = ?').run(mergedUser.id);
+    }
+
+    return db.prepare('SELECT * FROM users WHERE id = ?').get(primaryUser.id);
+  });
+
+  return tx();
+}
+
+/**
  * 微信登录后绑定手机号
  * 前端用 button open-type="getPhoneNumber" 获取 phoneCode，
  * 传到这里由后端调用微信 API 换出真实手机号并写入用户记录。
  * 必须登录态下调用（authMiddleware），通过 req.userId 定位当前用户。
+ * 若手机号已被其他用户使用，按"同一手机号视为同一用户"原则合并账号。
  */
 async function wechatBindPhone(req, res) {
   const { phone_code, device_id } = req.body;
@@ -413,22 +481,55 @@ async function wechatBindPhone(req, res) {
   // 检查手机号是否已被其他用户绑定
   const existingPhone = db.prepare('SELECT * FROM users WHERE phone = ? AND id != ?').get(phone, user.id);
   if (existingPhone) {
-    return res.status(409).json(error('该手机号已被绑定', 409));
+    // 同一手机号视为同一用户：将当前微信账号合并到已有手机账号
+    const primary = existingPhone.created_at <= user.created_at ? existingPhone : user;
+    const merged = primary.id === existingPhone.id ? user : existingPhone;
+
+    if (hasBusinessData(merged.id)) {
+      return res.status(409).json(error('该手机号已绑定其他账号，两个账号均已有数据，暂不支持自动合并', 409));
+    }
+
+    const mergedUser = mergeUserAccounts(primary, merged);
+    const token = generateToken(mergedUser);
+
+    // 更新主账号手机号（确保最新）
+    db.prepare('UPDATE users SET phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(phone, mergedUser.id);
+    const finalUser = db.prepare('SELECT * FROM users WHERE id = ?').get(mergedUser.id);
+
+    // 合并游客设备试用次数
+    if (device_id) {
+      trialService.mergeDeviceCountToUser(finalUser.id, device_id);
+    }
+
+    return res.json(success({
+      token,
+      merged: true,
+      user: {
+        id: finalUser.id,
+        nickname: finalUser.nickname,
+        avatar_url: finalUser.avatar_url,
+        phone
+      }
+    }));
   }
 
-  // 更新手机号
+  // 手机号未被绑定，直接更新当前用户
   db.prepare('UPDATE users SET phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(phone, user.id);
+  const finalUser = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  const token = generateToken(finalUser);
 
   // 合并游客设备试用次数
   if (device_id) {
-    trialService.mergeDeviceCountToUser(user.id, device_id);
+    trialService.mergeDeviceCountToUser(finalUser.id, device_id);
   }
 
   return res.json(success({
+    token,
+    merged: false,
     user: {
-      id: user.id,
-      nickname: user.nickname,
-      avatar_url: user.avatar_url,
+      id: finalUser.id,
+      nickname: finalUser.nickname,
+      avatar_url: finalUser.avatar_url,
       phone
     }
   }));

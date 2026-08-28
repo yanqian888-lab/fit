@@ -13,20 +13,21 @@
       </div>
       <el-table :data="list" v-loading="loading" border empty-text="暂无内容">
         <el-table-column prop="user_id" label="用户ID" width="110" />
-        <el-table-column prop="username" label="账号" width="110">
+        <el-table-column prop="username" label="账号" width="130" show-overflow-tooltip>
           <template #default="{ row }">
-            {{ row.username || '-' }}
+            <span v-if="row.username">{{ row.username }}</span>
+            <span v-else-if="row.source === 'wechat'" class="wechat-account-tag">微信用户</span>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column prop="nickname" label="昵称" width="120" />
-        <el-table-column prop="openid" label="OpenID" width="180" show-overflow-tooltip>
+        <el-table-column label="微信标识" width="220" show-overflow-tooltip>
           <template #default="{ row }">
-            {{ row.openid || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="unionid" label="UnionID" width="180" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.unionid || '-' }}
+            <div v-if="row.source === 'wechat' || row.openid || row.unionid" class="wechat-id-cell">
+              <div v-if="row.openid"><span class="id-label">OpenID:</span> {{ row.openid }}</div>
+              <div v-if="row.unionid"><span class="id-label">UnionID:</span> {{ row.unionid }}</div>
+            </div>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column prop="phone" label="手机号" width="130">
@@ -194,5 +195,25 @@ async function deleteUser(row) {
 .pagination {
   margin-top: 16px;
   justify-content: flex-end;
+}
+
+.wechat-account-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #e8f6d7;
+  color: #67c23a;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.wechat-id-cell {
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.6;
+}
+
+.wechat-id-cell .id-label {
+  color: #909399;
+  margin-right: 4px;
 }
 </style>

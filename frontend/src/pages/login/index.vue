@@ -551,13 +551,20 @@ async function onGetPhoneNumber(e) {
     const res = await authApi.wechatBindPhone({ phone_code: phoneCode, device_id: getDeviceId() });
     uni.hideLoading();
 
+    // 若发生账号合并，后端会返回新 token，需要更新本地存储
+    if (res.data.token) {
+      uni.setStorageSync('token', res.data.token);
+      userStore.token = res.data.token;
+    }
+
     // 更新本地 user 信息
     if (userStore.userInfo) {
       userStore.userInfo.phone = res.data.user.phone;
+      userStore.userInfo.id = res.data.user.id;
     }
     closeBindPhone();
 
-    uni.showToast({ title: '登录成功', icon: 'success' });
+    uni.showToast({ title: res.data.merged ? '账号已合并，登录成功' : '登录成功', icon: 'success' });
     setTimeout(() => {
       handlePostAuthRedirect(userStore);
     }, 1000);
