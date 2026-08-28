@@ -220,7 +220,7 @@ onMounted(load);
 .overlay-panel {
   position: relative;
   width: 100%;
-  height: 82vh;
+  height: 66vh;
   background: #F8FBF4;
   border-radius: 32rpx 32rpx 0 0;
   display: flex;
@@ -279,6 +279,8 @@ onMounted(load);
   justify-content: space-between;
   padding: 0 32rpx;
   box-sizing: border-box;
+  /* 与上方标题间距 16px（32rpx） */
+  margin-top: 32rpx;
   /* 为 scroll-view 右侧滚动条预留空间，避免压到签到按钮 */
   margin-right: 16rpx;
 }
