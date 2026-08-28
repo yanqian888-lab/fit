@@ -277,18 +277,22 @@ onMounted(() => {
 });
 
 onShow(() => {
-  // 根据缓存状态决定是否需要刷新
-  if (userStore.isLoggedIn && needRefresh()) {
-    // 没有缓存数据时显示 loading
-    if (!hasCachedData.value) {
+  // 项目约定：先渲染缓存，再后台异步始终刷新最新数据（保证后台配置变更即时生效，最慢不超过 5 分钟）
+  if (userStore.isLoggedIn) {
+    const forceLoad = pageCache.consumeForceRefresh(CACHE_KEYS.MUSEUM_OVERVIEW);
+    // 有缓存时静默刷新（不显示 loading），无缓存或强制刷新时显示 loading
+    const shouldShowLoading = !hasCachedData.value || forceLoad;
+    if (shouldShowLoading) {
       loading.value = true;
     }
-    // 异步刷新，不阻塞 UI
+    // 异步刷新，不阻塞 UI（每次进入 tab 都拉最新数据）
     nextTick(() => {
-      load().finally(() => {
-        loading.value = false;
-        hasCachedData.value = true;
-      });
+      load()
+        .catch(err => console.error('[museum] load 后台刷新失败:', err?.message))
+        .finally(() => {
+          loading.value = false;
+          hasCachedData.value = true;
+        });
     });
   }
 });

@@ -1025,28 +1025,39 @@ onShow(() => {
     activeTab.value = pendingTab;
     uni.removeStorageSync('record_pending_tab');
   }
-  
-  // 先从缓存恢复数据（避免白屏）
+
+  // 先从缓存恢复数据（避免白屏）—— 项目约定：先渲染缓存，再后台异步始终刷新
   if (!hasCachedData.value) {
     initFromCache();
   }
-  
-  // 根据缓存状态决定是否需要刷新
-  if (userStore.isLoggedIn && needRefresh()) {
-    if (!hasCachedData.value) {
+
+  // 已登录用户：始终后台异步刷新最新数据（保证后台配置变更即时生效，最慢不超过 5 分钟）
+  // - 有缓存时静默刷新（不显示 loading，用户无感）
+  // - 无缓存或强制刷新时显示 loading
+  if (userStore.isLoggedIn) {
+    const forceLoad = pageCache.consumeForceRefresh(CACHE_KEYS.RECORD_TODAY);
+    const shouldShowLoading = !hasCachedData.value || forceLoad;
+    if (shouldShowLoading) {
       loading.value = true;
     }
     nextTick(() => {
       try {
-        load();
-        loadDailyState();
-        checkDateRollover();
-        ensureTodayWindow();
-        if (activeTab.value === 'workout') loadWorkouts();
-        if (eatingStart.value && eatingEnd.value) startCountdown();
+        Promise.allSettled([
+          load(),
+          loadDailyState(),
+          Promise.resolve(checkDateRollover()),
+          Promise.resolve(ensureTodayWindow()),
+          activeTab.value === 'workout' ? loadWorkouts() : Promise.resolve()
+        ]).then(() => {
+          if (eatingStart.value && eatingEnd.value) startCountdown();
+        }).catch(err => {
+          console.error('[record] onShow 数据加载异常:', err);
+        }).finally(() => {
+          loading.value = false;
+          hasCachedData.value = true;
+        });
       } catch (e) {
         console.error('[record] onShow 数据加载异常:', e);
-      } finally {
         loading.value = false;
         hasCachedData.value = true;
       }

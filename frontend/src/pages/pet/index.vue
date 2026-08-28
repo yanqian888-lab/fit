@@ -520,12 +520,16 @@ const spriteConfig = computed(() => {
    * @returns {object} 宠物形象配置
    */
   function buildFrom(source, frames, label) {
-    const x = typeof source.x === 'number' ? source.x : EMPTY_CONFIG.x;
-    const y = typeof source.y === 'number' ? source.y : EMPTY_CONFIG.y;
+    // 兼容两种字段命名：pet_sprite / skin 用 x/y，home_activity 用 pos_x/pos_y
+    // 宽高：pet_sprite / skin 用 width/height，home_activity 也用 width/height（但字段来自 CMS 同名）
+    const x = typeof source.x === 'number' ? source.x
+      : (typeof source.pos_x === 'number' ? source.pos_x : EMPTY_CONFIG.x);
+    const y = typeof source.y === 'number' ? source.y
+      : (typeof source.pos_y === 'number' ? source.pos_y : EMPTY_CONFIG.y);
     const width = typeof source.width === 'number' ? source.width : EMPTY_CONFIG.width;
     const height = typeof source.height === 'number' ? source.height : EMPTY_CONFIG.height;
     const fps = typeof source.fps === 'number' && source.fps > 0 ? source.fps : EMPTY_CONFIG.fps;
-    console.log(`[PetSprite] source=${label}, frames=${frames.length}, first=${frames[0] || 'empty'}`);
+    console.log(`[PetSprite] source=${label}, x=${x}, y=${y}, w=${width}, h=${height}, frames=${frames.length}`);
     return { x, y, width, height, fps, frames };
   }
 
@@ -792,9 +796,21 @@ async function loadPet() {
     }));
     console.log('[Pet] API response - home_activity:', JSON.stringify({
       state_key: homeActivityData.state_key,
+      name: homeActivityData.name,
+      pos_x: homeActivityData.pos_x,
+      pos_y: homeActivityData.pos_y,
+      width: homeActivityData.width,
+      height: homeActivityData.height,
+      frame_rate: homeActivityData.frame_rate,
+      duration_minutes: homeActivityData.duration_minutes,
+      scene_key: homeActivityData.scene_key,
       framesCount: activityFrames.length,
       firstFrame: activityFrames[0] || 'N/A'
     }));
+    // 额外总结：后端返回的坐标字段（方便排查后台改了不生效的问题）
+    console.log('[Pet] 坐标字段汇总：pet_sprite(x/y)=(%s,%s) home_activity(pos_x/pos_y)=(%s,%s)',
+      spriteData.x, spriteData.y,
+      homeActivityData.pos_x, homeActivityData.pos_y);
 
     if (spriteFrames.length === 0) {
       console.warn('[Pet] ⚠️ API 返回的 pet_sprite.frames 为空，将尝试使用 pet_skin / home_activity / 前端兜底');
@@ -1382,28 +1398,35 @@ function updateRemaining(endAt) {
 // ==================== 生命周期 ====================
 onShow(() => {
   timePeriod.value = getTimePeriod();
-  
-  // 先从缓存恢复数据（避免白屏）
+
+  // 先从缓存恢复数据（避免白屏）—— 项目约定：先渲染缓存，再后台异步始终刷新
   if (!hasCachedData.value) {
     initFromCache();
   }
-  
+
   // 无论登录与否，都加载公共展示配置（让未登录游客也能看到搭搭形象）
   loadPetConfig();
-  
-  // 已登录用户额外加载完整数据（状态/互动/事件等）
-  if (userStore.isLoggedIn && needRefresh()) {
-    if (!hasCachedData.value) {
+
+  // 已登录用户：始终后台异步刷新最新数据（保证后台配置变更即时生效，最慢不超过 5 分钟）
+  // - 有缓存时静默刷新（不显示 loading，用户无感）
+  // - 无缓存时显示 loading（首次进入场景）
+  if (userStore.isLoggedIn) {
+    const forceLoad = pageCache.consumeForceRefresh(CACHE_KEYS.PET_INFO);
+    const shouldShowLoading = !hasCachedData.value || forceLoad;
+    if (shouldShowLoading) {
       loading.value = true;
     }
     nextTick(() => {
-      loadPet();
-      loadCurrency();
-      loading.value = false;
-      hasCachedData.value = true;
+      Promise.all([
+        loadPet().catch(err => console.error('[pet] loadPet 后台刷新失败:', err?.message)),
+        loadCurrency().catch(err => console.error('[pet] loadCurrency 后台刷新失败:', err?.message))
+      ]).finally(() => {
+        loading.value = false;
+        hasCachedData.value = true;
+      });
     });
   }
-  
+
   measureStage();
   centerMap();
   // 其他页面引导打开商店并定位分类（如跟练课程未解锁 → 运动器材 tab）
