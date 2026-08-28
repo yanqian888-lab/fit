@@ -78,6 +78,7 @@
           <view class="record-body">
             <text class="record-duration">{{ item.total_duration }} 分钟</text>
             <text v-if="getExerciseDistance(item.exercises)" class="record-distance">{{ getExerciseDistance(item.exercises) }} 公里</text>
+            <text v-if="getExerciseSetsReps(item.exercises)" class="record-sets">{{ getExerciseSetsReps(item.exercises) }}</text>
             <view class="record-actions">
               <view class="action-btn edit" @click="editItem(item)">修改</view>
               <view class="action-btn delete" @click="deleteItem(item.id)">删除</view>
@@ -358,6 +359,26 @@ function getExerciseDistance(exercises) {
   return total > 0 ? (Math.round(total * 10) / 10).toString() : '';
 }
 
+/**
+ * 汇总记录中的组数/次数，格式如 "3组×12次"
+ */
+function getExerciseSetsReps(exercises) {
+  if (!exercises || exercises.length === 0) return '';
+  const parts = [];
+  for (const e of exercises) {
+    const sets = parseInt(e.sets) || 0;
+    const reps = parseInt(e.reps) || 0;
+    if (sets > 0 && reps > 0) {
+      parts.push(`${sets}组×${reps}次`);
+    } else if (sets > 0) {
+      parts.push(`${sets}组`);
+    } else if (reps > 0) {
+      parts.push(`${reps}次`);
+    }
+  }
+  return parts.join(' · ');
+}
+
 async function load(date = getToday()) {
   try {
     const res = await recordApi.getExercise(date);
@@ -501,19 +522,20 @@ onShow(() => {
   align-items: center;
   justify-content: center;
   flex: 1;
-  padding: 16rpx 0;
+  aspect-ratio: 1;
+  padding: 8rpx 0;
   margin: 0 6rpx;
-  border-radius: 24rpx;
+  border-radius: 50%;
   transition: background-color 0.2s ease;
 }
 
 .date-week {
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 600;
   color: #8F9098;
   letter-spacing: 0.5rpx;
-  margin-bottom: 6rpx;
-  line-height: 28rpx;
+  margin-bottom: 2rpx;
+  line-height: 24rpx;
 }
 
 .date-day {
@@ -615,7 +637,7 @@ onShow(() => {
   /* 严格 1/7 百分比宽度：每行恰好 7 个日期，不随容器宽度浮动折行到错乱 */
   width: 14.2857%;
   flex: 0 0 14.2857%;
-  height: 60rpx;
+  aspect-ratio: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -722,6 +744,13 @@ onShow(() => {
 .record-distance {
   font-size: 26rpx;
   color: #8DBB77;
+  line-height: 40rpx;
+  margin-left: 16rpx;
+}
+
+.record-sets {
+  font-size: 26rpx;
+  color: #563E22;
   line-height: 40rpx;
   margin-left: 16rpx;
 }

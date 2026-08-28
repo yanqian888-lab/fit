@@ -488,17 +488,18 @@ function goMood() {
   align-items: center;
   justify-content: center;
   flex: 1;
-  padding: 16rpx 0;
+  aspect-ratio: 1;
+  padding: 8rpx 0;
   margin: 0 6rpx;
-  border-radius: 24rpx;
+  border-radius: 50%;
   transition: background-color 0.2s ease;
 }
 
 .date-week {
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 600;
   color: #8F9098;
-  margin-bottom: 6rpx;
+  margin-bottom: 2rpx;
 }
 
 .date-day {

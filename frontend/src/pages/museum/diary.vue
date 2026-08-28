@@ -569,7 +569,7 @@ onMounted(() => {
   /* 严格 1/7 百分比宽度：每行恰好 7 个日期，不随容器宽度浮动折行到错乱 */
   width: 14.2857%;
   flex: 0 0 14.2857%;
-  height: 60rpx;
+  aspect-ratio: 1;
   display: flex;
   flex-direction: column;
   align-items: center;

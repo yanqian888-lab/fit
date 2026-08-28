@@ -392,7 +392,7 @@ function getBody(req, res) {
   const params = type === 'weight' ? [userId, since] : [userId, type, since];
 
   const rows = db.prepare(`
-    SELECT record_date, value, unit
+    SELECT record_date, value, unit, body_fat_rate
     FROM body_records
     WHERE user_id = ? AND ${typeFilter} AND record_date >= ? AND status = 1
     AND created_at = (
@@ -415,6 +415,7 @@ function getBody(req, res) {
     return {
       date: row.record_date,
       value: row.value,
+      body_fat: row.body_fat_rate || null,
       change
     };
   });
@@ -432,7 +433,7 @@ function getBody(req, res) {
  */
 function saveBody(req, res) {
   const userId = req.userId;
-  const { record_date, type, value, unit } = req.body;
+  const { record_date, type, value, unit, body_fat } = req.body;
 
   if (!record_date) {
     return res.status(400).json(error('缺少记录日期', 400));
@@ -456,9 +457,15 @@ function saveBody(req, res) {
     `).get(userId, record_date, type);
 
     if (existing) {
-      db.prepare(`
-        UPDATE body_records SET value = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `).run(numValue, unit || 'kg', existing.id);
+      if (type === 'weight' && body_fat !== undefined && body_fat !== null) {
+        db.prepare(`
+          UPDATE body_records SET value = ?, unit = ?, body_fat_rate = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        `).run(numValue, unit || 'kg', body_fat, existing.id);
+      } else {
+        db.prepare(`
+          UPDATE body_records SET value = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        `).run(numValue, unit || 'kg', existing.id);
+      }
 
       if (type === 'weight') {
         db.prepare('UPDATE user_profiles SET current_weight = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
@@ -470,10 +477,18 @@ function saveBody(req, res) {
       return { id: existing.id };
     }
 
-    const insertId = db.prepare(`
-      INSERT INTO body_records (user_id, record_date, type, value, unit, status)
-      VALUES (?, ?, ?, ?, ?, 1)
-    `).run(userId, record_date, type, numValue, unit || 'kg').lastInsertRowid;
+    let insertId;
+    if (type === 'weight' && body_fat !== undefined && body_fat !== null) {
+      insertId = db.prepare(`
+        INSERT INTO body_records (user_id, record_date, type, value, unit, body_fat_rate, status)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
+      `).run(userId, record_date, type, numValue, unit || 'kg', body_fat).lastInsertRowid;
+    } else {
+      insertId = db.prepare(`
+        INSERT INTO body_records (user_id, record_date, type, value, unit, status)
+        VALUES (?, ?, ?, ?, ?, 1)
+      `).run(userId, record_date, type, numValue, unit || 'kg').lastInsertRowid;
+    }
 
     // 如果是体重，更新当前体重
     let rewardMessages = [];
