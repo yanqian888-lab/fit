@@ -2077,11 +2077,10 @@ async function onPendingTag(msg) {
   padding: 20rpx 40rpx;
   /*
    * 底部预留空间：
-   * 输入区(input-area)总高约 100rpx（input-bar 72rpx + 上下 padding 28rpx）。
-   * 为最大化聊天记录展示区域，输入框上方不再保留额外浅绿色间距，
-   * padding-bottom 与输入区高度对齐即可。
+   * 仅保留 4px（8rpx）的浅绿色间距在输入框上方，最大化聊天记录展示区域。
+   * 额外叠加安全区高度，避免 iPhone Home 指示条遮挡内容。
    */
-  padding-bottom: calc(100rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(8rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   background: #F7FBF4;
 }
