@@ -292,7 +292,7 @@
       <view class="food-picker-modal-header">
         <text class="food-picker-back" @click="showFoodPicker = false">←</text>
         <view class="food-picker-modal-title">
-          <text class="food-picker-meal-label">{{ mealOptions.find(m => m.value === editMealTime)?.label || '午餐' }}</text>
+          <text class="food-picker-meal-label">{{ currentMealLabel }}</text>
         </view>
         <view style="width: 60rpx;"></view>
       </view>
@@ -529,6 +529,12 @@ const mealOptions = [
   { value: 'dinner', label: '晚餐' },
   { value: 'snack', label: '加餐' }
 ];
+
+/** 当前选中餐别标签（安全访问，避免模板可选链） */
+const currentMealLabel = computed(() => {
+  const found = mealOptions.find(m => m.value === editMealTime.value);
+  return found ? found.label : '午餐';
+});
 
 // 标签映射
 const bodyTypeLabelMap = {

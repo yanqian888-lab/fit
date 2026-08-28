@@ -109,14 +109,14 @@
     <view class="panel-overlay" :class="{ show: showEditPanel }" @click="closeEditPanel"></view>
     <view class="edit-panel" :class="{ show: showEditPanel }">
       <view class="panel-header">
-        <text class="panel-title">编辑{{ editingFood?.name }}</text>
+        <text class="panel-title">编辑{{ editingFoodName }}</text>
         <text class="panel-close" @click="closeEditPanel">✕</text>
       </view>
       <view class="panel-body">
         <view v-if="!isGramOnlyFood" class="form-row">
           <text class="form-label">数量</text>
           <input v-model="editQuantity" type="digit" class="form-input" />
-          <text class="form-unit">{{ editingFood?.unit || '个' }}</text>
+          <text class="form-unit">{{ editingFoodUnit }}</text>
         </view>
         <view class="form-row">
           <text class="form-label">重量</text>
@@ -408,6 +408,16 @@ function closeEditPanel() {
 
 const isGramOnlyFood = computed(() => {
   return editingFood.value && ['g', '克'].includes(editingFood.value.unit);
+});
+
+/** 当前编辑食物名称（安全访问，避免模板可选链） */
+const editingFoodName = computed(() => {
+  return editingFood.value ? editingFood.value.name : '';
+});
+
+/** 当前编辑食物单位（安全访问，避免模板可选链） */
+const editingFoodUnit = computed(() => {
+  return editingFood.value ? (editingFood.value.unit || '个') : '个';
 });
 
 const editCalorie = computed(() => {

@@ -5,7 +5,7 @@
     <view class="user-header">
       <view class="avatar" @click="!isLoggedIn && goToLogin()">
         <image v-if="user.avatar_url && !avatarError" :src="avatarFullUrl" class="avatar-img" mode="aspectFill" @error="avatarError = true" />
-        <text v-else>{{ isLoggedIn ? (user.nickname?.[0] || 'U') : '登' }}</text>
+        <text v-else>{{ isLoggedIn ? nicknameFirstChar : '登' }}</text>
       </view>
       <view class="user-info">
         <text :class="['nickname', { 'nickname-login': !isLoggedIn }]" @click="!isLoggedIn && goToLogin()">{{ isLoggedIn ? (user.nickname || '用户昵称') : '请登录' }}</text>
@@ -60,6 +60,12 @@ const noticeStore = useNoticeStore();
 const user = ref({});
 const isLoggedIn = ref(false);
 const avatarError = ref(false);
+
+/** 昵称首字符（安全访问，避免模板可选链） */
+const nicknameFirstChar = computed(() => {
+  const nick = user.value.nickname;
+  return nick ? nick[0] || 'U' : 'U';
+});
 
 // 退出登录确认弹框
 const showLogoutModal = ref(false);

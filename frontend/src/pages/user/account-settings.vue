@@ -6,7 +6,7 @@
         <view class="info-card">
           <view class="info-item">
             <text class="info-label">账号</text>
-            <text class="info-value">{{ userInfo?.username || '-' }}</text>
+            <text class="info-value">{{ accountUsername }}</text>
           </view>
           <view class="info-item">
             <text class="info-label">手机号</text>
@@ -51,6 +51,12 @@ import popupManager from '../../utils/popupManager';
 
 const userStore = useUserStore();
 const userInfo = computed(() => userStore.userInfo);
+
+/** 账号用户名（安全访问，避免模板可选链） */
+const accountUsername = computed(() => {
+  const info = userInfo.value;
+  return info && info.username ? info.username : '-';
+});
 
 // 退出登录确认弹框
 const showLogoutModal = ref(false);

@@ -4,7 +4,7 @@
       <view class="avatar-card">
         <view class="avatar">
           <image v-if="user.avatar_url && !avatarError" :src="avatarFullUrl" class="avatar-img" mode="aspectFill" @error="avatarError = true" />
-          <text v-else>{{ user.nickname?.[0] || 'U' }}</text>
+          <text v-else>{{ nicknameFirstChar }}</text>
         </view>
         <text class="nickname">{{ user.nickname || '未设置昵称' }}</text>
         <!-- 点击上传头像功能暂未开放（提审阶段先隐藏相册读取权限声明） -->
@@ -66,6 +66,12 @@ import AppButton from '../../components/AppButton.vue';
 const user = ref({});
 const userStore = useUserStore();
 const avatarError = ref(false);
+
+/** 昵称首字符（安全访问，避免模板可选链） */
+const nicknameFirstChar = computed(() => {
+  const nick = user.value.nickname;
+  return nick ? nick[0] || 'U' : 'U';
+});
 const today = getToday();
 const genderLabels = ['请选择性别', '男', '女'];
 const genderValues = [null, 1, 2];

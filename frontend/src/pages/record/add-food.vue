@@ -89,7 +89,7 @@
       <view class="food-edit-mask" @click="closeFoodEditModal"></view>
       <view class="food-edit-panel" @click.stop>
         <view class="panel-header">
-          <text class="panel-title">{{ editMode === 'edit' ? '编辑' : '添加' }}{{ editingFood?.name }}</text>
+          <text class="panel-title">{{ editMode === 'edit' ? '编辑' : '添加' }}{{ editingFoodName }}</text>
           <text class="panel-close" @click="closeFoodEditModal">✕</text>
         </view>
         <view class="food-edit-body">
@@ -112,8 +112,8 @@
           </view>
           <!-- 非克数记录时给出大致克数 -->
           <view v-if="editUnit !== 'g'" class="estimate-row">
-            <text v-if="editingFood?.unit_weight" class="estimate-text">约 {{ editingFood.unit_weight }}g/{{ editUnit }}，共约 {{ estimatedWeight }}g</text>
-            <text v-else-if="editingFood?.unit_calorie" class="estimate-text">1 {{ editUnit }} ≈ {{ editingFood.unit_calorie }} 千卡</text>
+            <text v-if="hasUnitWeight" class="estimate-text">约 {{ editingFoodUnitWeight }}g/{{ editUnit }}，共约 {{ estimatedWeight }}g</text>
+            <text v-else-if="hasUnitCalorie" class="estimate-text">1 {{ editUnit }} ≈ {{ editingFoodUnitCalorie }} 千卡</text>
           </view>
           <view class="edit-info">
             <text class="edit-calorie">{{ editCalorie }} 千卡</text>
@@ -180,8 +180,33 @@ const unitOptions = computed(() => {
 // 个数模式下的估算总克数
 const estimatedWeight = computed(() => {
   const qty = parseFloat(editValue.value) || 0;
-  const per = editingFood.value?.unit_weight || 0;
+  const per = editingFood.value ? (editingFood.value.unit_weight || 0) : 0;
   return Math.round(qty * per * 10) / 10;
+});
+
+/** 当前编辑食物名称（安全访问，避免模板可选链） */
+const editingFoodName = computed(() => {
+  return editingFood.value ? editingFood.value.name : '';
+});
+
+/** 是否有单位重量信息 */
+const hasUnitWeight = computed(() => {
+  return editingFood.value ? !!editingFood.value.unit_weight : false;
+});
+
+/** 是否有单位热量信息 */
+const hasUnitCalorie = computed(() => {
+  return editingFood.value ? !!editingFood.value.unit_calorie : false;
+});
+
+/** 食物单位重量值（安全访问） */
+const editingFoodUnitWeight = computed(() => {
+  return editingFood.value ? (editingFood.value.unit_weight || 0) : 0;
+});
+
+/** 食物单位热量值（安全访问） */
+const editingFoodUnitCalorie = computed(() => {
+  return editingFood.value ? (editingFood.value.unit_calorie || 0) : 0;
 });
 
 const editCalorie = computed(() => {

@@ -55,11 +55,11 @@
     <!-- 运动倒计时弹窗 -->
     <ExerciseCountdownPopup
       v-if="countdownVisible"
-      :exercise-name="currentExercise?.name || '运动'"
-      :anim-url="currentExercise?.anim_url || ''"
-      :duration="currentExercise?.duration_seconds || 180"
-      :has-workout="!!currentExercise?.has_workout"
-      :workout-key="currentExercise?.workout_key || ''"
+      :exercise-name="currentExerciseName"
+      :anim-url="currentExerciseAnimUrl"
+      :duration="currentExerciseDuration"
+      :has-workout="currentExerciseHasWorkout"
+      :workout-key="currentExerciseWorkoutKey"
       @close="onCountdownClose"
       @go-workout="onGoWorkout"
     />
@@ -89,7 +89,7 @@
     <view v-if="confirmDialogVisible" class="dialog-mask">
       <view class="dialog-card">
         <text class="dialog-title">和搭搭一起跟练？</text>
-        <text class="dialog-desc">「{{ pendingWorkout?.name }}」</text>
+        <text class="dialog-desc">「{{ pendingWorkoutName }}」</text>
         <view class="dialog-btns">
           <view class="dialog-btn dialog-btn-cancel" @click="confirmDialogVisible = false">
             <text>否</text>
@@ -128,6 +128,36 @@ const confirmDialogVisible = ref(false);
 const currentExercise = ref(null);
 const pendingWorkout = ref(null);
 const currentItem = ref(null);
+
+/** 当前运动名称（安全访问，避免模板可选链） */
+const currentExerciseName = computed(() => {
+  return currentExercise.value ? (currentExercise.value.name || '运动') : '运动';
+});
+
+/** 当前运动动画URL（安全访问） */
+const currentExerciseAnimUrl = computed(() => {
+  return currentExercise.value ? (currentExercise.value.anim_url || '') : '';
+});
+
+/** 当前运动时长（安全访问） */
+const currentExerciseDuration = computed(() => {
+  return currentExercise.value ? (currentExercise.value.duration_seconds || 180) : 180;
+});
+
+/** 当前运动是否有跟练（安全访问） */
+const currentExerciseHasWorkout = computed(() => {
+  return currentExercise.value ? !!currentExercise.value.has_workout : false;
+});
+
+/** 当前运动跟练key（安全访问） */
+const currentExerciseWorkoutKey = computed(() => {
+  return currentExercise.value ? (currentExercise.value.workout_key || '') : '';
+});
+
+/** 待确认跟练名称（安全访问） */
+const pendingWorkoutName = computed(() => {
+  return pendingWorkout.value ? pendingWorkout.value.name : '';
+});
 
 // 器材关联的跟练课程列表
 const equipmentWorkouts = ref([]);

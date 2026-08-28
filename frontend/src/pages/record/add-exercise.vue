@@ -85,7 +85,7 @@
     <view v-if="showExerciseEditModal" class="exercise-edit-mask" @click="onMaskClick">
       <view class="exercise-edit-panel" @click.stop @tap.stop>
         <view class="panel-header">
-          <text class="panel-title">{{ editMode === 'edit' ? '编辑' : '添加' }}{{ editingExercise?.name }}</text>
+          <text class="panel-title">{{ editMode === 'edit' ? '编辑' : '添加' }}{{ editingExerciseName }}</text>
           <text class="panel-close" @click="closeExerciseEditModal">✕</text>
         </view>
         <view class="exercise-edit-body">
@@ -94,17 +94,17 @@
             <input v-model="editDuration" type="digit" class="edit-input" />
             <text class="edit-unit">分钟</text>
           </view>
-          <view class="edit-row" v-if="editingExercise?.showDistance">
+          <view class="edit-row" v-if="showDistance">
             <text class="edit-label">距离</text>
             <input v-model="editDistance" type="digit" class="edit-input" placeholder="0" />
             <text class="edit-unit">公里</text>
           </view>
-          <view class="edit-row" v-if="editingExercise?.showCount">
+          <view class="edit-row" v-if="showCount">
             <text class="edit-label">组数</text>
             <input v-model="editSets" type="digit" class="edit-input" placeholder="0" />
             <text class="edit-unit">组</text>
           </view>
-          <view class="edit-row" v-if="editingExercise?.showCount">
+          <view class="edit-row" v-if="showCount">
             <text class="edit-label">每组次数</text>
             <input v-model="editReps" type="digit" class="edit-input" placeholder="0" />
             <text class="edit-unit">次</text>
@@ -168,6 +168,21 @@ const editCalorie = computed(() => {
     return Math.round(editingExercise.value.calorie_per_hour * (duration / 60));
   }
   return 0;
+});
+
+/** 当前编辑运动的名称（安全访问，避免模板可选链） */
+const editingExerciseName = computed(() => {
+  return editingExercise.value ? editingExercise.value.name : '';
+});
+
+/** 是否显示距离输入行（安全访问，避免模板可选链） */
+const showDistance = computed(() => {
+  return editingExercise.value ? !!editingExercise.value.showDistance : false;
+});
+
+/** 是否显示次数/组数输入行（安全访问，避免模板可选链） */
+const showCount = computed(() => {
+  return editingExercise.value ? !!editingExercise.value.showCount : false;
 });
 
 // 运动分类
