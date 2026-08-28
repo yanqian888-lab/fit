@@ -563,26 +563,17 @@ const spriteConfig = computed(() => {
     );
   }
 
-  // 4. 最终兜底：使用内置默认宠物图，保证宠物永远可见（避免完全空白）
-  console.warn('[PetSprite] 所有形象来源均为空（pet_sprite/skin/home_activity），使用内置兜底形象');
-  return buildFallbackConfig();
-
-  /**
-   * 构建兜底配置：使用 pet_moren.png 作为最后一道防线
-   * @returns {object} 宠物形象配置
-   */
-  function buildFallbackConfig() {
-    // 注意：文件实际在后端 public/uploads/ 目录，通过 /static/uploads/ 对外暴露
-    const fallbackUrl = resolveStaticUrl('/static/uploads/pet_moren.png');
-    return {
-      x: EMPTY_CONFIG.x,
-      y: EMPTY_CONFIG.y,
-      width: EMPTY_CONFIG.width,
-      height: EMPTY_CONFIG.height,
-      fps: 1,
-      frames: [fallbackUrl]
-    };
-  }
+  // 4. 最终兜底：所有形象来源均为空时，返回空帧配置
+  // 不再请求已不存在的 pet_moren.png，避免控制台 404 报错
+  console.warn('[PetSprite] 所有形象来源均为空（pet_sprite/skin/home_activity），宠物暂不显示');
+  return {
+    x: EMPTY_CONFIG.x,
+    y: EMPTY_CONFIG.y,
+    width: EMPTY_CONFIG.width,
+    height: EMPTY_CONFIG.height,
+    fps: 1,
+    frames: []
+  };
 });
 // 后台只配置主形象序列帧（1 张即静态）；其他动作名由 PetSprite 回退到 idle
 const spriteAnimations = computed(() => ({

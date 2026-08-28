@@ -149,8 +149,8 @@ const hasValidFrames = computed(() => {
 const frameUrls = computed(() => currentAnim.value.frames || []);
 
 /**
- * 兜底占位图：优先使用传入的 fallbackSrc，其次使用当前动画的第一帧，
- * 最后回退到 pet_moren.png，避免因为默认文件缺失导致完全空白。
+ * 兜底占位图：优先使用传入的 fallbackSrc，其次使用当前动画的第一帧。
+ * 不再回退到已不存在的 pet_moren.png，避免 404 报错。
  */
 const fallbackImage = computed(() => {
   if (props.fallbackSrc) {
@@ -160,8 +160,8 @@ const fallbackImage = computed(() => {
   if (firstFrame) {
     return resolveStaticUrl(firstFrame);
   }
-  // 最终兜底：使用 pet_moren.png（默认宠物形象）
-  return resolveStaticUrl('/static/uploads/pet_moren.png');
+  // 无可用帧时不返回图片地址，避免请求不存在的兜底图
+  return '';
 });
 
 /**
