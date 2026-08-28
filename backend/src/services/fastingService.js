@@ -19,9 +19,29 @@ const MODE_PRESETS = {
   'omad': { target_hours: 23, eating_window_start: '12:00', eating_window_end: '13:00' }
 };
 
+/**
+ * 获取今日轻断食状态（若今日无记录则按最近一次计划自动创建，保持用户设置不丢失）
+ */
 function getTodayFasting(userId, date = null) {
   const recordDate = date || new Date().toISOString().split('T')[0];
-  return db.prepare('SELECT * FROM fasting_records WHERE user_id = ? AND record_date = ?').get(userId, recordDate);
+  const existing = db.prepare('SELECT * FROM fasting_records WHERE user_id = ? AND record_date = ?').get(userId, recordDate);
+  if (existing) return existing;
+
+  // 今日无记录：查找最近一次计划，若存在则自动创建今日计划
+  const last = db.prepare(`
+    SELECT * FROM fasting_records WHERE user_id = ? ORDER BY record_date DESC, id DESC LIMIT 1
+  `).get(userId);
+
+  if (!last) return null;
+
+  // 按最近计划设置创建今日记录
+  insertPlan(userId, recordDate, {
+    mode: last.mode,
+    target_hours: last.target_hours,
+    eating_window_start: last.eating_window_start,
+    eating_window_end: last.eating_window_end
+  });
+  return getTodayFasting(userId, recordDate);
 }
 
 function insertPlan(userId, today, { mode, target_hours, eating_window_start, eating_window_end, note = '' }) {

@@ -699,7 +699,7 @@ async function loadFastingFromServer() {
       if (hasStartedToday.value) resetDailyState();
       return;
     }
-    if (['16:8', '18:6', '20:4', '14:10', 'omad'].includes(f.mode)) {
+    if (['16:8', '18:6', '20:4', '14:10', 'omad', 'custom'].includes(f.mode)) {
       selectedMode.value = f.mode;
       if (f.mode === 'custom' && f.target_hours) {
         customTargetHours.value = f.target_hours;

@@ -30,7 +30,7 @@
         </view>
       </view>
 
-      <scroll-view class="overlay-scroll" scroll-y @scrolltolower="loadMore">
+      <scroll-view class="overlay-scroll" scroll-y @scrolltolower="loadMore" :scroll-top="scrollTop">
         <view v-if="items.length === 0 && !loading" class="empty-state">
           <image class="empty-icon" src="/static/image/icon/quesheng01.png" mode="aspectFit" />
           <text class="empty-text">暂无商品</text>
@@ -67,7 +67,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, nextTick } from 'vue';
 import { petApi } from '../../../api';
 import { resolveStaticUrl } from '../../../utils/environment';
 
@@ -89,6 +89,7 @@ const tabs = ref([]);
 const activeTab = ref('');
 const items = ref([]);
 const currency = ref({});
+const scrollTop = ref(0);
 // 分页加载（小程序全量渲染 180+ 卡片会卡，30 条/页滚动加载）
 const PAGE_SIZE = 30;
 const page = ref(1);
@@ -124,6 +125,12 @@ function switchTab(value) {
   page.value = 1;
   hasMore.value = true;
   items.value = [];
+  // 切换 tab 时重置滚动位置
+  scrollTop.value = 0;
+  nextTick(() => {
+    scrollTop.value = 1;
+    nextTick(() => { scrollTop.value = 0; });
+  });
   loadItems();
 }
 

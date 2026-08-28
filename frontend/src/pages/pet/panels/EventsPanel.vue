@@ -14,7 +14,7 @@
           :key="col.key"
           class="tab-item"
           :class="{ active: activeKey === col.key }"
-          @click="activeKey = col.key"
+          @click="switchTab(col.key)"
         >
           <text>{{ col.name }}</text>
         </view>
@@ -23,7 +23,7 @@
       <!-- 解锁进度 -->
       <text class="progress-tip" v-if="activeCollection">已解锁 {{ activeCollection.unlocked_count }}/{{ activeCollection.total }}</text>
 
-      <scroll-view class="overlay-scroll" scroll-y>
+      <scroll-view class="overlay-scroll" scroll-y :scroll-top="scrollTop">
         <view v-if="!activeCollection || activeCollection.slots.length === 0" class="empty-state">
           <image class="empty-img" src="/static/image/icon/quesheng01.png" mode="aspectFit" />
           <text class="empty-text">{{ activeCollection ? '这个集合还没有配置事件' : '还没有配置事件集' }}</text>
@@ -50,7 +50,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { petApi } from '../../../api';
 import { resolveStaticUrl } from '../../../utils/environment';
 
@@ -58,6 +58,23 @@ const emit = defineEmits(['close', 'selectEvent']);
 
 const collections = ref([]);
 const activeKey = ref('');
+const scrollTop = ref(0);
+
+/**
+ * 切换 tab 时重置 scroll-view 滚动位置到顶部
+ * 每个 tab 独立维护滚动位置，切换时回到顶部
+ */
+function switchTab(key) {
+  if (activeKey.value === key) return;
+  activeKey.value = key;
+  // 通过修改 scrollTop 值强制 scroll-view 回到顶部
+  scrollTop.value = 0;
+  nextTick(() => {
+    // 触发一次重新赋值，确保小程序端 scroll-view 感知到变化
+    scrollTop.value = 1;
+    nextTick(() => { scrollTop.value = 0; });
+  });
+}
 
 const activeCollection = computed(() =>
   collections.value.find(c => c.key === activeKey.value) || null
