@@ -1718,7 +1718,7 @@ function confirmGenerateDiary() {
   font-size: 32rpx;
   color: #FFFFFF;
   font-weight: 600;
-  margin-bottom: 28rpx;
+  margin-bottom: 48rpx;
   box-shadow: 0 4rpx 16rpx rgba(255, 171, 118, 0.3);
 }
 

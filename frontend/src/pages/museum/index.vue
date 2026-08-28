@@ -99,7 +99,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { museumApi, userApi } from '../../api';
 import { useUserStore } from '../../store';
