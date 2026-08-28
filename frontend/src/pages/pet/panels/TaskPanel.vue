@@ -85,8 +85,8 @@ const receipt = ref({ content: '', berries: 0, flowers: 0 });
 
 const sections = computed(() => [
   // 顶部已有签到卡片，每日任务里不再重复显示「每日签到」
+  // 周常任务也已隐藏，因为顶部已有签到入口
   { type: 'daily', title: '每日任务', tasks: tasks.value.filter(t => t.type === 'daily' && t.name !== '每日签到') },
-  { type: 'weekly', title: '周常任务', tasks: tasks.value.filter(t => t.type === 'weekly') },
   { type: 'once', title: '常驻任务', tasks: tasks.value.filter(t => t.type === 'once') }
 ]);
 
