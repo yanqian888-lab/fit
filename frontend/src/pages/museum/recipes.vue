@@ -28,14 +28,14 @@
         <view v-if="displayList.length > 0" class="recipes-list">
         <view v-for="item in displayList" :key="item.id" class="recipe-card">
           <view class="recipe-card-body" @click="goDetail(item.id)">
-            <view v-if="item.extracted_data?.image" class="recipe-image">
-              <image :src="item.extracted_data.image" mode="aspectFill" />
+            <view v-if="getRecipeImage(item)" class="recipe-image">
+              <image :src="getRecipeImage(item)" mode="aspectFill" />
             </view>
             <view class="recipe-main">
-              <text class="recipe-title">{{ item.title || '健康食谱' }}</text>
-              <text class="recipe-desc">{{ item.content }}</text>
+              <text class="recipe-title">{{ item.title || getRecipeTitle(item) || '健康食谱' }}</text>
+              <text class="recipe-desc">{{ getRecipeContent(item) }}</text>
               <text v-if="recipeTotalsText(item)" class="recipe-totals">{{ recipeTotalsText(item) }}</text>
-              <text v-if="item.tags" class="recipe-tags">{{ formatTags(item.tags) }}</text>
+              <text v-if="getRecipeTags(item)" class="recipe-tags">{{ getRecipeTags(item) }}</text>
             </view>
           </view>
           <view class="recipe-actions">
@@ -117,9 +117,66 @@ function formatTags(tags) {
   return Array.isArray(tags) ? tags.join(' · ') : tags;
 }
 
+/**
+ * 安全获取食谱图片地址，防止 extracted_data 为 null/undefined 时访问属性报错
+ */
+function getRecipeImage(item) {
+  const d = item.extracted_data;
+  if (d && typeof d === 'object' && d.image) return d.image;
+  return '';
+}
+
+/**
+ * 安全获取食谱标题，从 extracted_data 中兜底
+ */
+function getRecipeTitle(item) {
+  const d = item.extracted_data;
+  if (d && typeof d === 'object' && d.title) return d.title;
+  return '';
+}
+
+/**
+ * 安全获取食谱内容，处理 content 为对象或 JSON 字符串的情况
+ */
+function getRecipeContent(item) {
+  const c = item.content;
+  if (c == null) return '';
+  if (typeof c === 'object') {
+    // content 是对象时，尝试从 extracted_data 中取 content 字段
+    const d = item.extracted_data;
+    if (d && typeof d === 'object' && d.content) return d.content;
+    return '';
+  }
+  if (typeof c === 'string' && c.startsWith('{')) {
+    // content 是 JSON 字符串时，尝试解析并取 content 字段
+    try {
+      const parsed = JSON.parse(c);
+      if (parsed && typeof parsed === 'object') {
+        return parsed.content || parsed.title || '';
+      }
+    } catch (e) {}
+  }
+  return String(c);
+}
+
+/**
+ * 安全获取食谱标签，处理 tags 为对象的情况
+ */
+function getRecipeTags(item) {
+  const t = item.tags;
+  if (t == null) return '';
+  if (Array.isArray(t)) return t.join(' · ');
+  if (typeof t === 'object') {
+    // tags 是对象时，提取所有值
+    return Object.values(t).filter(v => typeof v === 'string').join(' · ');
+  }
+  return String(t);
+}
+
 // 食谱总克数/总热量展示文案（有数据才显示）
 function recipeTotalsText(item) {
-  const d = item.extracted_data || {};
+  const d = item.extracted_data;
+  if (!d || typeof d !== 'object') return '';
   const parts = [];
   if (d.total_weight > 0) parts.push(`约 ${d.total_weight}g`);
   if (d.total_calorie > 0) parts.push(`约 ${d.total_calorie} 千卡`);

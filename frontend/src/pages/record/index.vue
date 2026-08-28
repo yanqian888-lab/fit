@@ -1147,7 +1147,7 @@ function confirmGenerateDiary() {
 .record-page {
   background: #F7FbF4;
   min-height: 100vh;
-  padding: 0 32rpx calc(180rpx + env(safe-area-inset-bottom));
+  padding: 0 32rpx calc(48rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
@@ -1718,7 +1718,7 @@ function confirmGenerateDiary() {
   font-size: 32rpx;
   color: #FFFFFF;
   font-weight: 600;
-  margin-bottom: 48rpx;
+  margin-bottom: 0;
   box-shadow: 0 4rpx 16rpx rgba(255, 171, 118, 0.3);
 }
 
