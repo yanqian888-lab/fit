@@ -321,8 +321,12 @@ function measureStage() {
     const windowWidth = info.windowWidth || 375;
     const windowHeight = info.windowHeight || 667;
     const safeBottom = (info.safeAreaInsets && info.safeAreaInsets.bottom) || 0;
-    // 背景下沿下拉到功能区一半的位置（功能区底部 48rpx + 高度的一半 64rpx = 112rpx）
-    const tabbarPx = (112 / 750) * windowWidth + safeBottom;
+    /*
+     * 背景下沿下拉到功能区一半的位置：
+     * 功能区底部距 tabBar 16rpx，高度 160rpx，一半为 80rpx，
+     * 所以舞台下沿 = 16rpx + 80rpx = 96rpx。
+     */
+    const tabbarPx = (96 / 750) * windowWidth + safeBottom;
     const stagePx = Math.max(0, windowHeight - tabbarPx);
     stageHeightRpx.value = (stagePx / windowWidth) * 750;
   } catch (e) {}
@@ -1513,8 +1517,12 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   right: 0;
-  /* 背景下沿下拉到功能区一半的位置（功能区底部 48rpx + 高度的一半 64rpx = 112rpx） */
-  bottom: calc(112rpx + env(safe-area-inset-bottom));
+  /*
+   * 背景下沿下拉到功能区一半的位置：
+   * 功能区底部距 tabBar 16rpx，高度 160rpx，一半为 80rpx，
+   * 所以场景舞台下沿 = 16rpx + 80rpx = 96rpx。
+   */
+  bottom: calc(96rpx + env(safe-area-inset-bottom));
   overflow: hidden;
   touch-action: none;
   user-select: none;
@@ -1710,12 +1718,9 @@ onUnmounted(() => {
   position: absolute;
   left: 32rpx;
   right: 32rpx;
-  /*
-   * 功能区整体下移 16px（32rpx），高度再减小 16px（32rpx）。
-   * 当前 bottom 48rpx + height 128rpx，底部距 tabBar 约 24px（48rpx）。
-   */
-  bottom: 48rpx;
-  height: 128rpx;
+  /* 功能区底部与 tabBar 顶部保持 8px（16rpx）间距 */
+  bottom: 16rpx;
+  height: 160rpx;
   /* 功能区保持完整的浅绿色背景 */
   background: #E8F6D7;
   border-radius: 24rpx;
