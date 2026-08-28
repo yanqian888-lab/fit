@@ -151,7 +151,13 @@ async function register() {
 .register-page {
   min-height: 100vh;
   background: #F7FbF4;
-  padding: calc(60rpx + env(safe-area-inset-top)) 48rpx 48rpx;
+  /*
+   * 顶部占位：标杆双行兜底 + 原内容顶部 60rpx 留白
+   * - 第一行：硬码 44px 标杆（防止 --status-bar-height 未注入前几帧塌缩顶到胶囊）
+   * - 第二行：var(--status-bar-height,44px) + 88rpx 覆盖第一行 → 适配各机型真实状态栏高度
+   */
+  padding: calc(44px + 88rpx + 60rpx) 48rpx 48rpx;
+  padding: calc(var(--status-bar-height, 44px) + 88rpx + 60rpx) 48rpx 48rpx;
 }
 
 .register-header {

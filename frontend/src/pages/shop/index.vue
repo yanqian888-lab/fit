@@ -1,8 +1,6 @@
 <template>
   <view class="shop-page">
-    <view class="status-bar"></view>
     <view class="page-header">
-      <image class="back-icon" src="/static/image/icon/fanhui.png" mode="aspectFit" @click="goBack" />
       <view class="currency-bar">
         <view class="currency-item">
           <image class="currency-icon" src="/static/image/icon/jiangguo@3x.png" mode="aspectFit" />
@@ -162,15 +160,6 @@ function onRefresh() {
   });
 }
 
-function goBack() {
-  const pages = getCurrentPages();
-  if (pages.length > 1) {
-    uni.navigateBack();
-  } else {
-    uni.switchTab({ url: '/pages/pet/index' });
-  }
-}
-
 function categoryIcon(category) {
   const map = {
     food: '/static/image/icon/jiyinshi@3x.png',
@@ -249,22 +238,11 @@ async function buy(item) {
   flex-direction: column;
   overflow: hidden;
 }
-.status-bar {
-  height: var(--status-bar-height);
-  /* #ifdef MP-WEIXIN */
-  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
-  height: calc(var(--status-bar-height) + 88rpx);
-  /* #endif */
-}
 .page-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 24rpx 32rpx;
-}
-.back-icon {
-  width: 48rpx;
-  height: 48rpx;
 }
 .currency-bar {
   display: flex;

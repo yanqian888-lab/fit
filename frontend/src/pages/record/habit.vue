@@ -1,14 +1,6 @@
 <template>
+  <AppPage :showHeader="true" title="习惯打卡">
   <view class="habit-page">
-    <view class="header-bg"></view>
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <text class="page-title">习惯打卡</text>
-      <view class="header-right"></view>
-    </view>
     <view class="habit-content">
       <!-- 日期切换 -->
       <view class="date-module">
@@ -151,14 +143,15 @@
       </view>
     </view>
   </view>
+  </AppPage>
 </template>
 
 <script setup>
+import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { onShow, onLoad } from '@dcloudio/uni-app';
 import { recordApi } from '../../api';
 import { getToday } from '../../utils/date';
-import { goBack as navigateBack } from '../../utils/navigate';
 
 const tabs = [
   { label: '喝水', value: 'water' },
@@ -191,7 +184,6 @@ const defecationOptions = [
   { label: '没有', value: 0, emoji: '❌' }
 ];
 
-const statusBarHeight = ref(44);
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 const today = getToday();
 const selectedDate = ref(today);
@@ -258,10 +250,20 @@ function getCalendarDays(date) {
     const cur = new Date(year, month, i);
     days.push(makeCalendarDay(cur, true));
   }
-  const remaining = 42 - days.length;
+  // 下月补位：只补齐当前周；末行若没有当月日期则整行不展示
+  const remaining = (7 - (days.length % 7)) % 7;
   for (let i = 1; i <= remaining; i++) {
     const cur = new Date(year, month + 1, i);
     days.push(makeCalendarDay(cur, false));
+  }
+  // 末行校验：最后一周里「当月日期数 ≤ 2」（即 ≥5/7 都是下月日期），整周删除。
+  // 避免月底 1-2 天 + 下月 5-6 天凑一周时，flex-wrap 拆开后最后出现仅 2-3 个零星下月日期的空白行。
+  const weeks = Math.floor(days.length / 7);
+  if (weeks >= 2) {
+    const lastIdx = (weeks - 1) * 7;
+    const lastWeek = days.slice(lastIdx, lastIdx + 7);
+    const currentCount = lastWeek.filter(d => d.isCurrentMonth).length;
+    if (currentCount <= 2) days.splice(lastIdx, 7);
   }
   return days;
 }
@@ -296,10 +298,6 @@ function nextMonth() {
   currentMonth.value = d;
 }
 
-function goBack() {
-  navigateBack('/pages/record/index');
-}
-
 function switchType(type) {
   currentType.value = type;
 }
@@ -311,14 +309,6 @@ onLoad((options) => {
 });
 
 onMounted(async () => {
-  statusBarHeight.value = 44;
-  // #ifndef H5
-  const sysInfo = uni.getSystemInfoSync();
-  statusBarHeight.value = sysInfo.statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-  // #endif
   await loadHabits();
 });
 
@@ -444,62 +434,6 @@ function goMood() {
   position: relative;
   background: #F7FbF4;
 }
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 320rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 32rpx 24rpx;
-}
-
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 52rpx;
-  color: #27282D;
-  font-weight: 400;
-  line-height: 1;
-}
-
-.page-title {
-  flex: 1;
-  text-align: center;
-  font-size: 36rpx;
-  font-weight: 600;
-  color: #27282D;
-}
-
-.header-right {
-  width: 60rpx;
-}
-
 .habit-content {
   flex: 1;
   padding: $spacing-md;
@@ -600,10 +534,13 @@ function goMood() {
 .calendar-days {
   display: flex;
   flex-wrap: wrap;
+  /* 左对齐：只剩 2-3 个日期时紧贴左侧，不出现两端空一大段的视觉效果 */
+  justify-content: flex-start;
 }
 
 .calendar-day {
-  width: 14.28%;
+  width: 14.2857%;
+  flex: 0 0 14.2857%;
   display: flex;
   align-items: center;
   justify-content: center;

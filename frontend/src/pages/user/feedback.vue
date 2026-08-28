@@ -1,14 +1,5 @@
 <template>
   <AppPage>
-    <view class="header-bg"></view>
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <text class="page-title">意见反馈</text>
-      <view class="header-right"></view>
-    </view>
     <view class="feedback-page">
       <view class="tab-bar">
         <view
@@ -90,7 +81,6 @@ import { feedbackApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';
 import AppButton from '../../components/AppButton.vue';
 import AppEmpty from '../../components/AppEmpty.vue';
-import { goBack } from '../../utils/navigate';
 import { uploadFile } from '../../utils/request';
 import { getServerUrl } from '../../utils/environment.js';
 
@@ -132,13 +122,6 @@ const form = ref({ type: 'feature', content: '', contact: '', score: 5, images: 
 const serverUrl = getServerUrl();
 const history = ref([]);
 const submitting = ref(false);
-const statusBarHeight = ref(44);
-try {
-  statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-} catch (e) {}
 
 onMounted(() => {
   const pages = getCurrentPages();
@@ -285,64 +268,6 @@ async function submit() {
   height: 4rpx;
   background: #8DBB77;
   border-radius: 2rpx;
-}
-
-/* 防止 AppPage flex 布局下标题栏被长内容压缩 */
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  flex-shrink: 0;
-}
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 360rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.page-header {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 32rpx 24rpx;
-}
-
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 48rpx;
-  color: #27282D;
-  font-weight: 700;
-  line-height: 1;
-  margin-left: -4rpx;
-}
-
-.page-title {
-  flex: 1;
-  text-align: center;
-  font-size: 36rpx;
-  font-weight: 700;
-  color: #27282D;
-  line-height: 40rpx;
 }
 
 .form-card,

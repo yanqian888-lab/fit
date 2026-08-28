@@ -1,14 +1,5 @@
 <template>
-  <AppPage fixed>
-    <view class="page-bg"></view>
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <text class="page-title">注销协议</text>
-      <view class="header-right"></view>
-    </view>
+  <AppPage fixed :showHeader="true" title="注销协议">
     <scroll-view class="content-scroll" scroll-y>
       <view class="content-wrapper">
         <view class="content-card">
@@ -43,21 +34,12 @@ import AppModal from '../../components/AppModal.vue';
 import { userApi, configApi } from '../../api';
 import { useUserStore } from '../../store';
 import popupManager from '../../utils/popupManager';
-import { goBack } from '../../utils/navigate';
 
 const userStore = useUserStore();
 const loading = ref(false);
 
 // 注销二次确认弹框状态
 const showConfirmModal = ref(false);
-
-const statusBarHeight = ref(44);
-try {
-  statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-} catch (e) {}
 
 // 默认文案（后台协议配置未配置注销协议时使用）
 const defaultAgreementText = `注销账号协议
@@ -138,7 +120,8 @@ async function doDeleteAccount() {
     userStore.logout();
     popupManager.clearCache();
     setTimeout(() => {
-      uni.reLaunch({ url: '/pages/login/index' });
+      // 注销后回到首页 tab，以游客身份浏览
+      uni.reLaunch({ url: '/pages/index/index' });
     }, 1000);
   } catch (err) {
     console.error('注销账号失败:', err);
@@ -150,60 +133,6 @@ async function doDeleteAccount() {
 </script>
 
 <style lang="scss" scoped>
-.page-bg {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 360rpx, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 32rpx 24rpx;
-  flex-shrink: 0;
-}
-
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 48rpx;
-  color: #27282D;
-  font-weight: 700;
-  line-height: 1;
-  margin-left: -4rpx;
-}
-
-.page-title {
-  flex: 1;
-  text-align: center;
-  font-size: 36rpx;
-  font-weight: 700;
-  color: #27282D;
-  line-height: 40rpx;
-}
-
 .content-scroll {
   position: relative;
   z-index: 1;

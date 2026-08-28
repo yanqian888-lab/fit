@@ -1,24 +1,15 @@
 <template>
+  <AppPage :showHeader="true" title="我的">
   <view class="user-page">
-    <!-- 顶部渐变色背景 -->
-    <view class="header-bg"></view>
-
-    <view class="status-bar"></view>
-
-    <!-- 返回按钮 + 用户信息（同一行，垂直居中） -->
-    <view class="header-row">
-      <view class="back-btn" @click="goBack">
-        <image class="back-icon" src="/static/image/icon/fanhui.png" mode="aspectFit" />
+    <!-- 用户信息（头像 + 昵称 + 编辑） -->
+    <view class="user-header">
+      <view class="avatar" @click="!isLoggedIn && goToLogin()">
+        <image v-if="user.avatar_url && !avatarError" :src="avatarFullUrl" class="avatar-img" mode="aspectFill" @error="avatarError = true" />
+        <text v-else>{{ isLoggedIn ? (user.nickname?.[0] || 'U') : '登' }}</text>
       </view>
-      <view class="user-header">
-        <view class="avatar">
-          <image v-if="user.avatar_url && !avatarError" :src="avatarFullUrl" class="avatar-img" mode="aspectFill" @error="avatarError = true" />
-          <text v-else>{{ user.nickname?.[0] || 'U' }}</text>
-        </view>
-        <view class="user-info">
-          <text class="nickname">{{ user.nickname || '用户昵称' }}</text>
-          <image class="edit-icon" src="/static/image/icon/xiugai.png" mode="aspectFit" @click="goTo('/pages/user/profile')" />
-        </view>
+      <view class="user-info">
+        <text :class="['nickname', { 'nickname-login': !isLoggedIn }]" @click="!isLoggedIn && goToLogin()">{{ isLoggedIn ? (user.nickname || '用户昵称') : '请登录' }}</text>
+        <image v-if="isLoggedIn" class="edit-icon" src="/static/image/icon/xiugai.png" mode="aspectFit" @click="goTo('/pages/user/profile')" />
       </view>
     </view>
 
@@ -51,6 +42,7 @@
     />
 
   </view>
+  </AppPage>
 </template>
 
 <script setup>
@@ -62,6 +54,7 @@ import { useUserStore } from '../../store';
 import { useNoticeStore } from '../../store/notice';
 import popupManager from '../../utils/popupManager';
 import AppModal from '../../components/AppModal.vue';
+import AppPage from '../../components/AppPage.vue';
 const userStore = useUserStore();
 const noticeStore = useNoticeStore();
 const user = ref({});
@@ -87,17 +80,14 @@ const menuList = [
   { title: '隐私协议', iconImg: '/static/image/icon/menu_privacy.svg', url: '/pages/user/privacy' }
 ];
 
+/**
+ * 菜单跳转：未登录时拦截到登录页（隐私协议、用户协议除外，合规要求始终可访问）
+ * @param {string} url - 跳转目标路径
+ */
 function goTo(url) {
+  const noAuthUrls = ['/pages/user/agreement', '/pages/user/privacy'];
+  if (!noAuthUrls.includes(url) && !userStore.requireAuth()) return;
   uni.navigateTo({ url });
-}
-
-function goBack() {
-  const pages = getCurrentPages();
-  if (pages.length > 1) {
-    uni.navigateBack();
-  } else {
-    uni.switchTab({ url: '/pages/index/index' });
-  }
 }
 
 function goToLogin() {
@@ -109,7 +99,7 @@ function logout() {
 }
 
 /**
- * 确认执行退出登录
+ * 确认退出登录：清空登录态后回到首页 tab，以游客身份继续浏览
  */
 function confirmLogout() {
   showLogoutModal.value = false;
@@ -117,8 +107,8 @@ function confirmLogout() {
   popupManager.clearCache();
   isLoggedIn.value = false;
   user.value = {};
-  // 退出后清空页面栈并跳转到登录页，防止未登录状态下查看原用户数据
-  uni.reLaunch({ url: '/pages/login/index' });
+  // 退出后回到首页 tab，用户以游客身份浏览四个 tab 页
+  uni.reLaunch({ url: '/pages/index/index' });
 }
 
 async function fetchUser() {
@@ -135,8 +125,8 @@ async function fetchUser() {
       userStore.logout();
       popupManager.clearCache();
       isLoggedIn.value = false;
-      // 登录态失效时清空页面栈并回到登录页
-      uni.reLaunch({ url: '/pages/login/index' });
+      // token 失效：回到首页 tab，以游客身份浏览
+      uni.reLaunch({ url: '/pages/index/index' });
     }
   }
 }
@@ -145,65 +135,26 @@ onMounted(fetchUser);
 
 onShow(() => {
   fetchUser();
-  noticeStore.fetchUnreadCount();
+  if (userStore.isLoggedIn) {
+    noticeStore.fetchUnreadCount();
+  }
 });
 </script>
 
 <style lang="scss" scoped>
 .user-page {
-  background: #F7FbF4;
-  min-height: 100vh;
-  padding: 0 32rpx calc(180rpx + env(safe-area-inset-bottom));
+  padding: 0 32rpx;
   box-sizing: border-box;
   position: relative;
 }
 
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 420rpx;
-  background: linear-gradient(180deg, rgba(248, 239, 203, 0.5) 0%, #FFFFFF 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  height: var(--status-bar-height);
-  /* #ifdef MP-WEIXIN */
-  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
-  height: calc(var(--status-bar-height) + 88rpx);
-  /* #endif */
-  position: relative;
-  z-index: 1;
-}
-
-.header-row {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  padding: 40rpx 32rpx 0;
-  margin-bottom: 48rpx;
-}
-
-.back-btn {
-  padding: 10rpx;
-  margin-right: 32rpx;
-  flex-shrink: 0;
-}
-
-.back-icon {
-  width: 48rpx;
-  height: 48rpx;
-  display: block;
-}
-
 .user-header {
-  position: relative;
-  z-index: 1;
   display: flex;
   align-items: center;
+  position: relative;
+  z-index: 1;
+  /* 头像昵称左移：取消原 header-row 内层 32rpx 左 padding；顶部与原生导航栏底拉开 16rpx；底部保留 48rpx 与菜单卡片间距 */
+  padding: 16rpx 0 48rpx;
 }
 
 .avatar {
@@ -239,6 +190,10 @@ onShow(() => {
   color: #000000;
   line-height: 1.1;
   margin-right: 12rpx;
+}
+
+.nickname-login {
+  color: #8DBB77;
 }
 
 .edit-icon {

@@ -1,17 +1,6 @@
 <template>
+  <AppPage :showHeader="true" title="货币明细">
   <view class="currency-page">
-    <view class="header-bg"></view>
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <view class="header-center">
-        <text class="header-title">货币明细</text>
-      </view>
-      <view class="header-right"></view>
-    </view>
-
     <!-- 余额卡片 -->
     <view class="balance-row">
       <view class="balance-card">
@@ -45,13 +34,14 @@
       </view>
     </scroll-view>
   </view>
+  </AppPage>
 </template>
 
 <script setup>
+import AppPage from '../../components/AppPage.vue';
 import { ref, onMounted } from 'vue';
 import { petApi } from '../../api';
 
-const statusBarHeight = ref(44);
 const currency = ref({});
 const list = ref([]);
 const page = ref(1);
@@ -85,14 +75,6 @@ const SOURCE_LABELS = {
 };
 
 onMounted(async () => {
-  // #ifndef H5
-  try {
-    statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-  } catch (e) {}
-  // #endif
   loadCurrency();
   loadTransactions(1);
 });
@@ -141,10 +123,6 @@ async function loadTransactions(p) {
 function loadMore() {
   loadTransactions(page.value + 1);
 }
-
-function goBack() {
-  uni.navigateBack({ delta: 1 });
-}
 </script>
 
 <style lang="scss" scoped>
@@ -157,69 +135,6 @@ function goBack() {
   position: relative;
   background: #F7FbF4;
 }
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 360rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 32rpx;
-}
-
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 48rpx;
-  color: #666666;
-  font-weight: 700;
-  line-height: 1;
-  margin-left: -8rpx;
-}
-
-.header-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.header-title {
-  font-size: 34rpx;
-  font-weight: 700;
-  color: #27282D;
-  line-height: 42rpx;
-}
-
-.header-right {
-  width: 60rpx;
-}
-
 .balance-row {
   position: relative;
   z-index: 1;

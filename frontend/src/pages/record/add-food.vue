@@ -1,23 +1,6 @@
 <template>
+  <AppPage :showHeader="true" title="添加饮食">
   <view class="add-food-page">
-    <!-- 顶部渐变背景 -->
-    <view class="header-bg"></view>
-
-    <!-- 状态栏占位 -->
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-
-    <!-- 页面标题栏 -->
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <view class="header-center">
-        <text class="header-date">{{ headerDate }}</text>
-        <text class="header-title">{{ mealLabels[mealIndex] }}</text>
-      </view>
-      <view class="header-right"></view>
-    </view>
-
     <!-- 搜索栏 -->
     <view class="search-bar">
       <input
@@ -143,9 +126,11 @@
       </view>
     </template>
   </view>
+  </AppPage>
 </template>
 
 <script setup>
+import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi, systemApi } from '../../api';
@@ -154,12 +139,10 @@ import { MEAL_OPTIONS, isDescriptiveUnit } from '../../utils/constants';
 import AppButton from '../../components/AppButton.vue';
 import AppEmpty from '../../components/AppEmpty.vue';
 import { getToday } from '../../utils/date';
-import { goBack as navigateBack } from '../../utils/navigate';
 
 const pageQuery = ref({});
 const isEdit = ref(false);
 const loading = ref(false);
-const statusBarHeight = ref(44);
 const keyword = ref('');
 const foods = ref([]);
 const selectedFoods = ref({
@@ -363,17 +346,6 @@ const headerDate = computed(() => {
 });
 
 onMounted(() => {
-  // #ifdef H5
-  statusBarHeight.value = 44;
-  // #endif
-  // #ifndef H5
-  const sysInfo = uni.getSystemInfoSync();
-  statusBarHeight.value = sysInfo.statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-  // #endif
-
   const pages = getCurrentPages();
   const cur = pages[pages.length - 1];
   pageQuery.value = cur.$page?.options || {};
@@ -407,10 +379,6 @@ onShow(() => {
 
 function onMealChange(e) {
   form.value.meal_time = MEAL_OPTIONS[parseInt(e.detail.value)].value;
-}
-
-function goBack() {
-  navigateBack('/pages/record/index');
 }
 
 function goCreateFood() {
@@ -606,75 +574,6 @@ async function submit() {
   position: relative;
   background: #F7FbF4;
 }
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 360rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 32rpx;
-}
-
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 48rpx;
-  color: #666666;
-  font-weight: 700;
-  line-height: 1;
-  margin-left: -8rpx;
-}
-
-.header-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.header-date {
-  font-size: 26rpx;
-  color: #999999;
-  line-height: 34rpx;
-}
-
-.header-title {
-  font-size: 34rpx;
-  font-weight: 700;
-  color: #27282D;
-  line-height: 42rpx;
-}
-
-.header-right {
-  width: 60rpx;
-}
-
 /* 搜索栏 */
 .search-bar {
   position: relative;

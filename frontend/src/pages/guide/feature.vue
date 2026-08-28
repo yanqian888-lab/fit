@@ -1,5 +1,6 @@
 <template>
-  <AppPage>
+  <!-- 独立引导页：自绘 guide-title，不要 AppPage showHeader，但要让出状态栏+胶囊 → padStatusBar=true（标杆双行兜底） -->
+  <AppPage :padStatusBar="true">
     <view class="guide-page">
       <text class="guide-title">功能引导</text>
       <view class="guide-list">
@@ -41,7 +42,7 @@ async function finish() {
 
 <style lang="scss" scoped>
 .guide-page {
-  padding-top: 100rpx;
+  /* 自绘导航删除后，顶部已由 AppPage 贴原生导航栏底部，不再需要额外 top padding */
 }
 
 .guide-title {

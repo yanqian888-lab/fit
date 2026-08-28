@@ -15,6 +15,8 @@ const VALID_FEATURES = ['ai_chat', 'diary'];
 /**
  * 生成 UUID（简易版）
  */
+import { getSystemInfoSafe } from './systemInfo';
+
 function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -29,7 +31,7 @@ function generateUUID() {
 export function getDeviceId() {
   let deviceId = '';
   try {
-    const info = uni.getSystemInfoSync();
+    const info = getSystemInfoSafe();
     deviceId = info.deviceId || info.device_id || '';
   } catch (e) {
     console.error('[trial] 获取设备信息失败', e);
@@ -50,7 +52,7 @@ export function getDeviceId() {
  */
 export function getAppVersion() {
   try {
-    const info = uni.getAppBaseInfo ? uni.getAppBaseInfo() : uni.getSystemInfoSync();
+    const info = getSystemInfoSafe();
     return info.appVersion || info.appVersionCode || '1.0.0';
   } catch (e) {
     return '1.0.0';

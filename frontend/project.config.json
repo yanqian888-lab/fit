@@ -1,0 +1,31 @@
+{
+  "miniprogramRoot": "dist/build/mp-weixin/",
+  "setting": {
+    "es6": true,
+    "postcss": true,
+    "minified": true,
+    "uglifyFileName": true,
+    "enhance": true,
+    "minifyWXML": true,
+    "minifyWXSS": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    },
+    "useCompilerPlugins": false,
+    "urlCheck": false
+  },
+  "lazyCodeLoading": "requiredComponents",
+  "compileType": "miniprogram",
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "appid": "wx75c8626270f27ea1",
+  "editorSetting": {},
+  "description": "掉秤搭搭 小程序前端工程（uni-app Vue3）—— 打开本目录时自动指向 dist/build/mp-weixin 构建产物"
+}

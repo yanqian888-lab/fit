@@ -1,154 +1,4 @@
 /**
- * 从食物数据库获取食物营养数据
- * 支持多种匹配策略：精确匹配 → 正向模糊 → 反向模糊 → 关键词提取
- */
-function getFoodNutrition(foodName) {
-  try {
-    const name = foodName.trim();
-    if (!name) return null;
-    
-    // 策略1：精确匹配
-    let food = db.prepare(`
-      SELECT calories_per_100g as calorie_per_100g, 
-             protein_per_100g, carb_per_100g, fat_per_100g,
-             category, sub_category 
-      FROM food_db 
-      WHERE food_name = ?
-    `).get(name);
-    
-    if (food) {
-      console.log(`[食物匹配] 精确匹配: ${name}`);
-      return food;
-    }
-    
-    // 策略2：正向模糊匹配（食物名包含在数据库中）
-    food = db.prepare(`
-      SELECT calories_per_100g as calorie_per_100g, 
-             protein_per_100g, carb_per_100g, fat_per_100g,
-             category, sub_category 
-      FROM food_db 
-      WHERE food_name LIKE ?
-      LIMIT 1
-    `).get(`%${name}%`);
-    
-    if (food) {
-      console.log(`[食物匹配] 正向模糊: ${name}`);
-      return food;
-    }
-    
-    // 策略3：反向模糊匹配（数据库名包含在食物名中）
-    // 提取食物名中的核心关键词（去掉量词、形容词等）
-    const keywords = extractFoodKeywords(name);
-    for (const kw of keywords) {
-      if (kw.length < 2) continue;
-      food = db.prepare(`
-        SELECT calories_per_100g as calorie_per_100g, 
-               protein_per_100g, carb_per_100g, fat_per_100g 
-        FROM food_db 
-        WHERE food_name LIKE ?
-        LIMIT 1
-      `).get(`%${kw}%`);
-      
-      if (food) {
-        console.log(`[食物匹配] 关键词匹配: ${name} → 关键词"${kw}"`);
-        return food;
-      }
-    }
-    
-    // 策略4：尝试匹配常见别名
-    const aliasMap = {
-      '米饭': ['熟制谷薯', '大米', '饭'],
-      '面条': ['熟制谷薯', '小麦', '面'],
-      '馒头': ['熟制谷薯', '小麦'],
-      '鸡蛋': ['鸡蛋', '蛋白', '蛋黄'],
-      '牛奶': ['奶', '乳'],
-      '酸奶': ['酸奶', '酸乳'],
-      '豆浆': ['豆浆', '豆奶'],
-      '卤牛肉': ['酱牛肉', '卤牛肉', '牛肉'],
-      '酱牛肉': ['酱牛肉', '卤牛肉'],
-      '牛肉': ['水煮瘦牛肉', '酱牛肉', '牛肉', '牛'],
-      '猪肉': ['猪肉', '猪'],
-      '鸡肉': ['鸡肉', '鸡'],
-      '鱼肉': ['鱼'],
-      '虾': ['虾'],
-      '豆腐': ['豆腐', '豆制品'],
-      '苹果': ['苹果'],
-      '香蕉': ['香蕉'],
-      '橙子': ['橙', '柑'],
-      '西瓜': ['西瓜'],
-      '葡萄': ['葡萄'],
-      '西红柿': ['西红柿', '番茄'],
-      '黄瓜': ['黄瓜'],
-      '白菜': ['白菜'],
-      '菠菜': ['菠菜'],
-      '胡萝卜': ['胡萝卜'],
-      '土豆': ['土豆', '马铃薯'],
-      '红薯': ['红薯', '地瓜', '甘薯'],
-      '玉米': ['玉米'],
-      '花生': ['花生'],
-      '核桃': ['核桃'],
-      '瓜子': ['瓜子', '葵花籽'],
-      '巧克力': ['巧克力'],
-      '饼干': ['饼干'],
-      '蛋糕': ['蛋糕'],
-      '面包': ['面包'],
-      '汉堡': ['汉堡'],
-      '披萨': ['披萨', '比萨'],
-      '可乐': ['可乐', '碳酸饮料'],
-      '奶茶': ['奶茶'],
-      '咖啡': ['咖啡'],
-      '茶': ['茶'],
-      '啤酒': ['啤酒'],
-      '白酒': ['白酒', '酒'],
-      '红酒': ['红酒', '葡萄酒']
-    };
-    
-    for (const [alias, patterns] of Object.entries(aliasMap)) {
-      if (name.includes(alias)) {
-        for (const pattern of patterns) {
-          food = db.prepare(`
-            SELECT calories_per_100g as calorie_per_100g, 
-                   protein_per_100g, carb_per_100g, fat_per_100g 
-            FROM food_db 
-            WHERE food_name LIKE ?
-            LIMIT 1
-          `).get(`%${pattern}%`);
-          
-          if (food) {
-            console.log(`[食物匹配] 别名匹配: ${name} → 别名"${alias}" → 模式"${pattern}"`);
-            return food;
-          }
-        }
-      }
-    }
-    
-    console.log(`[食物匹配] 未找到: ${name}`);
-    return null;
-  } catch (e) {
-    console.error('查询食物数据库失败:', e.message);
-    return null;
-  }
-}
-
-/**
- * 从食物名称中提取核心关键词
- * 去掉常见量词、形容词、烹饪方式等
- */
-function extractFoodKeywords(foodName) {
-  // 去掉常见前缀/后缀
-  let cleaned = foodName
-    .replace(/^(一份|一个|一只|一片|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一盘|一碟|一点|一些|少量|适量|多|少|大|小|中|新|旧|生|熟|干|湿)/g, '')
-    .replace(/(一份|一个|一只|一片|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一盘|一碟)$/g, '')
-    .replace(/(炒|煮|蒸|炸|烤|煎|炖|焖|烧|拌|腌|卤|熏|爆|熘|烩|涮|焗|煨|熬|煲|凉拌|红烧|清蒸|油炸|干煸|水煮|蒜蓉|麻辣|香辣|酸甜|糖醋|椒盐|孜然|咖喱|番茄|芝士|奶油|黄油|酱油|醋|盐|糖|油|料酒|姜|葱|蒜|辣椒|花椒|八角|桂皮|香叶|胡椒)/g, '');
-  
-  // 按常见分隔符拆分
-  const parts = cleaned.split(/[,，、\s]+/).filter(p => p.length >= 2);
-  
-  // 返回按长度降序排列的关键词（优先匹配更长的）
-  return parts.sort((a, b) => b.length - a.length);
-}
-
-/**
  * 清理食物名称中的常见前缀/后缀填充词，并判断是否为有效食物名
  */
 const FOOD_NAME_PREFIX_FILLERS = /^(?:早上|上午|中午|下午|晚上|今天|今早|今晚|昨天|明天|刚才|刚刚|之前|后来|现在|早餐|午餐|晚餐|加餐|吃|吃了|喝了|还吃|又吃|刚吃|又吃了|还吃了|刚吃了|吃了个|吃了一个|那个|这个|刚才的|的|是|为|有|还有|我又|我又要|我又没|就|只是|不过|但是|而且|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中)+/;
@@ -359,44 +209,6 @@ function normalizeHalfQuantities(content, data) {
 }
 
 /**
- * 通用计数单位→克换算表
- */
-const UNIT_WEIGHTS = {
-  'kg': 1000,
-  '公斤': 1000,
-  '个': 50,      // 默认：1个鸡蛋/水果约50g（具体食物会覆盖）
-  '只': 50,
-  '片': 30,      // 1片面包约30g
-  '块': 30,      // 1块肉约30g
-  '杯': 250,     // 1杯牛奶/水约250g
-  '碗': 150,     // 1碗米饭约150g
-  '勺': 15,      // 1勺约15g
-  '盒': 200,     // 1盒牛奶/酸奶约200g
-  '瓶': 500,     // 1瓶水/饮料约500g
-  '根': 100,     // 1根黄瓜/香蕉约100g
-  '条': 50,      // 1条鱼约50g
-  '袋': 50,      // 1袋零食约50g
-  '粒': 5,       // 1粒药/糖果约5g
-  '颗': 5,
-  '口': 20       // 1口约20g
-};
-
-/**
- * 常见食物单份典型重量（克）
- * 用于覆盖通用换算表中过于笼统的默认值
- */
-const FOOD_TYPICAL_WEIGHTS = {
-  '彩椒': { '个': 120 },
-  '黄椒': { '个': 120 },
-  '红椒': { '个': 120 },
-  '青椒': { '个': 120 },
-  '尖椒': { '个': 60 },
-  '辣椒': { '个': 15 },
-  '小米辣': { '个': 5 },
-  '朝天椒': { '个': 5 }
-};
-
-/**
  * 判断原消息中是否明确给出了某食物的克数
  */
 function hasExplicitGramWeight(content, foodName) {
@@ -424,22 +236,6 @@ function inferCountFromContent(content, foodName) {
     return { quantity: parseFloat(match[1]), unit: match[2] };
   }
   return null;
-}
-
-/**
- * 获取某食物在单位下的典型重量
- */
-function getTypicalWeight(foodName, unit) {
-  if (!unit) return null;
-  // 优先按具体食物名匹配（取长匹配）
-  const names = Object.keys(FOOD_TYPICAL_WEIGHTS).sort((a, b) => b.length - a.length);
-  for (const name of names) {
-    if (foodName.includes(name)) {
-      const w = FOOD_TYPICAL_WEIGHTS[name][unit];
-      if (w) return w;
-    }
-  }
-  return UNIT_WEIGHTS[unit] || null;
 }
 
 /**
@@ -575,7 +371,7 @@ function recoverMissedExercises(content, rawItems) {
  */
 const { db, withTransaction } = require('../../db');
 const { callWithPrompt } = require('../aiClient');
-const { computeFoodNutrition, computeRecipeTotals } = require('../nutritionService');
+const { computeFoodNutrition, computeRecipeTotals, getFoodNutrition, getTypicalWeight, extractFoodKeywords } = require('../nutritionService');
 const promptService = require('../promptService');
 const tagMatcher = require('../tagMatcher');
 const rewardService = require('../rewardService');
@@ -1951,7 +1747,9 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
           name: e.name,
           duration: duration,
           intensity: intensity,
-          calorie: calorie
+          calorie: calorie,
+          // 保留用户报告的距离（公里），不随白名单丢弃
+          ...(e.distance ? { distance: parseFloat(e.distance) || 0 } : {})
         };
       });
 

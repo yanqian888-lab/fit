@@ -1,20 +1,6 @@
 <template>
+  <AppPage :showHeader="true" title="每日分析">
   <view class="diary-page">
-    <!-- 顶部渐变背景 -->
-    <view class="header-bg"></view>
-
-    <!-- 状态栏占位 -->
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-
-    <!-- 页面标题栏 -->
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <text class="page-title">每日日记</text>
-      <view class="header-right"></view>
-    </view>
-
     <scroll-view class="diary-scroll" scroll-y>
       <!-- 日期模块 -->
       <view class="date-module">
@@ -128,16 +114,17 @@
       @confirm="confirmGenerateToday"
     />
   </view>
+  </AppPage>
 </template>
 
 <script setup>
+import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { aiApi, museumApi, recordApi } from '../../api';
 import { checkPermission, reportCount } from '../../utils/trial.js';
 import AuthPopup from '../../components/AuthPopup.vue';
 import AppModal from '../../components/AppModal.vue';
 
-import { goBack as navigateBack } from '../../utils/navigate';
 import { showGlobalLoading, hideGlobalLoading } from '../../utils/loading';
 
 // 生成今日分析确认弹框
@@ -178,8 +165,6 @@ function getFastingParams(date) {
   }
   return params;
 }
-
-const statusBarHeight = ref(44);
 
 const now = new Date();
 const currentYear = ref(now.getFullYear());
@@ -235,10 +220,20 @@ const calendarDays = computed(() => {
     });
   }
 
-  // 补齐下月开头日期，保持固定 6 行
-  const remaining = 42 - days.length;
+  // 下月补位：只补齐当前周；末行若没有当月日期则整行不展示
+  const remaining = (7 - (days.length % 7)) % 7;
   for (let d = 1; d <= remaining; d++) {
     days.push({ date: null, day: d, isCurrentMonth: false, isFuture: false });
+  }
+
+  // 末行校验：最后一周里「当月日期数 ≤ 2」（即 ≥5/7 都是下月日期），整周删除。
+  // 避免月底 1-2 天 + 下月 5-6 天凑一周时，flex-wrap 拆开后最后出现仅 2-3 个零星下月日期的空白行。
+  const weeks = Math.floor(days.length / 7);
+  if (weeks >= 2) {
+    const lastIdx = (weeks - 1) * 7;
+    const lastWeek = days.slice(lastIdx, lastIdx + 7);
+    const currentCount = lastWeek.filter(d => d.isCurrentMonth).length;
+    if (currentCount <= 2) days.splice(lastIdx, 7);
   }
 
   return days;
@@ -337,10 +332,6 @@ async function loadDiaries() {
   }
 }
 
-function goBack() {
-  navigateBack('/pages/museum/index');
-}
-
 function goToGenerateToday() {
   // 已生成：直接查看（服务端幂等返回当天日记）；首次生成：二次确认后进入生成页
   if (diaries.value[todayStr.value]) {
@@ -422,17 +413,6 @@ async function generateDailyDiary() {
 }
 
 onMounted(() => {
-  // #ifdef H5
-  statusBarHeight.value = 44;
-  // #endif
-  // #ifndef H5
-  const sysInfo = uni.getSystemInfoSync();
-  statusBarHeight.value = sysInfo.statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-  // #endif
-
   loadDiaries();
   selectedDate.value = todayStr.value;
 });
@@ -447,64 +427,6 @@ onMounted(() => {
   position: relative;
   background: #F7FbF4;
 }
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 360rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 32rpx 24rpx;
-}
-
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 48rpx;
-  color: #666666;
-  font-weight: 700;
-  line-height: 1;
-  margin-left: -8rpx;
-}
-
-.page-title {
-  flex: 1;
-  text-align: center;
-  font-size: 36rpx;
-  font-weight: 700;
-  color: #27282D;
-  line-height: 40rpx;
-}
-
-.header-right {
-  width: 60rpx;
-}
-
 .diary-scroll {
   position: relative;
   z-index: 1;
@@ -638,12 +560,15 @@ onMounted(() => {
 .calendar-days {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  /* 强制左对齐：只剩 2-3 个日期时也紧贴左侧，不会被 space-between 分到两端中间空一大段 */
+  justify-content: flex-start;
   padding: 0 8rpx;
 }
 
 .calendar-day {
-  width: 60rpx;
+  /* 严格 1/7 百分比宽度：每行恰好 7 个日期，不随容器宽度浮动折行到错乱 */
+  width: 14.2857%;
+  flex: 0 0 14.2857%;
   height: 60rpx;
   display: flex;
   flex-direction: column;

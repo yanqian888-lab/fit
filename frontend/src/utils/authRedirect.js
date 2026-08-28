@@ -1,4 +1,7 @@
 import { userApi } from '../api';
+import { safeSwitchTab } from './safeSwitchTab';
+
+/* ………… 中间 isProfileComplete / saveSetupDataIfExists / isStaleReturning 函数保持不变 ………… */
 
 /**
  * 判断用户基础资料是否已完善
@@ -94,13 +97,14 @@ export async function handlePostAuthRedirect(userStore) {
 
   // 新用户/资料未完善：完善信息页（无跳过；历史跳过标记仅对沉睡用户生效）
   if (!isProfileComplete(user) && !uni.getStorageSync('profile_setup_skipped')) {
-    uni.redirectTo({ url: '/pages/profile/setup' });
+    // 加空 fail 兜底：防止并行跳转被打断时，微信 3.17.1+ 灰度基础库 fail 回调 undefined 触发 SDK 内部默认 errMsg 访问崩溃
+    uni.redirectTo({ url: '/pages/profile/setup', fail: () => {} });
     return;
   }
 
   // 沉睡老用户：再走新用户流程（预填历史信息、可跳过）
   if (isStaleReturning(user) && !uni.getStorageSync('profile_setup_skipped')) {
-    uni.redirectTo({ url: '/pages/profile/setup?from=stale' });
+    uni.redirectTo({ url: '/pages/profile/setup?from=stale', fail: () => {} });
     return;
   }
 
@@ -108,9 +112,10 @@ export async function handlePostAuthRedirect(userStore) {
   // 优先以服务端 settings 为准，避免本地缓存被清除后重复进入引导
   const settings = user?.settings || uni.getStorageSync('settings') || {};
   if (!settings.guide_completed) {
-    uni.redirectTo({ url: '/pages/partner/select-mode' });
+    uni.redirectTo({ url: '/pages/partner/select-mode', fail: () => {} });
     return;
   }
 
-  uni.switchTab({ url: '/pages/index/index' });
+  // 资料完整且已完成引导：safeSwitchTab 跳首页（命中基础库 bug 自动 blank 桥接，不卡死）
+  safeSwitchTab('/pages/index/index');
 }

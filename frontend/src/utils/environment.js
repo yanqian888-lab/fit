@@ -76,19 +76,37 @@ export function getEnvLabel(env) {
 
 /**
  * 解析静态资源URL为完整可访问地址
- * 后端存储的是相对路径（如 /static/uploads/xxx.jpg），
- * 需要在前端拼上后端服务地址才能正常加载
+ * 后端存储的可能是：
+ * - 相对路径：/static/uploads/xxx.jpg
+ * - 绝对URL（含localhost）：http://localhost:3000/static/uploads/xxx.jpg
+ * 需要将 localhost/127.0.0.1 替换为实际服务器地址
  * @param {string} url - 原始URL（可能是相对路径或完整URL）
  * @returns {string} 完整可访问的URL
  */
 export function resolveStaticUrl(url) {
   if (!url) return '';
-  // 已经是完整URL，直接返回
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  // 以 // 开头的协议相对URL
-  if (url.startsWith('//')) return url;
-  // 相对路径，拼接服务器地址
+  
+  // 获取当前服务器地址
   const serverUrl = getServerUrl().replace(/\/$/, '');
+  
+  // 以 // 开头的协议相对URL
+  if (url.startsWith('//')) {
+    return serverUrl.split('://')[0] + ':' + url;
+  }
+  
+  // 处理 localhost / 127.0.0.1 的绝对URL → 替换为实际服务器地址
+  const localhostPattern = /^(https?:\/\/)(localhost|127\.0\.0\.1)(:\d+)?/i;
+  if (localhostPattern.test(url)) {
+    const path = url.replace(localhostPattern, '');
+    return serverUrl + (path.startsWith('/') ? path : `/${path}`);
+  }
+  
+  // 已是其他完整URL（非localhost），直接返回
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  
+  // 相对路径，拼接服务器地址
   const path = url.startsWith('/') ? url : `/${url}`;
-  return `${serverUrl}${path}`;
+  return serverUrl + path;
 }

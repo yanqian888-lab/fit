@@ -25,13 +25,15 @@ let hideCallback = null;
 let nativePopupEl = null;
 let nativeTouchY = 0;
 
+import { getSystemInfoSafe } from './systemInfo';
+
 function getNow() {
   return new Date().toISOString();
 }
 
 function getOsType() {
   try {
-    const info = uni.getSystemInfoSync();
+    const info = getSystemInfoSafe();
     const platform = (info.platform || info.uniPlatform || '').toLowerCase();
     if (platform === 'ios') return 'ios';
     if (platform === 'android') return 'android';
@@ -349,6 +351,12 @@ function createNativePopup({ popup, page, trigger }) {
   };
 
   root.appendChild(panel);
+  // 安全兜底：仅当 document.body 真实挂载时才插入（极少数小程序端 document polyfill 存在但 body 为 null 时直接 return，避免抛 addListener of undefined 级联错误）
+  if (!document || !document.body) {
+    console.warn('[popup] document.body 不存在，跳过原生兜底弹窗渲染');
+    currentVisible = false;
+    return;
+  }
   document.body.appendChild(root);
   nativePopupEl = root;
 
@@ -370,19 +378,24 @@ function createNativePopup({ popup, page, trigger }) {
 }
 
 function emitShow(popup, page, trigger) {
-  currentVisible = true;
-  console.log('[popup] emitShow', popup.id, popup.name, page, trigger);
-  let handled = false;
-  if (showCallback) {
-    try {
-      showCallback({ popup, page, trigger });
-      handled = true;
-    } catch (e) {
-      console.error('[popup] showCallback 抛出异常，使用原生兜底', e);
+  try {
+    currentVisible = true;
+    console.log('[popup] emitShow', popup.id, popup.name, page, trigger);
+    let handled = false;
+    if (showCallback) {
+      try {
+        showCallback({ popup, page, trigger });
+        handled = true;
+      } catch (e) {
+        console.error('[popup] showCallback 抛出异常，使用原生兜底', e);
+      }
     }
-  }
-  if (!handled) {
-    createNativePopup({ popup, page, trigger });
+    if (!handled) {
+      createNativePopup({ popup, page, trigger });
+    }
+  } catch (e) {
+    console.error('[popup] emitShow 异常已捕获', e);
+    currentVisible = false;
   }
 }
 
@@ -408,44 +421,59 @@ function markShown(popup, page, trigger) {
 }
 
 function emitHide() {
-  currentVisible = false;
-  removeNativePopup();
-  if (hideCallback) {
-    hideCallback();
-  } else {
-    uni.$emit('popup:hide');
+  try {
+    currentVisible = false;
+    removeNativePopup();
+    if (hideCallback) {
+      hideCallback();
+    } else {
+      uni.$emit('popup:hide');
+    }
+  } catch (e) {
+    console.error('[popup] emitHide 异常已捕获', e);
+    currentVisible = false;
   }
 }
 
 async function checkShow({ route, trigger = 'immediate' } = {}) {
-  let page = route;
-  if (!page) {
-    const pages = getCurrentPages();
-    page = pages[pages.length - 1]?.route || '';
+  try {
+    let page = route;
+    if (!page) {
+      const pages = getCurrentPages();
+      page = pages[pages.length - 1]?.route || '';
+    }
+    page = parseRoute(page);
+
+    // 页面路由为空时（如 onLaunch 触发、页面尚未渲染），直接跳过
+    // 避免对空路由做无意义的弹窗检测和日志输出
+    if (!page) {
+      return;
+    }
+
+    // 清除同页面的旧定时器
+    clearPending();
+
+    console.log('[popup] checkShow', { page, trigger });
+    const popup = await findShowablePopup(page, trigger);
+    if (!popup) {
+      console.log('[popup] 当前无可用弹窗', { page, trigger });
+      return;
+    }
+    console.log('[popup] 命中弹窗', popup.id, popup.name, popup.style, { page, trigger });
+
+    if (trigger === 'duration') {
+      const timer = setTimeout(() => {
+        removePending(timer);
+        doShow(popup, page, trigger);
+      }, popup.trigger_delay_seconds * 1000);
+      pendingTimers.push(timer);
+      return;
+    }
+
+    doShow(popup, page, trigger);
+  } catch (e) {
+    console.error('[popup] checkShow 异常已捕获', e);
   }
-  page = parseRoute(page);
-
-  // 清除同页面的旧定时器
-  clearPending();
-
-  console.log('[popup] checkShow', { page, trigger });
-  const popup = await findShowablePopup(page, trigger);
-  if (!popup) {
-    console.log('[popup] 当前无可用弹窗', { page, trigger });
-    return;
-  }
-  console.log('[popup] 命中弹窗', popup.id, popup.name, popup.style, { page, trigger });
-
-  if (trigger === 'duration') {
-    const timer = setTimeout(() => {
-      removePending(timer);
-      doShow(popup, page, trigger);
-    }, popup.trigger_delay_seconds * 1000);
-    pendingTimers.push(timer);
-    return;
-  }
-
-  doShow(popup, page, trigger);
 }
 
 function removePending(t) {
@@ -454,25 +482,29 @@ function removePending(t) {
 }
 
 function doShow(popup, page, trigger) {
-  const key = `${popup.id}:${page}`;
-  console.log('[popup] doShow', popup.id, popup.name, key, shownSet.has(key), currentVisible);
-  if (shownSet.has(key)) return;
+  try {
+    const key = `${popup.id}:${page}`;
+    console.log('[popup] doShow', popup.id, popup.name, key, shownSet.has(key), currentVisible);
+    if (shownSet.has(key)) return;
 
-  // 记录关闭回调
-  closeCurrentFn = (way) => {
-    currentVisible = false;
-    queueEvent({
-      popup_id: popup.id,
-      page,
-      event_type: 'close',
-      trigger,
-      close_way: way || 'close_btn',
-      event_time: getNow()
-    });
-    closeCurrentFn = null;
-  };
+    // 记录关闭回调
+    closeCurrentFn = (way) => {
+      currentVisible = false;
+      queueEvent({
+        popup_id: popup.id,
+        page,
+        event_type: 'close',
+        trigger,
+        close_way: way || 'close_btn',
+        event_time: getNow()
+      });
+      closeCurrentFn = null;
+    };
 
-  emitShow(popup, page, trigger);
+    emitShow(popup, page, trigger);
+  } catch (e) {
+    console.error('[popup] doShow 异常已捕获', e);
+  }
 }
 
 function clearPending() {
@@ -517,6 +549,7 @@ function navigate(popup) {
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join('&');
     const url = qs ? `${path}?${qs}` : path;
+    // 空 fail 兜底：并行跳转打断时 SDK 3.17.1+ 灰度库 fail 回调 undefined，防止 SDK 默认 handler 访问 errMsg 崩溃
     uni.navigateTo({ url, fail: () => {} });
   } else if (popup.jump_type === 'h5') {
     const url = popup.jump_url || '';
@@ -540,24 +573,40 @@ function navigate(popup) {
       return;
     }
     // #endif
-    uni.navigateTo({ url: `/pages/webview/index?url=${encodeURIComponent(url)}` });
+    uni.navigateTo({ url: `/pages/webview/index?url=${encodeURIComponent(url)}`, fail: () => {} });
   }
 }
 
 async function doInit() {
   try {
-    const res = await popupApi.getConfigList({
+    // 【优化】添加超时保护，防止网络请求长时间挂起导致 UI 无响应
+    const fetchPromise = popupApi.getConfigList({
       app_version: getAppVersion(),
       os_type: getOsType(),
       device_id: getDeviceId()
     });
+    
+    // 设置 5 秒超时，避免后端不可达时一直等待
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('请求超时')), 5000);
+    });
+    
+    const res = await Promise.race([fetchPromise, timeoutPromise]);
     setConfig(res.data);
     console.log('[popup] 配置拉取成功', res.data.popups?.length || 0, '个弹窗');
-    // 配置到手后，立刻检查当前页面是否有可展示弹窗（解决 init 与页面 onShow 竞态）
+    // 延迟检查，避免页面跳转期间 getCurrentPages() 返回未完全渲染的页面导致渲染时序错误
+    await new Promise(resolve => setTimeout(resolve, 300));
     await checkShow({ trigger: 'immediate' });
     await checkShow({ trigger: 'duration' });
   } catch (e) {
-    console.error('[popup] 拉取配置失败', e);
+    console.warn('[popup] 拉取配置失败（将使用空配置）', e?.errMsg || e?.message || e);
+    // 出错时仍然尝试检查弹窗（使用本地缓存配置）
+    try {
+      await checkShow({ trigger: 'immediate' });
+      await checkShow({ trigger: 'duration' });
+    } catch (e2) {
+      console.error('[popup] checkShow 也失败', e2);
+    }
   }
 }
 

@@ -18,7 +18,7 @@
     </view>
 
     <!-- 今日数据 -->
-    <template v-if="activeTab === 'data'">
+    <view v-if="activeTab === 'data'" class="tab-content">
     <!-- 快捷入口 -->
     <view class="quick-actions">
       <view class="action-item" @click="goTo('/pages/record/diet-detail')">
@@ -157,10 +157,10 @@
     <view class="diary-btn" @click="generateDiary">
       <text>{{ todayDiaryExists ? '今日分析已生成，去查看' : '生成今日分析' }}</text>
     </view>
-    </template>
+    </view>
 
     <!-- 陪你动（页内切换，不跳二级页面） -->
-    <template v-else>
+    <view v-else class="tab-content">
       <view class="intro-card">
         <text class="intro-title">今日跟练推荐</text>
         <text class="intro-desc">选择一门课程，跟着搭搭一起动起来</text>
@@ -188,7 +188,7 @@
           </view>
         </view>        <view v-if="workoutLoaded && workoutList.length === 0" class="workout-empty">暂无课程</view>
       </view>
-    </template>
+    </view>
 
     <!-- 轻断食设置面板 -->
     <view class="panel-overlay" :class="{ show: showFastingPanel }" @click="closeFastingPanel"></view>
@@ -197,45 +197,48 @@
         <text class="panel-title">轻断食设置</text>
         <text class="panel-close" @click="closeFastingPanel">✕</text>
       </view>
-      <view class="mode-list">
-        <view v-for="mode in fastingModes" :key="mode.value" class="mode-item" :class="{ active: panelSelectedMode === mode.value }" @click="panelSelectedMode = mode.value">
-          <text class="mode-label">{{ mode.label }}</text>
-          <text class="mode-desc">{{ mode.desc }}</text>
-        </view>
-      </view>
-      <view v-if="panelSelectedMode === 'custom'" class="custom-hours-row">
-        <text class="custom-hours-label">断食时长</text>
-        <input class="custom-hours-input" type="number" v-model="customTargetHours" />
-        <text class="custom-hours-unit">小时</text>
-      </view>
-      <view class="time-picker-wrap">
-        <view class="time-display-row">
-          <view class="time-display-item">
-            <text class="time-display-label">用餐开始</text>
-            <text class="time-display-value">{{ formatTime(panelEatingStart) }}</text>
-          </view>
-          <view class="time-display-arrow">→</view>
-          <view class="time-display-item">
-            <text class="time-display-label">用餐结束</text>
-            <text class="time-display-value">{{ formatTime(panelEatingEnd) }}</text>
+      <!-- 可滚动内容区（模式卡/自定义时长/时间选择器），吸底按钮固定在面板底部不随内容滚动 -->
+      <scroll-view class="panel-content" scroll-y>
+        <view class="mode-list">
+          <view v-for="mode in fastingModes" :key="mode.value" class="mode-item" :class="{ active: panelSelectedMode === mode.value }" @click="panelSelectedMode = mode.value">
+            <text class="mode-label">{{ mode.label }}</text>
+            <text class="mode-desc">{{ mode.desc }}</text>
           </view>
         </view>
-        <text class="time-picker-label">用餐开始时间</text>
-        <picker-view class="picker-view" :value="panelStartTimeValue" @change="onStartTimeChange" indicator-style="height: 60rpx; line-height: 60rpx;" style="height: 300rpx;">
-          <picker-view-column>
-            <view class="picker-col" v-for="h in 24" :key="h">{{ String(h-1).padStart(2,'0') }}</view>
-          </picker-view-column>
-          <picker-view-column>
-            <view class="picker-col-label">时</view>
-          </picker-view-column>
-          <picker-view-column>
-            <view class="picker-col" v-for="m in 12" :key="m">{{ String((m-1)*5).padStart(2,'0') }}</view>
-          </picker-view-column>
-          <picker-view-column>
-            <view class="picker-col-label">分</view>
-          </picker-view-column>
-        </picker-view>
-      </view>
+        <view v-if="panelSelectedMode === 'custom'" class="custom-hours-row">
+          <text class="custom-hours-label">断食时长</text>
+          <input class="custom-hours-input" type="number" v-model="customTargetHours" />
+          <text class="custom-hours-unit">小时</text>
+        </view>
+        <view class="time-picker-wrap">
+          <view class="time-display-row">
+            <view class="time-display-item">
+              <text class="time-display-label">用餐开始</text>
+              <text class="time-display-value">{{ formatTime(panelEatingStart) }}</text>
+            </view>
+            <view class="time-display-arrow">→</view>
+            <view class="time-display-item">
+              <text class="time-display-label">用餐结束</text>
+              <text class="time-display-value">{{ formatTime(panelEatingEnd) }}</text>
+            </view>
+          </view>
+          <text class="time-picker-label">用餐开始时间</text>
+          <picker-view class="picker-view" :value="panelStartTimeValue" @change="onStartTimeChange" indicator-style="height: 60rpx; line-height: 60rpx;" style="height: 240rpx;">
+            <picker-view-column>
+              <view class="picker-col" v-for="h in 24" :key="h">{{ String(h-1).padStart(2,'0') }}</view>
+            </picker-view-column>
+            <picker-view-column>
+              <view class="picker-col-label">时</view>
+            </picker-view-column>
+            <picker-view-column>
+              <view class="picker-col" v-for="m in 12" :key="m">{{ String((m-1)*5).padStart(2,'0') }}</view>
+            </picker-view-column>
+            <picker-view-column>
+              <view class="picker-col-label">分</view>
+            </picker-view-column>
+          </picker-view>
+        </view>
+      </scroll-view>
       <view class="panel-actions">
         <AppButton type="cancel-gray" @click="closeFastingPanel">取消</AppButton>
         <AppButton type="confirm-light" @click="confirmFastingSettings">确定</AppButton>
@@ -249,28 +252,30 @@
         <text class="panel-title">调整今日用餐时间</text>
         <text class="panel-close" @click="closeDailyAdjustPanel">✕</text>
       </view>
-      <view class="time-picker-wrap daily-adjust">
-        <view class="time-pickers-row">
-          <view class="picker-section single-picker">
-            <text class="time-picker-label">用餐开始</text>
-            <text class="time-picker-value">{{ formatTime(dailyAdjustStart) }}</text>
-            <picker-view class="picker-view" :value="dailyAdjustTimeValue" @change="onDailyAdjustTimeChange" indicator-style="height: 60rpx; line-height: 60rpx;" style="height: 300rpx;">
-              <picker-view-column>
-                <view class="picker-col" v-for="h in 24" :key="h">{{ String(h-1).padStart(2,'0') }}</view>
-              </picker-view-column>
-              <picker-view-column>
-                <view class="picker-col-label">时</view>
-              </picker-view-column>
-              <picker-view-column>
-                <view class="picker-col" v-for="m in 12" :key="m">{{ String((m-1)*5).padStart(2,'0') }}</view>
-              </picker-view-column>
-              <picker-view-column>
-                <view class="picker-col-label">分</view>
-              </picker-view-column>
-            </picker-view>
+      <scroll-view class="panel-content" scroll-y>
+        <view class="time-picker-wrap daily-adjust">
+          <view class="time-pickers-row">
+            <view class="picker-section single-picker">
+              <text class="time-picker-label">用餐开始</text>
+              <text class="time-picker-value">{{ formatTime(dailyAdjustStart) }}</text>
+              <picker-view class="picker-view" :value="dailyAdjustTimeValue" @change="onDailyAdjustTimeChange" indicator-style="height: 60rpx; line-height: 60rpx;" style="height: 240rpx;">
+                <picker-view-column>
+                  <view class="picker-col" v-for="h in 24" :key="h">{{ String(h-1).padStart(2,'0') }}</view>
+                </picker-view-column>
+                <picker-view-column>
+                  <view class="picker-col-label">时</view>
+                </picker-view-column>
+                <picker-view-column>
+                  <view class="picker-col" v-for="m in 12" :key="m">{{ String((m-1)*5).padStart(2,'0') }}</view>
+                </picker-view-column>
+                <picker-view-column>
+                  <view class="picker-col-label">分</view>
+                </picker-view-column>
+              </picker-view>
+            </view>
           </view>
         </view>
-      </view>
+      </scroll-view>
       <view class="panel-actions">
         <AppButton type="cancel-gray" @click="closeDailyAdjustPanel">取消</AppButton>
         <AppButton type="confirm-light" @click="confirmDailyAdjust">确定打卡</AppButton>
@@ -301,19 +306,22 @@
       @cancel="showEndEatingModal = false"
     />
 
-    <CustomTabBar />
   </view>
 </template>
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi, aiApi, workoutApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';
 import AppButton from '../../components/AppButton.vue';
 import AppModal from '../../components/AppModal.vue';
-import CustomTabBar from '../../custom-tab-bar/index.vue';
 import { getToday } from '../../utils/date';
 import { showRewardToast } from '../../utils/rewardToast.js';
+import { useUserStore } from '../../store';
+import { usePageCacheStore, CACHE_KEYS } from '../../store/page-cache';
+
+const userStore = useUserStore();
+const pageCache = usePageCacheStore();
 
 const today = getToday();
 
@@ -321,6 +329,10 @@ const today = getToday();
 const activeTab = ref('data');
 const workoutList = ref([]);
 const workoutLoaded = ref(false);
+// 数据加载状态
+const loading = ref(false);
+// 是否有缓存数据
+const hasCachedData = ref(false);
 
 // 弹框可见性
 const showDiaryModal = ref(false);
@@ -338,6 +350,7 @@ async function loadWorkouts() {
 }
 
 function switchWorkoutTab() {
+  if (!userStore.requireAuth()) return;
   activeTab.value = 'workout';
   // 每次切换到陪你动都刷新课程列表（器材购买后解锁状态需要更新）
   loadWorkouts();
@@ -358,6 +371,7 @@ function workoutDurationText(item) {
 }
 
 function handleWorkoutClick(item) {
+  if (!userStore.requireAuth()) return;
   if (!item.is_unlocked) {
     // 未购买器材：跳转搭搭 tab 拉起商店弹层，定位到运动器材 tab 引导购买
     uni.setStorageSync('pending_shop_category', 'equipment');
@@ -393,6 +407,7 @@ async function loadWaterToday() {
 }
 
 async function addWater(amount) {
+  if (!userStore.requireAuth()) return;
   const oldTotal = waterTotal.value;
   waterTotal.value += amount;
   undoStack.value.push(amount);
@@ -416,6 +431,7 @@ async function addWater(amount) {
 }
 
 async function undoWater() {
+  if (!userStore.requireAuth()) return;
   if (undoStack.value.length === 0) return;
   const amount = undoStack.value.pop();
   const oldTotal = waterTotal.value;
@@ -527,6 +543,7 @@ const fastingDisabled = computed(() => {
 });
 
 function onFastingAction() {
+  if (!userStore.requireAuth()) return;
   if (fastingDisabled.value) return;
   // 未设置过轻断食时间：提示并调起设置弹窗（与右上角「编辑」同一弹窗）
   if (!hasFastingSettings.value) {
@@ -797,6 +814,7 @@ async function confirmDailyAdjust() {
 }
 
 function startEating() {
+  if (!userStore.requireAuth()) return;
   if (!hasStartedToday.value) {
     const hour = startTimeValue.value[0];
     const minute = startTimeValue.value[2];
@@ -815,6 +833,7 @@ function startEating() {
 }
 
 async function endEatingEarly() {
+  if (!userStore.requireAuth()) return;
   try {
     await recordApi.saveFasting({
       action: 'end',
@@ -922,6 +941,7 @@ function updatePanelPreview() {
 }
 
 function openFastingPanel() {
+  if (!userStore.requireAuth()) return;
   panelSelectedMode.value = selectedMode.value;
   panelStartTimeValue.value = [...startTimeValue.value];
   updatePanelPreview();
@@ -936,6 +956,7 @@ function onStartTimeChange(e) {
 }
 
 async function confirmFastingSettings() {
+  if (!userStore.requireAuth()) return;
   selectedMode.value = panelSelectedMode.value;
   startTimeValue.value = [...panelStartTimeValue.value];
   saveSettings();
@@ -961,57 +982,137 @@ async function confirmFastingSettings() {
   } catch (e) { console.error(e); }
 }
 
-onMounted(async () => {
-  load();
-  loadWaterToday();
-  loadSettings();
-  // 已设置过：按设置生成今日用餐窗口（未设置过则保持空，倒计时显示未设置）
-  ensureTodayWindow();
-  // 再加载今日已保存状态（覆盖默认值），并处理跨天未刷新导致的状态过期
-  loadDailyState();
-  checkDateRollover();
-  // 同步服务端轻断食状态
-  await loadFastingFromServer();
-  // 跨天重置/服务端无记录后，按设置兜底今日窗口
-  ensureTodayWindow();
-  loadFastingStats();
-  if (eatingStart.value && eatingEnd.value) startCountdown();
+/**
+ * 页面挂载：先从缓存恢复数据，再后台异步刷新
+ */
+onMounted(() => {
+  // 1. 先从缓存恢复数据（避免白屏）
+  const hasCache = initFromCache();
+  
+  // 2. 后台异步刷新
+  if (!userStore.isLoggedIn) return;
+  
+  if (!hasCache) {
+    loading.value = true;
+  }
+  
+  nextTick(() => {
+    try {
+      load();
+      loadWaterToday();
+      loadSettings();
+      ensureTodayWindow();
+      loadDailyState();
+      checkDateRollover();
+      loadFastingFromServer().then(() => {
+        ensureTodayWindow();
+        loadFastingStats();
+        if (eatingStart.value && eatingEnd.value) startCountdown();
+      }).catch(() => { /* 静默失败，不阻塞页面 */ });
+    } catch (e) {
+      console.error('[record] onMounted 数据加载异常:', e);
+    } finally {
+      loading.value = false;
+      hasCachedData.value = true;
+    }
+  });
 });
 
 onShow(() => {
-  // 外部跳转过来时切换到指定 tab（如使用器材后进入“陪你动”）
+  // 外部跳转过来时切换到指定 tab（如使用器材后进入"陪你动"）
   const pendingTab = uni.getStorageSync('record_pending_tab');
   if (pendingTab) {
     activeTab.value = pendingTab;
     uni.removeStorageSync('record_pending_tab');
   }
-  load();
-  loadWaterToday();
-  loadDailyState();
-  checkDateRollover();
-  // 回到页面时按设置兜底今日用餐窗口，保证倒计时每天自动滚动
-  ensureTodayWindow();
-  loadTodayDiaryStatus();
-  // 陪你动 tab 激活时刷新课程（器材购买后解锁状态需要更新）
-  if (activeTab.value === 'workout') loadWorkouts();
-  if (eatingStart.value && eatingEnd.value) startCountdown();
-  uni.$emit('tabbar-select', 2);
-  uni.hideTabBar({ animation: false }).catch(() => {});
+  
+  // 先从缓存恢复数据（避免白屏）
+  if (!hasCachedData.value) {
+    initFromCache();
+  }
+  
+  // 根据缓存状态决定是否需要刷新
+  if (userStore.isLoggedIn && needRefresh()) {
+    if (!hasCachedData.value) {
+      loading.value = true;
+    }
+    nextTick(() => {
+      try {
+        load();
+        loadDailyState();
+        checkDateRollover();
+        ensureTodayWindow();
+        if (activeTab.value === 'workout') loadWorkouts();
+        if (eatingStart.value && eatingEnd.value) startCountdown();
+      } catch (e) {
+        console.error('[record] onShow 数据加载异常:', e);
+      } finally {
+        loading.value = false;
+        hasCachedData.value = true;
+      }
+    });
+  }
 });
 
 onUnmounted(() => { stopCountdown(); });
 
-function goTo(url) { uni.navigateTo({ url }); }
-function goToBody() { uni.navigateTo({ url: '/pages/record/body-data' }); }
+function goTo(url) {
+  if (!userStore.requireAuth()) return; uni.navigateTo({ url }); }
+function goToBody() {
+  if (!userStore.requireAuth()) return; uni.navigateTo({ url: '/pages/record/body-data' }); }
 
+/**
+ * 加载今日数据
+ * 支持缓存策略：加载完成后更新缓存
+ */
 async function load() {
   try {
     const res = await recordApi.getToday();
     todayStats.value = res.data;
+    // 更新缓存
+    pageCache.setCache(CACHE_KEYS.RECORD_TODAY, res.data);
     loadFastingStats();
     loadWaterToday();
     loadTodayDiaryStatus();
   } catch (err) { console.error(err); }
+}
+
+/**
+ * 从缓存恢复数据
+ * @returns {boolean} 是否有缓存数据
+ */
+function initFromCache() {
+  let hasCache = false;
+  // 恢复今日统计数据
+  const cachedStats = pageCache.getCache(CACHE_KEYS.RECORD_TODAY);
+  if (cachedStats) {
+    todayStats.value = cachedStats;
+    hasCache = true;
+  }
+  // 恢复断食数据
+  const cachedFasting = pageCache.getCache(CACHE_KEYS.RECORD_FASTING);
+  if (cachedFasting) {
+    // 断食相关数据恢复
+    hasCache = true;
+  }
+  hasCachedData.value = hasCache;
+  return hasCache;
+}
+
+/**
+ * 检查是否需要刷新缓存
+ */
+function needRefresh() {
+  if (pageCache.consumeForceRefresh(CACHE_KEYS.RECORD_TODAY)) {
+    return true;
+  }
+  if (!hasCachedData.value) {
+    return true;
+  }
+  if (pageCache.isExpired(CACHE_KEYS.RECORD_TODAY)) {
+    return true;
+  }
+  return false;
 }
 
 // 今天是否已生成日记分析（同一天只能生成一次）
@@ -1025,6 +1126,7 @@ async function loadTodayDiaryStatus() {
 }
 
 function generateDiary() {
+  if (!userStore.requireAuth()) return;
   // 已生成：直接进入日记与分析页（默认选中当天）
   if (todayDiaryExists.value) {
     uni.navigateTo({ url: '/pages/museum/diary' });
@@ -1043,22 +1145,38 @@ function confirmGenerateDiary() {
 </script>
 <style lang="scss" scoped>
 .record-page {
-  background: #F8FAF7;
+  background: #F7FbF4;
   min-height: 100vh;
   padding: 0 32rpx calc(180rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
 .status-bar {
-  height: var(--status-bar-height);
-  /* #ifdef MP-WEIXIN */
-  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
-  height: calc(var(--status-bar-height) + 88rpx);
-  /* #endif */
+  /*
+   * 兜底第一行：iPhone 刘海屏基准高度（44px + 44px 胶囊让位 88rpx）
+   * 兜底第二行：优先取 var，无 var 注入时 fallback 44px，避免 navigateTo/切 Tab
+   *   触发页面重排时，前几个 frame status-bar 高度塌陷→跳变→整体"下坠"。
+   */
+  /* 上移 24px：将 88rpx 减为 40rpx，相当于缩短顶部绿色区域 */
+  height: calc(44px + 40rpx);
+  height: calc(var(--status-bar-height, 44px) + 40rpx);
+  /* 记录 tab 顶部浅绿色背景，与系统状态栏无缝衔接 */
+  background: $green-light;
+  /* 左右负 margin 抵消 record-page 的 padding 32rpx，让背景铺满屏幕两侧 */
+  margin-left: -32rpx;
+  margin-right: -32rpx;
+  flex-shrink: 0;
+  /* 吸顶时确保 status-bar 也固定在顶部 */
+  position: sticky;
+  top: 0;
+  z-index: 49;
 }
 
 .page-header {
-  position: relative;
+  /* 吸顶固定，status-bar 吸在 top:0，header 接在下方 */
+  position: sticky;
+  top: calc(var(--status-bar-height, 44px) + 40rpx);
+  z-index: 50;
   margin: 0 -32rpx 28rpx;
   padding: 16rpx 0 20rpx;
   overflow: hidden;
@@ -1070,7 +1188,7 @@ function confirmGenerateDiary() {
   left: 0;
   right: 0;
   bottom: 0;
-  background: #E8F6D7;
+  background: $green-light; /* 与 status-bar 颜色一致，通顶到状态栏 */
   z-index: 0;
 }
 
@@ -1627,24 +1745,78 @@ function confirmGenerateDiary() {
   bottom: 0;
   background: #FFFFFF;
   border-radius: 32rpx 32rpx 0 0;
-  padding: 32rpx;
-  padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
+  padding: 32rpx 32rpx 0 32rpx;
   z-index: 1001;
   transform: translateY(100%);
   transition: transform 0.3s;
-  max-height: 80vh;
-  overflow-y: auto;
+  /*
+   * 三段式（header / content-scroll / actions吸底）布局
+   * 使用 flex 列布局，确保 panel-actions 始终显示在底部
+   * 使用 max-height 防止内容溢出
+   */
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+  /* 不使用 overflow:hidden，避免裁剪 panel-actions */
 }
 
 .fasting-panel.show {
   transform: translateY(0);
 }
 
+/* 顶部 header 固定高度，不压缩 */
 .panel-header {
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24rpx;
+}
+
+/* 中间内容区滚动，独立 flex:1 自动计算高度 */
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24rpx 0 16rpx;
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 20rpx;
+  margin: 32rpx 0 0 0;
+  justify-content: center;
+  /*
+   * 关键：flex-shrink:0 + 合理 padding，防止三段式 flex 中子内容 picker-view 过高导致
+   * panel-actions 被压缩至 0 高度 → 取消/确认按钮肉眼不可见
+   */
+  flex-shrink: 0;
+  min-height: 96rpx;
+  padding-top: 16rpx;
+  padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  background: #FFFFFF;
+  border-top: 1rpx solid #F0F0F0;
+}
+
+.panel-actions :deep(.app-button) {
+  flex: 1;
+}
+
+/* 为每日调整面板也应用相同布局 */
+.daily-adjust-panel .panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24rpx 0 16rpx;
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+.daily-adjust-panel .panel-actions {
+  flex-shrink: 0;
+  padding: 16rpx 0 calc(16rpx + env(safe-area-inset-bottom));
+  margin: 0;
 }
 
 .panel-title {
@@ -1765,17 +1937,6 @@ function confirmGenerateDiary() {
 }
 
 .picker-section {
-  flex: 1;
-}
-
-.panel-actions {
-  display: flex;
-  gap: 20rpx;
-  margin-top: 32rpx;
-  justify-content: center;
-}
-
-.panel-actions :deep(.app-button) {
   flex: 1;
 }
 

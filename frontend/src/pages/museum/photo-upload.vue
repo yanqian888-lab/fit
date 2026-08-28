@@ -1,6 +1,5 @@
 <template>
-  <AppPage>
-    <AppHeader title="上传照片" />
+  <AppPage :showHeader="true" title="上传照片">
     <view class="upload-page">
       <view class="preview-card" @click="chooseImage">
         <image v-if="imageUrl" :src="imageUrl" mode="aspectFill" />

@@ -213,6 +213,11 @@
                 <input v-model="ex.calorie" class="exercise-field-input" placeholder="千卡" type="digit" @input="onExerciseCalorieInput(index)" />
                 <text class="exercise-field-unit">千卡</text>
               </view>
+              <view class="exercise-field">
+                <text class="exercise-field-label">距离</text>
+                <input v-model="ex.distance" class="exercise-field-input" placeholder="公里" type="digit" />
+                <text class="exercise-field-unit">公里</text>
+              </view>
             </view>
           </view>
         </template>
@@ -280,9 +285,6 @@
         <button class="btn-save" @click="saveEdit">{{ editMode === 'confirm' ? '确认记录' : '保存' }}</button>
       </view>
     </view>
-
-    <!-- 自定义底部 tabbar -->
-    <CustomTabBar />
 
     <!-- 全屏食物选择弹层 -->
     <view v-if="showFoodPicker" class="food-picker-overlay" @click="showFoodPicker = false"></view>
@@ -377,7 +379,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { useUserStore } from '../../store';
 import { chatApi, partnerApi, recordApi, precipitationApi, systemApi, voiceApi } from '../../api';
@@ -387,7 +389,6 @@ import { checkPermission, reportCount } from '../../utils/trial.js';
 import AuthPopup from '../../components/AuthPopup.vue';
 import PendingAssetCard from '../../components/PendingAssetCard.vue';
 import AnnouncementBar from '../../components/AnnouncementBar.vue';
-import CustomTabBar from '../../custom-tab-bar/index.vue';
 import AppModal from '../../components/AppModal.vue';
 
 const userStore = useUserStore();
@@ -408,6 +409,40 @@ const welcomeMessage = computed(() => {
   };
 });
 const displayMessages = computed(() => welcomeMessage.value ? [welcomeMessage.value, ...messages.value] : messages.value);
+
+/**
+ * 剔除「身体评估」消息中的计算过程段落（计算明细/校验/修正分配/安全线校验/算式推导等）
+ * 保证「身体数据评估」和「饮食执行方案」两个模块只展示结论
+ * 该函数直接在 msg 对象上写入 displayContent（不破坏原始 content，方便调试）
+ */
+function sanitizePartnerMessage(msg) {
+  if (!msg || msg.role !== 'partner' || !msg.content || msg.displayContent !== undefined) return msg;
+  const text = String(msg.content);
+
+  // 没有计算过程特征的直接跳过，不做无谓清洗
+  const hasCalcSigns = /计算明细[:：]|校验[:：]|修正分配[:：]|安全线校验|BMR\s*=\s*10×|TDEE\s*=\s*.*?\s×\s|缺口取\d+|×体重|×身高|×年龄|交叉核对|实际输出取整|缺口补至/.test(text);
+  if (!hasCalcSigns) return msg;
+
+  // 1) 删除「计算明细：」开头，到下一行以「## 二、」「## 三、」或空行+行首非空白+数字点 或空行+行首"- " 列表项之间的整段内容
+  let sanitized = text
+    .replace(/\n?计算明细[：:].*?(?=\n## 二、|\n## 三、|\n## 四、|\n## 五、|\n\d+\. |\n- |\n\d+[.、] |$)/sg, '')
+    // 2) 删除「（校验：...）」整段，或「校验:」「校验：」开头直到下一个 1.2.3. / - 列表项 / ## 标题或双空行
+    .replace(/\n?[（(]?校验[：:].*?(?=\n\d+[.、] |\n- |\n## |\n\s*\n|$)/sg, '')
+    // 3) 删除「修正分配：」开头直到下一个 1.2.3. / - / ## 或空行
+    .replace(/\n?修正分配[：:].*?(?=\n\d+[.、] |\n- |\n## |\n\s*\n|$)/sg, '')
+    // 4) 删除包含算式特征的独立单行（以空白开始或非列表项单独行；包含 = + - × / 和数字，或出现 10× 6.25× 5× 这类系数乘）
+    .replace(/^[ \t\u3000]*[^#\-\n]*?(?:BMR\s*=|TDEE\s*=|10×|6\.25×|5×|缺口=|摄入\s*=|≥BMR|女性不低于|安全线(?:为|[:：])|故调整为|四舍五入)[^\n]*\n?/gm, '')
+    // 5) 折叠连续空行（清洗后产生的多余空行）
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  // 只有清洗后确实变化了才写 displayContent，保证不无故改动
+  if (sanitized && sanitized.length > 0 && sanitized !== text.trim()) {
+    msg.displayContent = sanitized;
+  }
+  return msg;
+}
+
 const inputText = ref('');
 const loading = ref(false);
 const scrollTop = ref(0);
@@ -782,17 +817,22 @@ const partnerMoodText = computed(() => partnerMood.value.text);
 
 onMounted(() => {
   preloadAvatarImages();
-  userStore.fetchUserInfo();
-  // 首次进入需要重置列表并滚动到底部，否则 loadMessages(false) 会按"加载更多"处理，停留在顶部
-  loadMessages(true);
-  loadTodayStats();
-  checkWakeupMessage();
-  // 量取列表可视高度（判断用户是否在底部附近用，小程序无 DOM 走 SelectorQuery）
-  nextTick(() => setTimeout(initScrollMetrics, 300));
-  uni.$emit('tabbar-select', 0);
-  uni.hideTabBar({ animation: false }).catch(() => {});
+  // 先完成首帧渲染（欢迎消息立即可见），再异步加载数据，防止白屏
+  nextTick(() => {
+    if (userStore.isLoggedIn) {
+      userStore.fetchUserInfo();
+      loadMessages(true);
+      loadTodayStats();
+      checkWakeupMessage();
+    }
+    // 量取列表可视高度（判断用户是否在底部附近用，小程序无 DOM 走 SelectorQuery）
+    setTimeout(initScrollMetrics, 300);
+  });
 });
 
+/**
+ * 预加载头像图片，减少 AI 对话时图片闪烁
+ */
 function preloadAvatarImages() {
   if (typeof Image === 'undefined') return;
   const paths = [
@@ -807,18 +847,15 @@ function preloadAvatarImages() {
 }
 
 onShow(() => {
-  // 页面显示后多执行几次滚动到底部，避免图片/布局未完成导致停留在顶部
-  [100, 400, 800, 1500, 2500].forEach(delay => {
-    setTimeout(() => {
-      if (messages.value.length > 0) {
-        scrollToBottom();
-      }
-    }, delay);
-  });
-  // 首次填写完身体信息/更新身体信息后，生成减重建议
-  checkAdviceMessage();
-  uni.$emit('tabbar-select', 0);
-  uni.hideTabBar({ animation: false }).catch(() => {});
+  // 消息已在内存中，直接滚动到底部（不再重新加载）
+  if (messages.value.length > 0) {
+    // 延迟一次滚动，给页面渲染留出时间，避免白屏
+    requestAnimationFrame ? requestAnimationFrame(() => scrollToBottom(true)) : setTimeout(() => scrollToBottom(true), 50);
+  }
+  if (userStore.isLoggedIn) {
+    // 延迟检查建议消息，避免阻塞首帧渲染
+    nextTick(() => checkAdviceMessage());
+  }
 });
 
 // 检查减重建议（后端通过 advice_pending 标记幂等，无待生成时返回空）
@@ -838,6 +875,7 @@ async function checkAdviceMessage() {
         created_at: msg.created_at,
         precipitation_status: 0
       };
+      sanitizePartnerMessage(chatMsg);
       messages.value.push(chatMsg);
       if (msg.content && msg.content.length > 60) {
         startTypeWriter(chatMsg);
@@ -861,7 +899,7 @@ async function checkWakeupMessage() {
         const wakeupRes = await chatApi.sendWakeupMessage();
         if (wakeupRes.code === 0 && wakeupRes.data) {
           const msg = wakeupRes.data.message;
-          messages.value.push({
+          const pushObj = {
             id: msg.id,
             role: msg.role,
             content: msg.content,
@@ -869,7 +907,9 @@ async function checkWakeupMessage() {
             created_at: msg.created_at,
             precipitation_status: 0,
             is_template: true
-          });
+          };
+          sanitizePartnerMessage(pushObj);
+          messages.value.push(pushObj);
           scrollToBottom();
         }
       }
@@ -883,7 +923,6 @@ async function checkWakeupMessage() {
 async function loadMessages(reset = false) {
   if (reset) {
     page.value = 1;
-    messages.value = [];
   }
   if (!hasMore.value && !reset) return;
 
@@ -896,7 +935,7 @@ async function loadMessages(reset = false) {
       precipitation_status: Number(msg.precipitation_status) || 0,
       precipitation_id: msg.precipitation_id || null,
       precipitation_type: msg.precipitation_type || null
-    }));
+    })).map(m => sanitizePartnerMessage(m));
 
     if (reset) {
       messages.value = list;
@@ -1034,6 +1073,7 @@ async function loadTodayStats() {
 async function sendMessage() {
   const content = inputText.value.trim();
   if (!content) return;
+  if (!userStore.requireAuth()) return;
 
   // 立即清空输入框，让用户可以继续输入
   inputText.value = '';
@@ -1146,6 +1186,7 @@ async function processOneMessage(content, tempId) {
   }
 
   // 添加搭搭的回复
+  sanitizePartnerMessage(data.partner_message);
   messages.value.push(data.partner_message);
   if (data.partner_message?.role === 'partner' && data.partner_message?.content?.length > 60) {
     startTypeWriter(data.partner_message);
@@ -1205,6 +1246,7 @@ function waitForAsyncHelper(partnerMessageId, userMessageId) {
 
         if (newMessages.length > 0) {
           newMessages.forEach(msg => {
+            sanitizePartnerMessage(msg);
             messages.value.push(msg);
             if (msg.role === 'partner' && msg.content && msg.content.length > 60) {
               startTypeWriter(msg);
@@ -1521,10 +1563,11 @@ function openEditModal(record, mode = 'edit', targetMsg = null) {
         name: e.name || '',
         duration: String(e.duration || ''),
         intensity: e.intensity || 'moderate',
-        calorie: String(e.calorie || '')
+        calorie: String(e.calorie || ''),
+        distance: e.distance ? String(e.distance) : ''
       }));
       if (editExercises.value.length === 0) {
-        editExercises.value.push({ name: '', duration: '', intensity: 'moderate', calorie: '' });
+        editExercises.value.push({ name: '', duration: '', intensity: 'moderate', calorie: '', distance: '' });
       }
       initExerciseCalorieRates();
       editRecordType.value = 'exercise';
@@ -1799,7 +1842,8 @@ async function saveEdit() {
             name: e.name.trim(),
             duration: parseFloat(e.duration) || 0,
             intensity: e.intensity || 'moderate',
-            calorie: parseFloat(e.calorie) || 0
+            calorie: parseFloat(e.calorie) || 0,
+            ...(e.distance ? { distance: parseFloat(e.distance) } : {})
           }))
         };
         updateSubType = 'exercise';
@@ -1940,41 +1984,44 @@ async function onPendingTag(msg) {
 <style lang="scss" scoped>
 .partner-page {
   height: 100vh;
-  height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: #F8FAF7;
+  /* 统一页面背景为浅绿色，与 status-bar、header 保持一致 */
+  background: $green-light;
   overflow: hidden;
 }
 
 .status-bar {
-  height: var(--status-bar-height);
-  /* #ifdef MP-WEIXIN */
-  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
-  height: calc(var(--status-bar-height) + 88rpx);
-  /* #endif */
+  /*
+   * 兜底第一行：iPhone 刘海屏基准高度（44px status-bar + 44px 胶囊让位 88rpx ≈ 44px）
+   * 兜底第二行：优先取 uni-app 注入的 var(--status-bar-height)；
+   * 关键：当 var 尚未注入（navigateTo 转场重排的前几个 frame），不会退化为 0，
+   * 而是取 fallback 值 44px → 前后高度差仅 0~3px，不会出现肉眼可感的"下坠"。
+   */
+  height: calc(44px + 88rpx);
+  height: calc(var(--status-bar-height, 44px) + 88rpx);
   flex-shrink: 0;
-  background: #E8F6D7; /* 与下方标题区浅绿底色衔接，避免顶部白边 */
+  background: $green-light; /* 与 header 背景一致，形成统一顶部绿色背景 */
 }
 
 .header {
   flex-shrink: 0;
-  background: #E8F6D7;
-  padding: 20rpx 28rpx 24rpx;
-  margin-top: -48rpx;
+  /* 与 status-bar 统一背景色，避免顶部出现分割线 */
+  background: $green-light;
+  /* 底部 padding 减少 8px（16rpx），让绿色底高度更紧凑 */
+  padding: 20rpx 28rpx 8rpx;
 }
 
 .header-inner {
   display: flex;
   align-items: center;
-  transform: translateY(32rpx);
 }
 
 .header-avatar {
   width: 220rpx;
   height: 126rpx;
   margin-right: 24rpx;
-  margin-top: 20rpx;
+  margin-top: -12rpx;
   flex-shrink: 0;
 }
 
@@ -1983,7 +2030,7 @@ async function onPendingTag(msg) {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  margin-top: 20rpx;
+  margin-top: -12rpx;
   min-width: 0;
 }
 
@@ -2028,7 +2075,8 @@ async function onPendingTag(msg) {
   flex: 1;
   min-height: 0;
   padding: 20rpx 40rpx;
-  padding-bottom: calc(284rpx + env(safe-area-inset-bottom));
+  /* 底部预留空间：输入框高度约 100rpx + 底部偏移 124rpx，最后一条消息刚好显示在输入框上方 */
+  padding-bottom: calc(210rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   background: #F7FBF4;
 }
@@ -2165,7 +2213,8 @@ async function onPendingTag(msg) {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(156rpx + env(safe-area-inset-bottom));
+  /* native tabBar 页面 bottom:0 对齐 tabBar 顶部，16rpx 底部内边距使输入框与 tabBar 保持 8px 间距 */
+  bottom: 0;
   padding: 12rpx 32rpx 16rpx;
   background: #F7FBF4;
   z-index: 10;

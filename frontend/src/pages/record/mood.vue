@@ -1,14 +1,6 @@
 <template>
+  <AppPage :showHeader="true" title="记录心情">
   <view class="mood-page">
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <text class="page-title">记录心情</text>
-      <view class="header-right"></view>
-    </view>
-
     <view class="mood-content">
       <text class="section-title">今天感觉怎么样？</text>
       <view class="mood-options">
@@ -38,22 +30,16 @@
       </view>
     </view>
   </view>
+  </AppPage>
 </template>
 
 <script setup>
+import AppPage from '../../components/AppPage.vue';
 import { ref } from 'vue';
 import { museumApi } from '../../api';
 import { showRewardToast } from '../../utils/rewardToast.js';
 import { getToday } from '../../utils/date';
-import { goBack as navigateBack } from '../../utils/navigate';
 
-const statusBarHeight = ref(44);
-try {
-  statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-} catch (e) {}
 const selectedMood = ref('');
 const note = ref('');
 
@@ -64,10 +50,6 @@ const moodOptions = [
   { value: 'bad', emoji: '😔', label: '低落' },
   { value: 'terrible', emoji: '😫', label: '糟糕' }
 ];
-
-function goBack() {
-  navigateBack();
-}
 
 async function submit() {
   if (!selectedMood.value) {
@@ -81,7 +63,7 @@ async function submit() {
       content: note.value
     });
     showRewardToast(res.data?.reward_messages || [], '保存成功');
-    setTimeout(() => goBack(), 800);
+    setTimeout(() => uni.navigateBack(), 800);
   } catch (e) {
     uni.showToast({ title: e.message || '保存失败', icon: 'none' });
   }
@@ -93,32 +75,7 @@ async function submit() {
   min-height: 100vh;
   background: #f5f5f5;
 }
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  height: 44px;
-  background: #fff;
-}
-.back-btn {
-  width: 40px;
-}
-.back-icon {
-  font-size: 28px;
-  color: #333;
-}
-.page-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: #333;
-}
-.header-right {
-  width: 40px;
-}
+
 .mood-content {
   padding: 24px 16px;
 }

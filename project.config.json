@@ -1,10 +1,14 @@
 {
+  "miniprogramRoot": "frontend/dist/build/mp-weixin/",
   "setting": {
     "es6": true,
     "postcss": true,
     "minified": true,
-    "uglifyFileName": false,
+    "uglifyFileName": true,
     "enhance": true,
+    "minifyWXML": true,
+    "minifyWXSS": true,
+    "packNpmManually": false,
     "packNpmRelationList": [],
     "babelSetting": {
       "ignore": [],
@@ -12,14 +16,29 @@
       "outputPath": ""
     },
     "useCompilerPlugins": false,
-    "minifyWXML": true
+    "urlCheck": false,
+    "checkSiteMap": false,
+    "uploadWithSourceMap": true,
+    "compileHotReLoad": true,
+    "bigPackageSizeSupport": true,
+    "autoAudits": false,
+    "compileWorklet": false,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true
   },
+  "lazyCodeLoading": "requiredComponents",
   "compileType": "miniprogram",
+  "projectname": "掉秤搭搭",
   "simulatorPluginLibVersion": {},
   "packOptions": {
     "ignore": [],
     "include": []
   },
   "appid": "wx75c8626270f27ea1",
-  "editorSetting": {}
+  "editorSetting": {},
+  "description": "掉秤搭搭 小程序前端工程 - 打开本目录时自动指向 frontend/dist/build/mp-weixin 构建产物",
+  "libVersion": "3.17.1"
 }

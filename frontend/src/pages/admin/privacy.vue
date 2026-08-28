@@ -94,7 +94,7 @@ async function save() {
 
 <style lang="scss" scoped>
 .admin-privacy-page {
-  padding-top: 140rpx;
+  /* 自绘导航删除后，顶部已由 AppPage 贴原生导航栏底部，不再需要额外 top padding */
 }
 
 .form-card {

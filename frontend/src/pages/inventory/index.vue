@@ -1,12 +1,5 @@
 <template>
   <view class="inventory-page">
-    <view class="status-bar"></view>
-
-    <!-- 返回按钮 -->
-    <view class="back-btn" @click="goBack">
-      <image class="back-icon" src="/static/image/icon/chehui@3x.png" mode="aspectFit" />
-    </view>
-
     <!-- 顶部标题图 -->
     <image class="title-img" src="/static/image/icon/shangdian_biaoti@3x.png" mode="aspectFit" />
 
@@ -135,16 +128,6 @@ function onRefresh() {
   });
 }
 
-// 返回：有上级页面（如从搭搭页进入）则返回，否则回到搭搭 tab 页
-function goBack() {
-  const pages = getCurrentPages();
-  if (pages.length > 1) {
-    uni.navigateBack();
-  } else {
-    uni.switchTab({ url: '/pages/pet/index' });
-  }
-}
-
 function goShop() {
   uni.navigateTo({ url: '/pages/shop/index' });
 }
@@ -223,23 +206,6 @@ async function use(item) {
   background: #F8FBF4;
   display: flex;
   flex-direction: column;
-}
-.status-bar {
-  height: var(--status-bar-height);
-  /* #ifdef MP-WEIXIN */
-  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
-  height: calc(var(--status-bar-height) + 88rpx);
-  /* #endif */
-}
-
-/* 返回按钮 */
-.back-btn {
-  padding: 20rpx 32rpx 0;
-}
-.back-icon {
-  width: 52rpx;
-  height: 40rpx;
-  display: block;
 }
 
 /* 顶部标题图 */

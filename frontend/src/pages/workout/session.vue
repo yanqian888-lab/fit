@@ -1,14 +1,5 @@
 <template>
   <view class="session-page">
-    <view class="status-bar"></view>
-    <view class="page-header">
-      <view class="back-btn" @click="onExit">
-        <text class="back-icon">‹</text>
-      </view>
-      <text class="page-title">{{ detail.name || '跟练' }}</text>
-      <view class="header-right"></view>
-    </view>
-
     <scroll-view class="scroll-content" scroll-y>
       <view class="video-wrap">
         <video
@@ -297,27 +288,6 @@ function formatTime(seconds) {
   flex-direction: column;
   overflow: hidden;
 }
-.status-bar {
-  height: var(--status-bar-height);
-  /* #ifdef MP-WEIXIN */
-  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
-  height: calc(var(--status-bar-height) + 88rpx);
-  /* #endif */
-  flex-shrink: 0;
-}
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  height: 44px;
-  background: #F7FBF4;
-  flex-shrink: 0;
-}
-.back-btn { width: 40px; }
-.back-icon { font-size: 28px; color: #333; }
-.page-title { font-size: 17px; font-weight: 600; color: #333; }
-.header-right { width: 40px; }
 
 .scroll-content {
   flex: 1;

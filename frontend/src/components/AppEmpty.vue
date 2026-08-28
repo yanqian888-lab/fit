@@ -31,7 +31,7 @@ defineProps({
 
 .app-empty.full {
   flex: 1;
-  padding: 0 0 120rpx;
+  padding: 96rpx 0 120rpx;
 }
 
 .empty-icon {

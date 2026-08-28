@@ -140,7 +140,8 @@ onMounted(load);
   display: flex;
   align-items: center;
   gap: 14rpx;
-  padding: 16rpx 32rpx 8rpx;
+  /* 顶部 padding 取消 16rpx（8px），内容区上移，滚动空间扩大 8px */
+  padding: 0 32rpx 8rpx;
   overflow-x: auto;
   white-space: nowrap;
   scrollbar-width: none;
@@ -176,8 +177,19 @@ onMounted(load);
 .overlay-scroll {
   flex: 1;
   height: 0;
-  padding: 8rpx 32rpx 0;
-  box-sizing: border-box;
+  overflow-y: auto;
+  /*
+   * [搭搭页4弹层滚动条避让最终版（与ShopPanel完全一致，对齐overlay真实父宽750rpx）]
+   *
+   * 对齐基准：overlay-header padding 左右 32rpx / close right:32rpx → 内容左右必须 32rpx 对齐头部
+   * 左视觉边距 = padding-left 32rpx
+   * 右视觉边距 = padding-right 72(32+40避让) - |margin-right|(40) = 32rpx → 完全对称
+   * 顶部 padding-top: 8rpx 保留原设计与头部绿条的间隙
+   * box-sizing: content-box → 负margin真正外伸40rpx避让带，滚动条画在避让区，不压事件卡 ✅
+   */
+  padding: 8rpx 72rpx 0 32rpx;
+  margin-right: -40rpx;
+  box-sizing: content-box;
 }
 .empty-state {
   display: flex;

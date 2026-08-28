@@ -13,6 +13,32 @@ const taskService = require('../services/taskService');
 const achievementService = require('../services/achievementService');
 
 // ==================== 宠物 ====================
+/**
+ * 获取宠物公共展示配置（无需登录）
+ * 返回 sprite/scenes/anim 等 CMS 配置的公共数据，供未登录游客浏览搭搭 tab 使用
+ */
+function getPetConfig(req, res) {
+  const { getAppConfig } = require('../utils/configCache');
+  const sprite = getAppConfig('pet_sprite');
+  const scenes = getAppConfig('pet_scenes');
+  const globalCfg = getAppConfig('pet_global');
+  const defaultSkinUrl = getAppConfig('pet_sprite').frames?.[0] || null;
+  return res.json(success({
+    sprite: {
+      x: sprite.x || 375,
+      y: sprite.y || 500,
+      width: sprite.width || 380,
+      height: sprite.height || 380,
+      fps: sprite.fps || 2,
+      frames: Array.isArray(sprite.frames) ? sprite.frames : []
+    },
+    scenes,
+    anim: globalCfg.anim || 'idle',
+    sleep_start: globalCfg.sleep_start || '22:00',
+    sleep_end: globalCfg.sleep_end || '06:00'
+  }));
+}
+
 function getPet(req, res) {
   const userId = req.userId;
 
@@ -224,6 +250,7 @@ function getAchievements(req, res) {
 }
 
 module.exports = {
+  getPetConfig,
   getPet,
   feed,
   exercise,

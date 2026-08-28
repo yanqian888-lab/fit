@@ -1,5 +1,12 @@
 <template>
   <view class="login-page">
+    <!-- 顶部导航栏：返回按钮 -->
+    <view class="nav-bar" :style="navBarStyle">
+      <view class="nav-back" @tap="goBack">
+        <text class="nav-back-icon">←</text>
+      </view>
+    </view>
+
     <!-- 介绍模块：icon + 应用名 + 介绍文案（替换原顶部 header + 账号密码登录框） -->
     <view class="intro-module">
       <view class="intro-logo">
@@ -203,15 +210,48 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { ref } from 'vue';
+import { onReady, onShow } from '@dcloudio/uni-app';
 import { authApi } from '../../api';
 import { useUserStore } from '../../store';
 import { getDeviceId } from '../../utils/trial.js';
 import { handlePostAuthRedirect } from '../../utils/authRedirect';
+import { safeSwitchTab } from '../../utils/safeSwitchTab';
 
 const userStore = useUserStore();
 const isFromSetup = ref(false);
+
+// 顶部返回按钮栏的动态样式，与右侧微信胶囊按钮精确上下居中对齐
+const navBarStyle = ref('');
+
+/**
+ * 计算返回按钮栏位置
+ * 通过微信 getMenuButtonBoundingClientRect 获取胶囊按钮精确位置，
+ * 让返回按钮中心线与胶囊按钮中心线对齐
+ */
+function calcNavBarStyle() {
+  try {
+    const menu = uni.getMenuButtonBoundingClientRect ? uni.getMenuButtonBoundingClientRect() : null;
+    const sys = uni.getSystemInfoSync ? uni.getSystemInfoSync() : {};
+    if (!menu || !sys.windowWidth) return;
+
+    // 将 px 转换为 rpx
+    const pxToRpx = px => Math.round((px * 750) / sys.windowWidth);
+
+    // 胶囊按钮中心线（px）
+    const menuCenterPx = menu.top + menu.height / 2;
+
+    // 返回按钮高度 64rpx，即 32px 对应的高度
+    const btnHeightRpx = 64;
+
+    // 返回按钮中心线与胶囊中心线对齐时的 top（rpx）
+    const topRpx = pxToRpx(menuCenterPx) - btnHeightRpx / 2;
+
+    navBarStyle.value = `top:${topRpx}rpx;height:${btnHeightRpx}rpx;`;
+  } catch (e) {
+    console.warn('[login] 计算导航栏位置失败', e);
+  }
+}
 
 const showBindPhone = ref(false);
 const bindPhone = ref('');
@@ -221,32 +261,46 @@ const wechatLoginCode = ref('');
 // 账号密码登录表单（H5/App 端）
 const accountForm = ref({ username: '', password: '' });
 const showPassword = ref(false);
+// 防止启动阶段（onReady + onShow 连续触发）重复发起跳转，启动期间只允许执行一次 redirectIfLoggedIn（一次性标记，不再重置）
+// 解决 appLaunch with non-empty page stack 红叉：避免 300ms 间隔内跳转指令并行执行两次，让 App.launch 时页面栈非空
+let _redirectPerformedAtStartup = false;
 
 /**
  * 登录页展示时如果已经登录，直接跳走（避免用户手动回到 login 页看到已登录却没跳转）
+ * 使用 onReady 确保页面完成渲染后再跳转，避免 reLaunch timeout
+ * 加「启动期一次性」守卫，防止 onReady + onShow 连续两次并行执行，触发启动期页面栈非空报错
+ * 非启动期（用户手动点返回键又回到 login 页）：不设一次性 guard，允许多次检查跳转
  */
 function redirectIfLoggedIn() {
-  if (userStore.isLoggedIn) {
-    console.log('[登录页] 检测到已登录状态，直接跳转主页');
-    handlePostAuthRedirect(userStore).catch(err => {
-      console.warn('[登录页] 跳转失败，直接 switchTab 到首页:', err?.message || err);
-      uni.switchTab({ url: '/pages/index/index' });
-    });
-  }
+  if (!userStore.isLoggedIn) return;
+  // 启动阶段的首个 1s 窗口内，只允许跳一次；超时后标记清空，允许后续场景（手动回登录页）再次触发
+  const nowBootWindow = Date.now() - ((performance && performance.timeOrigin) || Date.now()) < 2500;
+  if (nowBootWindow && _redirectPerformedAtStartup) return;
+  if (nowBootWindow) _redirectPerformedAtStartup = true;
+  console.log('[登录页] 检测到已登录状态，直接跳转主页');
+  handlePostAuthRedirect(userStore).catch(err => {
+    console.warn('[登录页] 跳转失败，safeSwitchTab 兜底跳首页:', err?.message || err);
+    safeSwitchTab('/pages/index/index');
+  });
 }
 
-onMounted(() => {
+onReady(() => {
   const pages = getCurrentPages();
   const currentPage = pages[pages.length - 1];
   if (currentPage && currentPage.options && currentPage.options.from === 'setup') {
     isFromSetup.value = true;
   }
-  // 页面初始化时检查一次（避免 App.vue 初始化失败却已登录）
-  setTimeout(redirectIfLoggedIn, 200);
+
+  // 根据微信胶囊按钮实际位置，计算返回按钮应放置的位置，确保两者上下居中对齐
+  calcNavBarStyle();
+
+  // 页面渲染完成后再检查并跳转（延迟确保 App.init() 完成）
+  setTimeout(redirectIfLoggedIn, 300);
 });
 
 /**
- * 每次回到登录页，都重新判断：如果后台已经 restore userInfo，则跳走
+ * 每次页面展示时检查登录态：已登录则立即跳转（带守卫防重复）
+ * 场景：用户已登录但手动返回登录页时，需要立刻跳走
  */
 onShow(() => {
   redirectIfLoggedIn();
@@ -339,13 +393,26 @@ function checkPrivacyBeforeLogin() {
   return true;
 }
 
-onMounted(() => {
+/**
+ * 返回上一页或首页
+ * 优先使用 navigateBack 返回上一页，如果页面栈为空（如直接进入登录页），则跳转到首页
+ * 注意：微信小程序端 uni.navigateBack 不返回 Promise，必须用 fail 回调兜底
+ */
+function goBack() {
   const pages = getCurrentPages();
-  const currentPage = pages[pages.length - 1];
-  if (currentPage && currentPage.options && currentPage.options.from === 'setup') {
-    isFromSetup.value = true;
+  if (pages.length > 1) {
+    // 有上一页，返回；用 fail 回调处理 navigateBack 失败场景（如基础库 bug 导致页面栈异常）
+    uni.navigateBack({
+      delta: 1,
+      fail: () => {
+        safeSwitchTab('/pages/index/index');
+      }
+    });
+  } else {
+    // 页面栈为空，跳转到首页
+    safeSwitchTab('/pages/index/index');
   }
-});
+}
 
 function goToRegister() {
   uni.navigateTo({ url: '/pages/register/index?from=setup' });
@@ -415,7 +482,21 @@ async function onWechatLoginClick() {
   uni.showLoading({ title: '登录中...', mask: true });
   try {
     console.log('[登录] 开始 wx.login()');
-    const loginRes = await withTimeout(uni.login({ provider: 'weixin' }), 10000, '微信授权');
+    // 小程序端 uni.login 正确写法：不传 provider 参数（provider 仅 H5/App 端使用）；
+    // 用 Promise 包装避免 callback 模式下返回 undefined，同时结果对象判空防止 3.17.1 灰度基础库回调无参数
+    const loginRes = await withTimeout(
+      new Promise((resolve, reject) => {
+        uni.login({
+          success: (res) => resolve(res || {}),
+          fail: (err) => reject(err || new Error('wx.login 无返回'))
+        });
+      }),
+      10000,
+      '微信授权'
+    );
+    if (!loginRes || !loginRes.code) {
+      throw new Error('微信登录未返回 code，请重试');
+    }
     console.log('[登录] wx.login 成功，code:', loginRes.code);
     wechatLoginCode.value = loginRes.code;
 
@@ -506,12 +587,54 @@ function closeBindPhone() {
 
 <style lang="scss" scoped>
 .login-page {
+  position: relative;
   height: 100vh;
   background: #F7FbF4;
-  padding: calc(48rpx + env(safe-area-inset-top)) 48rpx calc(48rpx + env(safe-area-inset-bottom));
+  /*
+   * 顶部占位：标杆双行兜底 + 原内容顶部 48rpx 留白
+   * - 第一行：硬码 44px 标杆（防止 --status-bar-height 未注入前几帧塌缩顶到胶囊）
+   * - 第二行：var(--status-bar-height,44px) + 88rpx 覆盖第一行 → 适配各机型真实状态栏高度
+   * 左右/下 padding 保持原设计（48rpx + safe-area-inset-bottom）
+   */
+  padding: calc(44px + 88rpx + 48rpx) 48rpx calc(48rpx + env(safe-area-inset-bottom));
+  padding: calc(var(--status-bar-height, 44px) + 88rpx + 48rpx) 48rpx calc(48rpx + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+}
+
+/* ========== 顶部导航栏 ========== */
+.nav-bar {
+  position: absolute;
+  /* top/height 由 JS 根据微信胶囊按钮实际位置动态计算，确保与胶囊上下居中对齐 */
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 48rpx;
+  z-index: 10;
+}
+
+.nav-back {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s ease;
+}
+
+.nav-back:active {
+  transform: scale(0.95);
+}
+
+.nav-back-icon {
+  font-size: 36rpx;
+  color: #27282D;
+  font-weight: 500;
 }
 
 /* ========== 介绍模块（收紧白底，自适应内容大小，垂直居中） ========== */
@@ -542,7 +665,7 @@ function closeBindPhone() {
   height: 100%;
 }
 
-/* logo 加载失败兜底：薄荷绿「瘦」字方框，跟 splash 页一致 */
+/* logo 加载失败兜底：薄荷绿「瘦」字方框 */
 .logo-fallback-box {
   width: 180rpx;
   height: 180rpx;

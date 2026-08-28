@@ -29,13 +29,14 @@
         <button
           v-if="showCancel"
           class="modal-btn cancel"
-          :disabled="loading"
+          :class="{ 'is-disabled': loading || disabled }"
+          :disabled="loading || disabled"
           @click="handleCancel"
         >{{ cancelText }}</button>
         <button
           class="modal-btn confirm"
-          :class="{ loading, danger: confirmDanger }"
-          :disabled="loading"
+          :class="{ loading, danger: confirmDanger, 'is-disabled': loading || disabled }"
+          :disabled="loading || disabled"
           @click="handleConfirm"
         >
           <text v-if="loading" class="btn-loading-dot"></text>
@@ -93,6 +94,7 @@ const props = defineProps({
   showCancel: { type: Boolean, default: true },
   confirmDanger: { type: Boolean, default: false },
   loading: { type: Boolean, default: false },
+  disabled: { type: Boolean, default: false },
   hideHeader: { type: Boolean, default: false },
   hideActions: { type: Boolean, default: false },
   closeOnOverlay: { type: Boolean, default: false },
@@ -241,7 +243,7 @@ function handleOverlayClick() {
 }
 .modal-btn::after { border: none; }
 .modal-btn:active { transform: scale(0.97); }
-.modal-btn[disabled] { opacity: 0.6; }
+.modal-btn.is-disabled { opacity: 0.6; }
 
 .modal-btn.cancel {
   background: #F7FbF4;

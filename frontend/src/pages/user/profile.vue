@@ -1,8 +1,5 @@
 <template>
   <AppPage>
-    <view class="profile-back" @click="goBack">
-      <text class="back-icon">‹</text>
-    </view>
     <view class="profile-page">
       <view class="avatar-card">
         <view class="avatar">
@@ -99,8 +96,8 @@ function redirectToLogin() {
   userStore.logout();
   popupManager.clearCache();
   uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' });
-  // 清除页面栈并回到登录页，防止未登录状态下继续查看旧数据
-  uni.reLaunch({ url: '/pages/login/index' });
+  // token 失效：回到首页 tab，以游客身份浏览
+  uni.reLaunch({ url: '/pages/index/index' });
 }
 
 onMounted(async () => {
@@ -129,24 +126,6 @@ onMounted(async () => {
     console.error(err);
   }
 });
-
-function goBack() {
-  // #ifdef H5
-  if (window.history.length > 1) {
-    window.history.back();
-  } else {
-    uni.switchTab({ url: '/pages/record/index' });
-  }
-  // #endif
-  // #ifndef H5
-  const pages = getCurrentPages();
-  if (pages.length > 1) {
-    uni.navigateBack({ delta: 1 });
-  } else {
-    uni.switchTab({ url: '/pages/record/index' });
-  }
-  // #endif
-}
 
 function onDateChange(e) {
   form.value.target_date = e.detail.value;
@@ -231,33 +210,7 @@ async function save() {
 
 <style lang="scss" scoped>
 .profile-page {
-  padding-top: 140rpx;
-}
-
-.profile-back {
-  position: fixed;
-  top: calc(var(--status-bar-height) + 20rpx);
-  /* #ifdef MP-WEIXIN */
-  top: calc(var(--status-bar-height) + 108rpx);
-  /* #endif */
-  left: 32rpx;
-  z-index: 1000;
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 50%;
-  background: $white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: $shadow-card;
-}
-
-.back-icon {
-  font-size: 40rpx;
-  color: $text-primary;
-  font-weight: $font-bold;
-  line-height: 1;
-  margin-left: -4rpx;
+  /* 原生导航已绘制外部返回按钮，页面不再自绘浮动返回键；顶部内容紧贴 AppPage 起点（原生导航下方） */
 }
 
 .avatar-card {

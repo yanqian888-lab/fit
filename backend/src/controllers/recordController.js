@@ -254,7 +254,7 @@ function saveDiet(req, res) {
 function deleteDiet(req, res) {
   const userId = req.userId;
   const { id } = req.params;
-  db.prepare('DELETE FROM diet_records WHERE id = ? AND user_id = ?').run(id, userId);
+  db.prepare('UPDATE diet_records SET status = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').run(id, userId);
   return res.json(success(null, '删除成功'));
 }
 
@@ -306,6 +306,9 @@ function saveExercise(req, res) {
 
   if (!record_date) {
     return res.status(400).json(error('缺少记录日期', 400));
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(record_date)) {
+    return res.status(400).json(error('日期格式不正确，应为 YYYY-MM-DD', 400));
   }
   if (!VALID_EXERCISE_TYPES.includes(exercise_type)) {
     return res.status(400).json(error('运动类型不合法', 400));
@@ -370,7 +373,7 @@ function saveExercise(req, res) {
 function deleteExercise(req, res) {
   const userId = req.userId;
   const { id } = req.params;
-  db.prepare('DELETE FROM exercise_records WHERE id = ? AND user_id = ?').run(id, userId);
+  db.prepare('UPDATE exercise_records SET status = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').run(id, userId);
   return res.json(success(null, '删除成功'));
 }
 
@@ -434,6 +437,9 @@ function saveBody(req, res) {
   if (!record_date) {
     return res.status(400).json(error('缺少记录日期', 400));
   }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(record_date)) {
+    return res.status(400).json(error('日期格式不正确，应为 YYYY-MM-DD', 400));
+  }
   if (!['weight', 'waist', 'hip', 'chest', 'thigh', 'arm', 'calf', 'body_fat'].includes(type)) {
     return res.status(400).json(error('身体数据类型不合法', 400));
   }
@@ -491,7 +497,7 @@ function saveBody(req, res) {
 function deleteBody(req, res) {
   const userId = req.userId;
   const { id } = req.params;
-  db.prepare('DELETE FROM body_records WHERE id = ? AND user_id = ?').run(id, userId);
+  db.prepare('UPDATE body_records SET status = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').run(id, userId);
   return res.json(success(null, '删除成功'));
 }
 
@@ -532,12 +538,24 @@ function saveHabit(req, res) {
   if (!record_date) {
     return res.status(400).json(error('缺少记录日期', 400));
   }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(record_date)) {
+    return res.status(400).json(error('日期格式不正确，应为 YYYY-MM-DD', 400));
+  }
   if (!VALID_HABIT_TYPES.includes(type)) {
     return res.status(400).json(error('习惯类型不合法', 400));
   }
   const numValue = parseFloat(value);
   if (isNaN(numValue)) {
     return res.status(400).json(error('请输入有效的数值', 400));
+  }
+  if (numValue < 0) {
+    return res.status(400).json(error('数值不能为负数', 400));
+  }
+  // 按习惯类型设置合理上限，避免异常数据入库
+  const typeUpperLimits = { water: 10000, sleep: 24, defecation: 10, mood: 10 };
+  const upperLimit = typeUpperLimits[type];
+  if (typeof upperLimit === 'number' && numValue > upperLimit) {
+    return res.status(400).json(error(`数值过大（${type} 上限 ${upperLimit}）`, 400));
   }
 
   if (id) {
@@ -550,6 +568,29 @@ function saveHabit(req, res) {
     return res.json(success(null, '更新成功'));
   } else {
     const result = withTransaction(() => {
+      // 同一天同类型去重：若已存在则更新而非插入，避免唯一约束冲突
+      const existing = db.prepare(`
+        SELECT id FROM habit_records
+        WHERE user_id = ? AND record_date = ? AND type = ? AND status = 1
+        ORDER BY created_at DESC LIMIT 1
+      `).get(userId, record_date, type);
+
+      if (existing) {
+        const waterMl = type === 'water' ? (parseInt(value) || 0) : 0;
+        db.prepare(`
+          UPDATE habit_records
+          SET value = ?, unit = ?, remark = ?, water_ml = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(value, unit || null, remark || null, waterMl, existing.id);
+
+        if (type === 'water') {
+          db.prepare('UPDATE user_profiles SET total_water = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
+            .run(value, userId);
+        }
+        achievementService.checkAll(userId);
+        return { id: existing.id, updated: true };
+      }
+
       const waterMl = type === 'water' ? (parseInt(value) || 0) : 0;
       const insertId = db.prepare(`
         INSERT INTO habit_records (user_id, record_date, type, value, unit, remark, water_ml, status)
@@ -574,7 +615,7 @@ function saveHabit(req, res) {
 function deleteHabit(req, res) {
   const userId = req.userId;
   const { id } = req.params;
-  db.prepare('DELETE FROM habit_records WHERE id = ? AND user_id = ?').run(id, userId);
+  db.prepare('UPDATE habit_records SET status = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').run(id, userId);
   return res.json(success(null, '删除成功'));
 }
 
@@ -691,30 +732,26 @@ function getMilestoneData(req, res) {
     }
   }
 
-  // 围度逆袭：体重不变但腰围减少3cm以上
+  // 围度逆袭：最新体重稳定但最新腰围比上次减少3cm以上
   let hasMeasureWin = false;
-  if (bodyRecords.length >= 2) {
-    const latest = bodyRecords[bodyRecords.length - 1];
-    const prev = bodyRecords[bodyRecords.length - 2];
-    if (latest.type === prev.type && latest.type === 'body' && 
-        latest.waist && prev.waist && latest.weight && prev.weight &&
-        Math.abs(latest.weight - prev.weight) < 0.5 && 
-        (prev.waist - latest.waist) >= 3) {
-      hasMeasureWin = true;
-    }
+  const latestWeight = bodyRecords.filter(r => r.type === 'weight').slice(-1)[0];
+  const latestWaist = bodyRecords.filter(r => r.type === 'waist').slice(-1)[0];
+  const prevWaist = bodyRecords.filter(r => r.type === 'waist').slice(-2, -1)[0];
+  if (latestWeight && latestWaist && prevWaist && latestWeight.value &&
+      Math.abs(latestWeight.value - (bodyRecords.filter(r => r.type === 'weight').slice(-2, -1)[0]?.value || latestWeight.value)) < 0.5 &&
+      (prevWaist.value - latestWaist.value) >= 3) {
+    hasMeasureWin = true;
   }
 
-  // 肌肉增长：体重不变但肌肉量提升1kg以上
+  // 肌肉增长：体重稳定但体脂率下降（增肌减脂指标）
   let hasMuscleWin = false;
-  if (bodyRecords.length >= 2) {
-    const latest = bodyRecords[bodyRecords.length - 1];
-    const prev = bodyRecords[bodyRecords.length - 2];
-    if (latest.type === prev.type && latest.type === 'body' && 
-        latest.muscle_mass && prev.muscle_mass && latest.weight && prev.weight &&
-        Math.abs(latest.weight - prev.weight) < 0.5 && 
-        (latest.muscle_mass - prev.muscle_mass) >= 1) {
-      hasMuscleWin = true;
-    }
+  const latestBodyFat = bodyRecords.filter(r => r.type === 'body_fat').slice(-1)[0];
+  const prevBodyFat = bodyRecords.filter(r => r.type === 'body_fat').slice(-2, -1)[0];
+  const prevWeight = bodyRecords.filter(r => r.type === 'weight').slice(-2, -1)[0];
+  if (latestWeight && latestBodyFat && prevBodyFat && latestWeight.value &&
+      Math.abs(latestWeight.value - (prevWeight?.value || latestWeight.value)) < 0.5 &&
+      (prevBodyFat.value - latestBodyFat.value) >= 1) {
+    hasMuscleWin = true;
   }
 
   return res.json(success({
@@ -734,11 +771,66 @@ function getMilestoneData(req, res) {
       exercise_streak: maxStreak(exerciseRecords, r => r.has_exercise === 1),
       reject_count: habitStats.reject_count || 0,
       exercise_week_minutes: exerciseMinutes.length > 0 ? exerciseMinutes[exerciseMinutes.length - 1].total_minutes : 0,
-      exercise_week_streak: 0, // 简化处理
-      no_late_night_week: 0,
+      exercise_week_streak: (() => {
+        if (exerciseMinutes.length === 0) return 0;
+        let streak = 0;
+        for (let i = exerciseMinutes.length - 1; i >= 0; i--) {
+          if ((exerciseMinutes[i].total_minutes || 0) > 0) streak++;
+          else break;
+        }
+        return streak;
+      })(),
+      no_late_night_week: (() => {
+        const now = new Date();
+        const day = now.getDay() || 7; // 周一为起点
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - (day - 1));
+        const weekStart = monday.toISOString().split('T')[0];
+        const count = db.prepare(`
+          SELECT COUNT(*) as c FROM habit_records
+          WHERE user_id = ? AND status = 1
+            AND no_late_night = 1
+            AND record_date >= ? AND record_date <= ?
+        `).get(userId, weekStart, new Date().toISOString().split('T')[0]).c || 0;
+        return count;
+      })(),
       no_late_night_streak: maxStreak(lateNightRecords, r => r.no_late_night === 1),
-      weigh_week: 0,
-      weigh_streak: 0,
+      weigh_week: (() => {
+        const now = new Date();
+        const day = now.getDay() || 7;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - (day - 1));
+        const weekStart = monday.toISOString().split('T')[0];
+        const count = db.prepare(`
+          SELECT COUNT(DISTINCT record_date) as c FROM body_records
+          WHERE user_id = ? AND status = 1
+            AND type = 'weight'
+            AND record_date >= ? AND record_date <= ?
+        `).get(userId, weekStart, new Date().toISOString().split('T')[0]).c || 0;
+        return count;
+      })(),
+      weigh_streak: (() => {
+        const dates = [...new Set(weighRecords.map(r => r.record_date))].sort();
+        if (dates.length === 0) return 0;
+        let streak = 0;
+        let prev = null;
+        for (let i = dates.length - 1; i >= 0; i--) {
+          const cur = new Date(dates[i] + 'T00:00:00');
+          if (!prev) {
+            streak = 1;
+            prev = cur;
+            continue;
+          }
+          const diffDays = Math.round((prev - cur) / 86400000);
+          if (diffDays === 1) {
+            streak++;
+            prev = cur;
+          } else {
+            break;
+          }
+        }
+        return streak;
+      })(),
       maintain_target_days: maintainDays,
       plateau_break: hasPlateauBreak,
       measure_win: hasMeasureWin,

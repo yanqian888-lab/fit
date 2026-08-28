@@ -186,6 +186,8 @@ export const newbieTaskApi = {
 
 // 宠物陪伴系统（搭搭）
 export const petApi = {
+  // 公共接口：无需登录，返回 sprite/scenes/anim 等展示配置
+  getPetConfig: () => get('/pet/config'),
   getPet: (params) => get('/pet', params),
   feed: (inventoryItemIds) => post('/pet/feed', { inventory_item_ids: Array.isArray(inventoryItemIds) ? inventoryItemIds : [inventoryItemIds] }),
   exercise: (optionKey) => post('/pet/exercise', { option_key: optionKey }),

@@ -1,13 +1,13 @@
 {
   "pages": [
     {
-      "path": "pages/login/index",
+      "path": "pages/index/index",
       "style": {
         "navigationStyle": "custom"
       }
     },
     {
-      "path": "pages/splash/index",
+      "path": "pages/login/index",
       "style": {
         "navigationStyle": "custom"
       }
@@ -44,12 +44,6 @@
     },
     {
       "path": "pages/guide/feature",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/index/index",
       "style": {
         "navigationStyle": "custom"
       }
@@ -93,13 +87,13 @@
     {
       "path": "pages/record/create-food",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "创建食物"
       }
     },
     {
       "path": "pages/record/food-detail",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "食物详情"
       }
     },
     {
@@ -153,13 +147,13 @@
     {
       "path": "pages/museum/diary-detail",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "日记详情"
       }
     },
     {
       "path": "pages/workout/session",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "跟练"
       }
     },
     {
@@ -225,43 +219,43 @@
     {
       "path": "pages/user/profile",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "个人资料"
       }
     },
     {
       "path": "pages/user/data-manage",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "数据管理"
       }
     },
     {
       "path": "pages/user/achievement",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "成就中心"
       }
     },
     {
       "path": "pages/tasks/index",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "任务中心"
       }
     },
     {
       "path": "pages/shop/index",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "浆果商店"
       }
     },
     {
       "path": "pages/inventory/index",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "背包"
       }
     },
     {
       "path": "pages/user/notifications",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "通知设置"
       }
     },
     {
@@ -273,7 +267,7 @@
     {
       "path": "pages/user/about",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "关于我们"
       }
     },
     {
@@ -291,19 +285,19 @@
     {
       "path": "pages/user/help",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "帮助中心"
       }
     },
     {
       "path": "pages/user/help-detail",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "帮助详情"
       }
     },
     {
       "path": "pages/user/feedback",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "意见反馈"
       }
     },
     {
@@ -321,13 +315,13 @@
     {
       "path": "pages/admin/feedback",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "用户反馈"
       }
     },
     {
       "path": "pages/admin/privacy",
       "style": {
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "隐私政策"
       }
     },
     {
@@ -347,39 +341,39 @@
   "globalStyle": {
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "掉秤搭搭",
-    "navigationBarBackgroundColor": "#F5F7FA",
-    "backgroundColor": "#F5F7FA"
+    "navigationBarBackgroundColor": "#F7FbF4",
+    "backgroundColor": "#F7FbF4"
   },
   "tabBar": {
-    "custom": true,
+    "custom": false,
     "color": "#9CA3AF",
-    "selectedColor": "#A8E6CF",
+    "selectedColor": "#563E22",
     "borderStyle": "white",
-    "backgroundColor": "#FFFFFF",
+    "backgroundColor": "#F7FbF4",
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "聊聊",
-        "iconPath": "static/tabbar/chat.png",
-        "selectedIconPath": "static/tabbar/chat-active.png"
+        "text": "",
+        "iconPath": "static/image/icon/tabbar_liaoliao.png",
+        "selectedIconPath": "static/image/icon/tabbar_liaoliao_hover.png"
       },
       {
         "pagePath": "pages/pet/index",
-        "text": "搭搭",
-        "iconPath": "static/tabbar/pet.png",
-        "selectedIconPath": "static/tabbar/pet-active.png"
+        "text": "",
+        "iconPath": "static/image/icon/tabbar_dada.png",
+        "selectedIconPath": "static/image/icon/tabbar_dada_hover.png"
       },
       {
         "pagePath": "pages/record/index",
-        "text": "记录",
-        "iconPath": "static/tabbar/record.png",
-        "selectedIconPath": "static/tabbar/record-active.png"
+        "text": "",
+        "iconPath": "static/image/icon/tabbar_gongjvxiang.png",
+        "selectedIconPath": "static/image/icon/tabbar_gongjvxiang_hover.png"
       },
       {
         "pagePath": "pages/museum/index",
-        "text": "博物馆",
-        "iconPath": "static/tabbar/museum.png",
-        "selectedIconPath": "static/tabbar/museum-active.png"
+        "text": "",
+        "iconPath": "static/image/icon/tabbar_bowuguan.png",
+        "selectedIconPath": "static/image/icon/tabbar_bowuguan_hover.png"
       }
     ]
   }

@@ -337,7 +337,7 @@ function exportData(req, res) {
   function getSafeColumns(table) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
     const sensitive = new Set([
-      'password_hash', 'plain_password', 'openid', 'unionid',
+      'password_hash', 'openid', 'unionid',
       'secret', 'token', 'refresh_token', 'access_token', 'api_key'
     ]);
     return columns.filter(c => !sensitive.has(c));

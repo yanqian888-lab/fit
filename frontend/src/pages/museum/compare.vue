@@ -1,6 +1,5 @@
 <template>
-  <AppPage>
-    <AppHeader title="照片墙" />
+  <AppPage :showHeader="true" title="对比分析">
     <view class="photo-wall-page">
       <!-- 上传按钮 -->
       <view v-if="photos.length > 0" class="upload-bar">

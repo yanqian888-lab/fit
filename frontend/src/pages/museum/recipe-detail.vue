@@ -1,14 +1,7 @@
 <template>
+  <AppPage :showHeader="true" title="食谱详情">
   <view class="recipe-detail-page">
-    <view class="header-bg"></view>
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
     <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <view class="header-center">
-        <text class="header-title">食谱详情</text>
-      </view>
       <view class="header-right">
         <text class="delete-btn" @click="deleteRecipe">删除</text>
       </view>
@@ -111,18 +104,18 @@
       @confirm="confirmDelete"
     />
   </view>
+  </AppPage>
 </template>
 
 <script setup>
+import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { museumApi, recordApi } from '../../api';
 import { showRewardToast } from '../../utils/rewardToast.js';
-import { goBack as navigateBack } from '../../utils/navigate';
 import AppModal from '../../components/AppModal.vue';
 
 const recipe = ref({});
 const recipeId = ref(null);
-const statusBarHeight = ref(44);
 
 // 删除确认弹框状态
 const showDeleteModal = ref(false);
@@ -196,17 +189,6 @@ const tip = computed(() => {
 });
 
 onMounted(() => {
-  // #ifdef H5
-  statusBarHeight.value = 44;
-  // #endif
-  // #ifndef H5
-  const sysInfo = uni.getSystemInfoSync();
-  statusBarHeight.value = sysInfo.statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-  // #endif
-
   const pages = getCurrentPages();
   const query = pages[pages.length - 1].$page?.options || {};
   recipeId.value = parseInt(query.id);
@@ -262,10 +244,6 @@ function parseStepsFromText(content) {
   const match = content.match(/(?:做法|步骤)[：:]\s*([\s\S]*?)(?=小贴士|$)/i);
   if (match) return match[1].trim();
   return null;
-}
-
-function goBack() {
-  navigateBack('/pages/museum/recipes');
 }
 
 async function loadRecipe() {
@@ -380,67 +358,16 @@ async function confirmDelete() {
   position: relative;
   background: #F7FbF4;
 }
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 360rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
 .page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
   position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 16rpx 32rpx;
 }
 
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 48rpx;
-  color: #666666;
-  font-weight: 700;
-  line-height: 1;
-  margin-left: -8rpx;
-}
-
-.header-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.header-title {
-  font-size: 34rpx;
-  font-weight: 700;
-  color: #27282D;
-  line-height: 42rpx;
-}
-
 .header-right {
-  width: 60rpx;
   display: flex;
   align-items: center;
   justify-content: flex-end;

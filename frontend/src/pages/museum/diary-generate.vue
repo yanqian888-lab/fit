@@ -1,17 +1,6 @@
 <template>
+  <AppPage :showHeader="true" title="生成日记">
   <view class="generate-page">
-    <view class="header-bg"></view>
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <view class="header-center">
-        <text class="header-title">生成今日分析</text>
-      </view>
-      <view class="header-right"></view>
-    </view>
-
     <view class="page-body">
       <!-- 生成过程 -->
       <view v-if="status === 'generating'" class="process-card">
@@ -64,7 +53,7 @@
       <view class="actions">
         <AppButton v-if="status === 'done'" block type="primary" @click="regenerate">重新生成</AppButton>
         <AppButton v-if="status === 'error'" block type="primary" @click="regenerate">重试</AppButton>
-        <AppButton block :type="status === 'generating' ? 'ghost' : 'secondary'" @click="goBack">
+        <AppButton block :type="status === 'generating' ? 'ghost' : 'secondary'" @click="handleBack">
           {{ status === 'generating' ? '取消' : '返回' }}
         </AppButton>
       </view>
@@ -73,13 +62,14 @@
     <!-- 授权引导弹窗 -->
     <AuthPopup ref="authPopupRef" />
   </view>
+  </AppPage>
 </template>
 
 <script setup>
+import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { aiApi } from '../../api';
 import { getToday } from '../../utils/date';
-import { goBack as navigateBack } from '../../utils/navigate';
 import { checkPermission, reportCount } from '../../utils/trial.js';
 import AuthPopup from '../../components/AuthPopup.vue';
 
@@ -117,14 +107,6 @@ function getFastingParams(date) {
   return params;
 }
 import AppButton from '../../components/AppButton.vue';
-
-const statusBarHeight = ref(44);
-try {
-  statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-} catch (e) {}
 
 const props = defineProps({
   date: { type: String, default: '' }
@@ -205,11 +187,16 @@ function regenerate() {
   startGeneration();
 }
 
-function goBack() {
+function handleBack() {
   if (status.value === 'generating') {
     cancelled = true;
   }
-  navigateBack('/pages/museum/index');
+  const pages = getCurrentPages();
+  if (pages.length > 1) {
+    uni.navigateBack();
+  } else {
+    uni.switchTab({ url: '/pages/museum/index' });
+  }
 }
 </script>
 
@@ -219,69 +206,6 @@ function goBack() {
   background: #F7FbF4;
   position: relative;
 }
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 360rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 32rpx;
-}
-
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 48rpx;
-  color: #666666;
-  font-weight: 700;
-  line-height: 1;
-  margin-left: -8rpx;
-}
-
-.header-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.header-title {
-  font-size: 34rpx;
-  font-weight: 700;
-  color: #27282D;
-  line-height: 42rpx;
-}
-
-.header-right {
-  width: 60rpx;
-}
-
 .page-body {
   position: relative;
   z-index: 1;

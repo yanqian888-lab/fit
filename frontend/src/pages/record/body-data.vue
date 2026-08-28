@@ -1,20 +1,6 @@
 <template>
+  <AppPage :showHeader="true" title="身体数据">
   <view class="body-page">
-    <!-- 顶部渐变背景 -->
-    <view class="header-bg"></view>
-
-    <!-- 状态栏占位 -->
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-
-    <!-- 页面标题栏 -->
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <text class="page-title">体重记录</text>
-      <view class="header-right"></view>
-    </view>
-
     <view class="body-scroll">
       <!-- 日期模块 -->
       <view class="date-module">
@@ -106,7 +92,7 @@
             </view>
           </view>
           <view class="trend-chart">
-            <view v-if="chartPoints.length > 1" class="trend-svg">
+            <view v-if="chartPoints.length > 0" class="trend-svg">
               <view
                 v-for="(seg, idx) in chartSegments"
                 :key="'seg'+idx"
@@ -209,7 +195,7 @@
           <text class="fullscreen-close" @click="closeFullscreenChart">关闭</text>
         </view>
         <view class="fullscreen-chart">
-          <view v-if="chartPoints.length > 1" class="fullscreen-trend-svg">
+          <view v-if="fullscreenPoints.length > 0" class="fullscreen-trend-svg">
             <view
               v-for="(seg, idx) in fullscreenSegments"
               :key="'fseg'+idx"
@@ -233,17 +219,16 @@
       </view>
     </view>
   </view>
+  </AppPage>
 </template>
 
 <script setup>
+import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted, watch } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi } from '../../api';
 import { showRewardToast } from '../../utils/rewardToast.js';
 import { getToday, formatDate } from '../../utils/date';
-import { goBack as navigateBack } from '../../utils/navigate';
-
-const statusBarHeight = ref(44);
 
 // 日期相关
 const today = getToday();
@@ -464,11 +449,21 @@ function getCalendarDays(monthDate) {
     days.push({ date: curStr, day: cur.getDate(), isCurrentMonth: true, isToday: curStr === today, isSelected: curStr === selectedDate.value, hasRecord: recordDates.value.has(curStr) });
   }
 
-  const remaining = 42 - days.length;
+  // 下月补位：只补齐当前周；末行若没有当月日期则整行不展示
+  const remaining = (7 - (days.length % 7)) % 7;
   for (let i = 1; i <= remaining; i++) {
     const cur = new Date(year, month + 1, i);
     const curStr = formatDate(cur.toISOString());
     days.push({ date: curStr, day: cur.getDate(), isCurrentMonth: false, isToday: curStr === today, isSelected: curStr === selectedDate.value, hasRecord: recordDates.value.has(curStr) });
+  }
+  // 末行校验：最后一周里「当月日期数 ≤ 2」（即 ≥5/7 都是下月日期），整周删除。
+  // 避免月底 1-2 天 + 下月 5-6 天凑一周时，flex-wrap 拆开后最后出现仅 2-3 个零星下月日期的空白行。
+  const weeks = Math.floor(days.length / 7);
+  if (weeks >= 2) {
+    const lastIdx = (weeks - 1) * 7;
+    const lastWeek = days.slice(lastIdx, lastIdx + 7);
+    const currentCount = lastWeek.filter(d => d.isCurrentMonth).length;
+    if (currentCount <= 2) days.splice(lastIdx, 7);
   }
   return days;
 }
@@ -573,10 +568,6 @@ async function loadProfile() {
   }
 }
 
-function goBack() {
-  navigateBack('/pages/record/index');
-}
-
 function openWeightModal() {
   showWeightModal.value = true;
   weightForm.value = { value: '', bodyFat: '' };
@@ -667,17 +658,6 @@ function closeFullscreenChart() {
 }
 
 onMounted(() => {
-  // #ifdef H5
-  statusBarHeight.value = 44;
-  // #endif
-  // #ifndef H5
-  const sysInfo = uni.getSystemInfoSync();
-  statusBarHeight.value = sysInfo.statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-  // #endif
-
   loadData();
 });
 
@@ -697,64 +677,6 @@ watch(selectedDate, updateCurrentData);
   background: #F7FbF4;
   overflow: hidden;
 }
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 360rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 32rpx 24rpx;
-}
-
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 48rpx;
-  color: #666666;
-  font-weight: 700;
-  line-height: 1;
-  margin-left: -8rpx;
-}
-
-.page-title {
-  flex: 1;
-  text-align: center;
-  font-size: 36rpx;
-  font-weight: 700;
-  color: #27282D;
-  line-height: 40rpx;
-}
-
-.header-right {
-  width: 60rpx;
-}
-
 /* 日期模块 */
 .date-module {
   position: relative;
@@ -882,12 +804,13 @@ watch(selectedDate, updateCurrentData);
 .calendar-days {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: flex-start;
   padding: 0 8rpx;
 }
 
 .calendar-day {
-  width: 60rpx;
+  width: 14.2857%;
+  flex: 0 0 14.2857%;
   height: 72rpx;
   display: flex;
   flex-direction: column;
@@ -1146,17 +1069,17 @@ watch(selectedDate, updateCurrentData);
   line-height: 30rpx;
 }
 
-/* 围度网格 */
+/* 围度网格 —— 与上面"当前数据"3列完全对齐：width 32%（商店弹层同款跨屏稳定写法）+ flex-start + gap */
 .measurement-grid {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: flex-start; /* 关键：去掉 space-between，避免 6 个围度（2行×3列）第二行 space-between 算法把元素拆成左1+中空+右2 → 视觉变成2列中间空白 */
   gap: 16rpx;
   margin-bottom: 32rpx;
 }
 
 .measurement-item {
-  width: calc(33.33% - 11rpx);
+  width: 32%; /* 3列一行：32% × 3 = 96%，剩余 4% 由 gap 16rpx 分摊，跨屏幕稳定 */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1164,6 +1087,7 @@ watch(selectedDate, updateCurrentData);
   background: #F0F0F0;
   border-radius: 24rpx;
   padding: 28rpx 0;
+  box-sizing: border-box;
 }
 
 .measurement-value {

@@ -132,7 +132,7 @@ async function confirmClearAll() {
     await dataApi.clearAll();
     uni.clearStorage();
     uni.showToast({ title: '已清空', icon: 'success' });
-    setTimeout(() => uni.reLaunch({ url: '/pages/login/index' }), 800);
+    setTimeout(() => uni.reLaunch({ url: '/pages/index/index' }), 800);
   } catch (err) {
     uni.showToast({ title: '清空失败', icon: 'none' });
   }

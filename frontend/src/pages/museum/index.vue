@@ -7,8 +7,15 @@
       <text class="header-title">博物馆</text>
     </view>
 
+    <!-- 加载中占位（首次进入且无缓存时显示） -->
+    <view v-if="showLoading" class="loading-placeholder">
+      <view class="placeholder-card"></view>
+      <view class="placeholder-card"></view>
+      <view class="placeholder-card"></view>
+    </view>
+
     <!-- 减重总进度 -->
-    <view class="progress-card">
+    <view v-if="!showLoading" class="progress-card">
       <view class="progress-header">
         <text class="progress-title">减重总进度</text>
         <view class="progress-edit" @click="openTargetPanel">
@@ -26,14 +33,22 @@
             class="gauge-progress"
             :style="{ background: `conic-gradient(from 270deg, #8DBB77 ${gaugeProgressDeg}deg, rgba(255,255,255,0) ${gaugeProgressDeg}deg 180deg, rgba(255,255,255,0) 180deg 360deg)` }"
           ></view>
+          <!-- 内圆把实心圆裁成环形（与卡片底色一致） -->
+          <view class="gauge-inner"></view>
         </view>
         <view class="gauge-info gauge-info-left">
           <text class="gauge-label">初始体重</text>
-          <text class="gauge-value">{{ formatWeight(overview.initial_weight) }}kg</text>
+          <view class="gauge-value-wrap">
+            <text class="gauge-value">{{ formatWeight(overview.initial_weight) }}</text>
+            <text class="gauge-unit">kg</text>
+          </view>
         </view>
         <view class="gauge-info gauge-info-right">
           <text class="gauge-label">目标体重</text>
-          <text class="gauge-value">{{ formatWeight(overview.target_weight) }}kg</text>
+          <view class="gauge-value-wrap">
+            <text class="gauge-value">{{ formatWeight(overview.target_weight) }}</text>
+            <text class="gauge-unit">kg</text>
+          </view>
         </view>
         <view class="gauge-info gauge-info-center">
           <text class="gauge-label">当前完成</text>
@@ -80,7 +95,6 @@
       </view>
     </view>
 
-    <CustomTabBar />
   </view>
 </template>
 
@@ -89,13 +103,27 @@ import { ref, computed, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { museumApi, userApi } from '../../api';
 import { useUserStore } from '../../store';
-import CustomTabBar from '../../custom-tab-bar/index.vue';
-
+import { usePageCacheStore, CACHE_KEYS } from '../../store/page-cache';
 const userStore = useUserStore();
+const pageCache = usePageCacheStore();
 const overview = ref({});
 const showTargetPanel = ref(false);
 const initialWeightInput = ref('');
 const targetWeightInput = ref('');
+
+/**
+ * 加载状态：
+ * - showLoading 为 true 时显示骨架屏占位
+ * - 初始值取决于是否有缓存数据（避免首帧白屏）
+ */
+const hasCachedData = ref(false);
+const loading = ref(false);
+
+/**
+ * 是否显示加载中占位
+ * 条件：正在加载 且 没有缓存数据可显示
+ */
+const showLoading = computed(() => loading.value && !hasCachedData.value);
 
 const todayDate = computed(() => {
   const d = new Date();
@@ -138,19 +166,62 @@ function formatWeight(w) {
 }
 
 function goTo(url) {
+  if (!userStore.requireAuth()) return;
   uni.navigateTo({ url });
 }
 
+/**
+ * 加载博物馆概览数据
+ * 支持缓存策略：先显示缓存，再后台刷新
+ */
 async function load() {
   try {
     const res = await museumApi.getOverview();
     overview.value = res.data || {};
+    // 更新缓存
+    pageCache.setCache(CACHE_KEYS.MUSEUM_OVERVIEW, overview.value);
   } catch (err) {
     console.error(err);
   }
 }
 
+/**
+ * 初始化：从缓存恢复数据
+ * @returns {boolean} 是否有缓存数据
+ */
+function initFromCache() {
+  const cached = pageCache.getCache(CACHE_KEYS.MUSEUM_OVERVIEW);
+  if (cached) {
+    // 有缓存，直接渲染缓存数据（避免白屏）
+    overview.value = cached;
+    hasCachedData.value = true;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 根据缓存状态决定是否需要刷新
+ * @returns {boolean} true 表示需要刷新
+ */
+function needRefresh() {
+  // 需要强制刷新（如保存数据后）
+  if (pageCache.consumeForceRefresh(CACHE_KEYS.MUSEUM_OVERVIEW)) {
+    return true;
+  }
+  // 首次进入且无缓存
+  if (!hasCachedData.value) {
+    return true;
+  }
+  // 缓存过期（超过 5 分钟）
+  if (pageCache.isExpired(CACHE_KEYS.MUSEUM_OVERVIEW)) {
+    return true;
+  }
+  return false;
+}
+
 function openTargetPanel() {
+  if (!userStore.requireAuth()) return;
   const profile = overview.value.initial_weight !== undefined
     ? overview.value
     : userStore.userInfo?.profile || {};
@@ -186,11 +257,40 @@ async function saveTargetWeight() {
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  // 1. 先从缓存恢复数据（避免白屏）
+  const hasCache = initFromCache();
+  // 2. 后台异步刷新
+  if (userStore.isLoggedIn) {
+    // 没有缓存时显示 loading，有缓存时直接显示缓存数据
+    if (!hasCache) {
+      loading.value = true;
+    }
+    // 使用 nextTick 让缓存数据先渲染，再刷新
+    nextTick(() => {
+      load().finally(() => {
+        loading.value = false;
+        hasCachedData.value = true;
+      });
+    });
+  }
+});
+
 onShow(() => {
-  load();
-  uni.$emit('tabbar-select', 3);
-  uni.hideTabBar({ animation: false }).catch(() => {});
+  // 根据缓存状态决定是否需要刷新
+  if (userStore.isLoggedIn && needRefresh()) {
+    // 没有缓存数据时显示 loading
+    if (!hasCachedData.value) {
+      loading.value = true;
+    }
+    // 异步刷新，不阻塞 UI
+    nextTick(() => {
+      load().finally(() => {
+        loading.value = false;
+        hasCachedData.value = true;
+      });
+    });
+  }
 });
 </script>
 
@@ -202,12 +302,44 @@ onShow(() => {
   box-sizing: border-box;
 }
 
+/* 加载中占位符样式 */
+.loading-placeholder {
+  padding: 24rpx 0;
+}
+
+.placeholder-card {
+  height: 200rpx;
+  background: linear-gradient(90deg, #E8F5E8 25%, #F5FAF5 50%, #E8F5E8 75%);
+  background-size: 200% 100%;
+  border-radius: 24rpx;
+  margin-bottom: 24rpx;
+  animation: placeholder-shimmer 1.5s infinite;
+}
+
+.placeholder-card:nth-child(2) {
+  height: 300rpx;
+}
+
+.placeholder-card:nth-child(3) {
+  height: 150rpx;
+}
+
+@keyframes placeholder-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .status-bar {
-  height: var(--status-bar-height);
-  /* #ifdef MP-WEIXIN */
-  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
-  height: calc(var(--status-bar-height) + 88rpx);
-  /* #endif */
+  /* 标杆第一行硬码兜底：44px + 88rpx，--status-bar-height 未注入前几帧不塌缩 */
+  height: calc(44px + 88rpx);
+  /* 标杆第二行：兼容所有端 var 注入真实高度，覆盖第一行 */
+  height: calc(var(--status-bar-height, 44px) + 88rpx);
+  /* 与系统 navigationBarBackgroundColor 一致，避免顶部两层色差 */
+  background: #F7FbF4;
+  /* 左右负 margin 抵消 museum-page 的 32rpx padding，让背景铺满屏幕两侧 */
+  margin-left: -32rpx;
+  margin-right: -32rpx;
+  flex-shrink: 0;
 }
 
 .page-header {
@@ -281,27 +413,41 @@ onShow(() => {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 70%;
-  /* 维持原 viewBox 300:170 比例，圆下半部分由 overflow 截断 */
-  aspect-ratio: 300 / 170;
+  /* aspect-ratio 小程序不支持，改用显式尺寸（300:170 比例） */
+  width: 420rpx;
+  height: 238rpx;
   z-index: 1;
   overflow: hidden;
 }
 
-/* 半圆轨道：圆心贴容器底部中心，上半圆可见 */
+/* 半圆轨道：圆心贴容器底部中心（bottom 为负的半径），上半圆可见 */
 .gauge-track,
 .gauge-progress {
   position: absolute;
   left: 50%;
-  bottom: 0;
-  width: 100%;
-  aspect-ratio: 1;
+  bottom: -210rpx;
+  /* aspect-ratio 小程序不支持，显式正方形 */
+  width: 420rpx;
+  height: 420rpx;
   border-radius: 50%;
   transform: translateX(-50%);
 }
 
 .gauge-track {
   background: #FFFFFF;
+}
+
+/* 内圆裁出环形：与轨道同心（圆心同样在容器底部中点），颜色取卡片底色 */
+.gauge-inner {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 372rpx;
+  height: 372rpx;
+  border-radius: 50%;
+  bottom: -186rpx;
+  background: #DDF2D2;
+  z-index: 1;
 }
 
 /* .gauge-progress 由内联 style 注入 conic-gradient 进度，from 270deg 让 0° 起点在 9 点钟方向 */
@@ -343,10 +489,34 @@ onShow(() => {
   font-weight: 600;
   color: #27282D;
   line-height: 1.2;
+}
+
+/* 数值 + 单位容器：垂直排列，水平居中 */
+.gauge-value-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   margin-top: 6rpx;
 }
 
+/* 单位文字：与数值保持一致的字号、字重、字色 */
+.gauge-unit {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #27282D;
+  line-height: 1.2;
+  margin-top: 6rpx;
+}
+
+/* gauge-info 内的 gauge-value：根据是否在 gauge-value-wrap 内调整外边距 */
+.gauge-info-left .gauge-value,
+.gauge-info-right .gauge-value {
+  margin-top: 0;
+}
+
+/* 独立使用 gauge-value（如中间百分比）保留原 margin-top 和字号 */
 .gauge-info-center .gauge-value {
+  margin-top: 6rpx;
   font-size: 56rpx;
   font-weight: 700;
   line-height: 1.1;

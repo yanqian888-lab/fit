@@ -1,16 +1,4 @@
-.app-button.disabled,
-.app-button[disabled] {
-  background: $gray-200 !important;
-  color: $text-tertiary !important;
-  box-shadow: none !important;
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.app-button.disabled:active,
-.app-button[disabled]:active {
-  transform: none;
-}<template>
+<template>
   <button class="app-button" :class="[type, size, { block, disabled: disabled || loading }]" :disabled="disabled || loading" @click="onClick">
     <image v-if="loading" class="btn-loading" src="/static/image/icon/loading01.svg" mode="aspectFit" />
     <slot></slot>

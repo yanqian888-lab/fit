@@ -1,17 +1,6 @@
 <template>
+  <AppPage :showHeader="true" title="感悟与心情">
   <view class="insights-page">
-    <view class="header-bg"></view>
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <view class="header-center">
-        <text class="header-title">感悟与心情</text>
-      </view>
-      <view class="header-right"></view>
-    </view>
-
     <view class="search-bar">
       <input
         v-model="keyword"
@@ -70,27 +59,22 @@
       @confirm="confirmDelete"
     />
   </view>
+  </AppPage>
 </template>
 
 <script setup>
+import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { onShow, onReachBottom } from '@dcloudio/uni-app';
 import { museumApi } from '../../api';
 import { formatDate } from '../../utils/date';
-import { goBack as navigateBack } from '../../utils/navigate';
 import AppEmpty from '../../components/AppEmpty.vue';
 import AppLoadMore from '../../components/AppLoadMore.vue';
 import AppModal from '../../components/AppModal.vue';
 
-const statusBarHeight = ref(44);
-
 // 删除确认弹框状态
 const showDeleteModal = ref(false);
 let pendingDeleteItem = null;
-
-function goBack() {
-  navigateBack('/pages/museum/index');
-}
 
 const quoteList = ref([]);
 const insightList = ref([]);
@@ -222,17 +206,6 @@ async function confirmDelete() {
 }
 
 onMounted(() => {
-  // #ifdef H5
-  statusBarHeight.value = 44;
-  // #endif
-  // #ifndef H5
-  const sysInfo = uni.getSystemInfoSync();
-  statusBarHeight.value = sysInfo.statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-  // #endif
-
   load();
 });
 onShow(() => {
@@ -259,69 +232,6 @@ onReachBottom(() => {
   position: relative;
   background: #F7FbF4;
 }
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 360rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 32rpx;
-}
-
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 48rpx;
-  color: #666666;
-  font-weight: 700;
-  line-height: 1;
-  margin-left: -8rpx;
-}
-
-.header-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.header-title {
-  font-size: 34rpx;
-  font-weight: 700;
-  color: #27282D;
-  line-height: 42rpx;
-}
-
-.header-right {
-  width: 60rpx;
-}
-
 .search-bar {
   position: relative;
   z-index: 1;

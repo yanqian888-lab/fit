@@ -1,6 +1,5 @@
 <template>
-  <AppPage>
-    <AppHeader title="聊天设置" />
+  <AppPage :showHeader="true" title="聊天设置">
     <view class="settings-page">
       <view class="settings-card">
         <view class="setting-item">

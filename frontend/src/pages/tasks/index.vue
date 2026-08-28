@@ -1,12 +1,5 @@
 <template>
   <view class="tasks-page">
-    <view class="status-bar"></view>
-
-    <!-- 返回按钮 -->
-    <view class="back-btn" @click="goBack">
-      <image class="back-icon" src="/static/image/icon/fanhui.png" mode="aspectFit" />
-    </view>
-
     <!-- 顶部标题图 -->
     <image class="title-img" src="/static/image/icon/renwuban_biaoti@3x.png" mode="aspectFit" />
 
@@ -85,7 +78,6 @@
 import { ref, computed, onMounted } from 'vue';
 import { petApi } from '../../api';
 
-const statusBarHeight = ref(44);
 const tasks = ref([]);
 const checkin = ref({});
 const receiptVisible = ref(false);
@@ -180,15 +172,6 @@ function goNewbieTasks() {
   uni.navigateTo({ url: '/pages/onboarding/tasks' });
 }
 
-function goBack() {
-  const pages = getCurrentPages();
-  if (pages.length > 1) {
-    uni.navigateBack();
-  } else {
-    uni.switchTab({ url: '/pages/pet/index' });
-  }
-}
-
 onMounted(() => {
   load();
 });
@@ -199,28 +182,6 @@ onMounted(() => {
   position: relative;
   min-height: 100vh;
   background: rgba(0, 0, 0, 0.5);
-}
-
-.status-bar {
-  height: var(--status-bar-height);
-  /* #ifdef MP-WEIXIN */
-  /* 小程序端状态栏下方还有悬浮胶囊，额外让出胶囊高度+间距 */
-  height: calc(var(--status-bar-height) + 88rpx);
-  /* #endif */
-}
-
-/* 返回按钮 */
-.back-btn {
-  position: absolute;
-  top: calc(var(--status-bar-height) + 20rpx);
-  left: 32rpx;
-  z-index: 3;
-  padding: 10rpx;
-}
-.back-icon {
-  width: 48rpx;
-  height: 48rpx;
-  display: block;
 }
 
 /* 顶部标题图：设计稿 x=125px y=255px w=126px h=120px（1px=2rpx） */

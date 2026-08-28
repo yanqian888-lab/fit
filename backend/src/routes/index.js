@@ -138,6 +138,7 @@ router.put('/precipitations/:id', authMiddleware, precipitationController.update
 router.delete('/precipitations/:id', authMiddleware, precipitationController.deletePrecipitation);
 
 // 陪伴系统
+router.get('/pet/config', companionController.getPetConfig);
 router.get('/pet', authMiddleware, companionController.getPet);
 router.post('/pet/feed', authMiddleware, companionController.feed);
 router.post('/pet/exercise', authMiddleware, companionController.exercise);

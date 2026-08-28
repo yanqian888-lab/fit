@@ -1,11 +1,6 @@
 <template>
   <view class="diary-detail-page">
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
     <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <text class="page-title">{{ date }} 分析</text>
       <view class="header-right">
         <text class="header-action" @click="onMore">⋯</text>
       </view>
@@ -57,11 +52,9 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { aiApi } from '../../api';
-import { goBack as navigateBack } from '../../utils/navigate';
 import { showGlobalLoading, hideGlobalLoading } from '../../utils/loading';
 import AppModal from '../../components/AppModal.vue';
 
-const statusBarHeight = ref(44);
 const id = ref(null);
 const date = ref('');
 const detail = ref({});
@@ -70,17 +63,6 @@ const detail = ref({});
 const showDeleteModal = ref(false);
 
 onMounted(() => {
-  // #ifdef H5
-  statusBarHeight.value = 44;
-  // #endif
-  // #ifndef H5
-  const sysInfo = uni.getSystemInfoSync();
-  statusBarHeight.value = sysInfo.statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-  // #endif
-
   const pages = getCurrentPages();
   const page = pages[pages.length - 1];
   id.value = page.options?.id || page.$page?.options?.id;
@@ -101,8 +83,13 @@ async function loadDetail() {
   }
 }
 
-function goBack() {
-  navigateBack();
+function handleBack() {
+  const pages = getCurrentPages();
+  if (pages.length > 1) {
+    uni.navigateBack();
+  } else {
+    uni.switchTab({ url: '/pages/museum/index' });
+  }
 }
 
 function onMore() {
@@ -164,7 +151,7 @@ async function confirmDelete() {
   try {
     await aiApi.deleteDiary(id.value);
     uni.showToast({ title: '已删除', icon: 'success' });
-    setTimeout(() => goBack(), 800);
+    setTimeout(() => handleBack(), 800);
   } catch (e) {
     console.error(e);
   }
@@ -177,19 +164,13 @@ async function confirmDelete() {
   background: #f7fbf4;
 }
 .page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 0 16px;
   height: 44px;
   background: #fff;
 }
-.back-btn { width: 40px; }
-.back-icon { font-size: 28px; color: #333; }
-.page-title { font-size: 17px; font-weight: 600; color: #333; }
 .header-right { width: 40px; text-align: right; }
 .header-action { font-size: 24px; color: #666; padding: 0 4px; }
 

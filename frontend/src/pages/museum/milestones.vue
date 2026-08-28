@@ -1,9 +1,6 @@
 <template>
-  <AppPage>
-  <view class="header-bg"></view>
-    <AppHeader title="里程碑" headerBg="transparent" />
+  <AppPage :showHeader="true" title="里程碑中心">
     <view class="milestones-page">
-      <view class="header-bg"></view>
       <AppEmpty v-if="milestones.length === 0" image="/static/image/icon/quesheng01.png" title="还没有里程碑" subtitle="坚持记录，达成目标后会自动解锁成就" full />
 
       <view class="milestone-list">
@@ -54,16 +51,6 @@ onMounted(load);
   flex-direction: column;
   position: relative;
   padding-top: $spacing-md;
-}
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 360rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
 }
 
 .milestone-list {

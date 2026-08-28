@@ -289,9 +289,9 @@ async function buy(item) {
   display: flex;
   align-items: center;
   gap: 32rpx;
-  padding: 16rpx 32rpx;
-  /* 下移 8px，与头部拉开间距 */
-  margin-top: 16rpx;
+  padding: 16rpx 32rpx 16rpx;
+  /* 上移 8px（16rpx），取消之前为"与头部拉开间距"而加的 margin-top，滚动空间因此扩大 8px */
+  margin-top: 0;
   overflow-x: auto;
   white-space: nowrap;
   scrollbar-width: none;
@@ -328,8 +328,33 @@ async function buy(item) {
 .overlay-scroll {
   flex: 1;
   height: 0;
-  padding: 0 32rpx;
-  box-sizing: border-box;
+  overflow-y: auto;
+  /*
+   * [搭搭页4弹层滚动条避让最终版（已对齐全屏overlay真实父宽750rpx，非之前错误的AppModal 540rpx！）]
+   *
+   * 【对齐基准】头部 overlay-header padding 左右 32rpx / close 按钮 right:32rpx
+   *   → 内容区必须严格 32rpx 对齐头部，避免用户截图的"内容整体左移更不居中"（之前写 24rpx 错差 8rpx 正是根因）
+   *
+   * 【左右视觉边距像素级对称】
+   *   padding-left  : 32rpx                         → 左视觉边距 = 32rpx（和头部对齐）
+   *   padding-right : 72rpx = 32rpx(右视觉对称边距) + 40rpx(滚动条避让区)
+   *   margin-right  : -40rpx                        → 避让区"凸"出父容器
+   *   box-sizing    : content-box                   → 关键！让 padding/margin 不计入 width，负 margin 真正外伸
+   *   右视觉边距    = padding-right(72) - |margin-right|(40) = 32rpx
+   *   → 左右 32rpx : 32rpx 完全对称，和头部完美对齐 ✅
+   *
+   * 【滚动条移出内容区，绝不压卡】
+   *   滚动条画在负 margin 外伸的 40rpx 避让带，与第三列卡片右边缘有 32rpx 空气带，
+   *   肉眼明显分开，用户截图红框的滚动条压卡问题彻底解决 ✅
+   *
+   * 【商店食物Tab永远3列】
+   *   item-card width 32% + justify-content: space-between（无 column-gap）
+   *   3×32%=96%，剩余4%自动分配列间距，任何设备宽度永不折2列 ✅
+   */
+  padding-left: 32rpx;
+  padding-right: 72rpx;
+  margin-right: -40rpx;
+  box-sizing: content-box;
 }
 .empty-state {
   display: flex;
@@ -349,30 +374,44 @@ async function buy(item) {
 .item-grid {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 32rpx 19rpx;
+  justify-content: space-between;
+  row-gap: 32rpx;
+  /*
+   * 关键：删掉 column-gap。
+   * 真实 item-grid 可用宽 = modal-body 540rpx - 左 pad24 - 右 pad(64-40避让) = 492rpx
+   *   3 卡 × 32%(472.32) + column-gap:16 × 2(32) = 504.32 > 492 → 必然折成 2 列
+   *   justify-content: space-between 会自动在 3 个 32% 卡间分匀剩余 4%，不用额外 gap
+   */
 }
 .item-card {
-  width: 216rpx;
-  height: 376rpx;
+  /*
+   * 固定 32% 百分比宽度：弹层 modal-body 540rpx 下每卡 ≈ 172rpx，
+   * 3×32% = 96%，剩余 4% ≈ 21.6rpx 消化 column-gap 16rpx → 绝不折成 2 列 ✅
+   * 内部子元素尺寸（图/字/max-width）统一按卡宽 172rpx 约束，避免超出卡边缘
+   */
+  width: 32%;
+  flex: 0 0 32%;
+  height: 340rpx;
   background: #DDF3D2;
-  border-radius: 24rpx;
+  border-radius: 20rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: 34rpx;
+  padding: 24rpx 8rpx 16rpx;
   box-sizing: border-box;
 }
 .item-image {
-  width: 152rpx;
-  height: 141rpx;
+  /* 卡宽 ≈172rpx，两侧各留 10rpx → 图宽 152rpx? 152>172-16=156 可，但统一用百分比更稳 */
+  width: 88%;
+  height: 120rpx;
+  object-fit: contain;
 }
 .item-name {
   margin-top: 8rpx;
-  font-size: 32rpx;
+  font-size: 24rpx;
   font-weight: 700;
   color: #563E22;
-  max-width: 192rpx;
+  max-width: 100%;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -396,14 +435,14 @@ async function buy(item) {
 }
 .buy-btn {
   margin-top: 16rpx;
-  width: 156rpx;
-  height: 60rpx;
-  line-height: 60rpx;
+  width: 92%;
+  height: 56rpx;
+  line-height: 56rpx;
   padding: 0;
-  border-radius: 30rpx;
+  border-radius: 28rpx;
   background: #8EBB77;
   color: #FFFFFF;
-  font-size: 24rpx;
+  font-size: 22rpx;
   text-align: center;
 }
 .buy-btn::after {
@@ -418,7 +457,7 @@ async function buy(item) {
   color: #8EBB77;
   border: 2rpx solid #8EBB77;
   box-sizing: border-box;
-  line-height: 56rpx;
+  line-height: 52rpx;
 }
 .bottom-safe {
   /* 列表末尾内容能完整滚入视口，不被底部手势条/tab 遮挡 */

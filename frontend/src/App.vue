@@ -27,13 +27,19 @@ import GlobalLoading from './components/GlobalLoading.vue';
 import AppPopup from './components/AppPopup.vue';
 // #endif
 import popupManager from './utils/popupManager';
+import { getSystemInfoSafe } from './utils/systemInfo';
 
 const userStore = useUserStore();
 const noticeStore = useNoticeStore();
 
 onLaunch(async () => {
+  // #ifdef MP-WEIXIN
+  // 隐藏原生 tabBar（只留自绘的 CustomTabBar 圆形凸起组件）
+  // 临时注释 hideTabBar 验证：它会破坏原生 tabBar 状态机导致 switchTab 失败
+  // uni.hideTabBar({ animation: false });
+  // #endif
   try {
-    const sysInfo = uni.getSystemInfoSync();
+    const sysInfo = getSystemInfoSafe();
     const statusBarHeight = sysInfo.statusBarHeight || 0;
     // #ifdef H5
     document.documentElement.style.setProperty('--status-bar-height', statusBarHeight + 'px');
@@ -44,7 +50,19 @@ onLaunch(async () => {
   } catch (e) {}
 
   userStore.init();
-  await popupManager.init();
+  
+  // 【优化】popupManager.init() 改为后台异步初始化，不阻塞主流程
+  // 原因：popupApi.getConfigList() 依赖后端可达性，开发环境后端不可达时会触发渲染层 addListener 错误
+  // 解决方案：使用 setTimeout 延迟执行，让页面先渲染完成，再进行后台初始化
+  setTimeout(async () => {
+    try {
+      await popupManager.init();
+    } catch (e) {
+      // 静默捕获，不影响主流程
+      console.warn('[popupManager] 初始化失败，将使用本地缓存配置', e?.message || e);
+    }
+  }, 500);
+  
   // 登录后拉取未读消息与首页公告
   if (userStore.isLoggedIn) {
     noticeStore.fetchUnreadCount().catch(() => {});
@@ -53,12 +71,13 @@ onLaunch(async () => {
 });
 
 onShow(() => {
-  // 切前台刷新弹窗配置
-  popupManager.init();
-  // 切前台刷新未读数
+  // 切前台时不再重复调用 popupManager.init()，避免并发请求导致的渲染层错误
+  // popupManager.init() 已在 onLaunch 中调用一次即可
   if (userStore.isLoggedIn) {
-    noticeStore.fetchUnreadCount().catch(() => {});
-    noticeStore.fetchAnnouncements('home').catch(() => {});
+    setTimeout(() => {
+      noticeStore.fetchUnreadCount().catch(() => {});
+      noticeStore.fetchAnnouncements('home').catch(() => {});
+    }, 500);
   }
 });
 </script>
@@ -208,9 +227,6 @@ button {
 }
 
 /* 渐变背景 */
-.gradient-header {
-  background: linear-gradient(180deg, $mint-light 0%, $bg-page 100%);
-}
 
 /* 安全区 */
 .safe-area-bottom {
@@ -221,7 +237,7 @@ button {
 /* 页面容器 */
 .app-page {
   min-height: 100vh;
-  background: linear-gradient(180deg, $mint-light 0%, $bg-page 25%, $bg-page 100%);
+  background: $bg-page;
   padding: 0 $spacing-md $spacing-md;
   padding-bottom: calc($spacing-md + env(safe-area-inset-bottom));
 }

@@ -1,5 +1,6 @@
 <template>
-  <AppPage>
+  <!-- 独立引导页：有自绘 AppHeader 标题，不要 AppPage showHeader，但要让出状态栏+胶囊 → padStatusBar=true（标杆双行兜底） -->
+  <AppPage :padStatusBar="true">
     <AppHeader title="新手任务" :show-back="false" />
     <view class="tasks-page">
       <view class="intro-card">

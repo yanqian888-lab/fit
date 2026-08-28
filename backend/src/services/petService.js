@@ -369,21 +369,11 @@ function getHomeActivity(userId, sceneKey = null) {
 }
 
 function buildHomeActivity(row) {
-  // 后端配置的图片路径若文件不存在，不再用默认小熊猫兜底，而是返回空 frames，
-  // 让前端回退到用户上传的 pet_sprite 主形象
-  let staticUrl = row.static_url || '';
-  if (staticUrl) {
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const localPath = path.join(__dirname, '../../public', staticUrl);
-      if (!fs.existsSync(localPath)) {
-        staticUrl = '';
-      }
-    } catch (e) {
-      staticUrl = '';
-    }
-  }
+  // 2026-08-27 修复：不再在服务器端检查 static_url 对应的本地文件是否存在。
+  // 原因：生产环境静态资源可能部署在 CDN 或不同容器，服务端文件系统检查会把
+  // 线上已配置的图片 URL 误判为"不存在"而清空，导致前端 fallback 到默认形象。
+  // 静态资源是否可访问由前端加载时通过 onerror 自行兜底即可。
+  const staticUrl = row.static_url || '';
 
   let frames = safeJsonParse(row.frames_json, null);
   if (!Array.isArray(frames) || frames.length === 0) {
@@ -409,31 +399,31 @@ function buildHomeActivity(row) {
 
 
 function getPet(userId, sceneKey = null) {
-  const pet = db.prepare('SELECT * FROM pets WHERE user_id = ?').get(userId);
+  const pet = db.prepare(`
+    SELECT p.*,
+           s.static_url AS skin_static_url,
+           s.gif_url AS skin_gif_url,
+           s.lottie_url AS skin_lottie_url,
+           s.icon_url AS skin_icon_url,
+           s.name AS skin_name
+    FROM pets p
+    LEFT JOIN pet_skins s ON p.skin_id = s.skin_id
+    WHERE p.user_id = ?
+  `).get(userId);
   if (!pet) return null;
   const state = computePetState(userId);
   checkAndResetDailyCounters(userId, state);
   let freshState = db.prepare('SELECT * FROM pet_states WHERE user_id = ?').get(userId);
 
-  let timeState = computeTimeState(userId, freshState);
+  const timeState = computeTimeState(userId, freshState);
 
-  // 逛逛时间命中且当前在家：自动送搭搭出门（已去掉心情/饱食阈值限制，按概率触发）
-  if (timeState.time_state === 'explore_time' && freshState.location !== 'away') {
-    const config = getAppConfig('pet_global');
-    const ongoing = db.prepare("SELECT id FROM pet_explorations WHERE user_id = ? AND status = 'ongoing'").get(userId);
-    if (!ongoing) {
-      const todayCount = db.prepare(`
-        SELECT COUNT(*) as count FROM pet_explorations
-        WHERE user_id = ? AND date(start_at, '+8 hours') = date('now', '+8 hours') AND status = 'completed'
-      `).get(userId).count;
-      const dailyMax = config.explore?.daily_max_count || 3;
-      if (todayCount < dailyMax) {
-        beginExploration(userId);
-        freshState = db.prepare('SELECT * FROM pet_states WHERE user_id = ?').get(userId);
-        timeState = { time_state: 'away', meal: null, hints: { feed: false, exercise: false } };
-      }
-    }
-  }
+  // 【2026-08-25 修复：不再在进 tab 时自动送搭搭出门】
+  // 原逻辑：命中 explore_time 时段 + 概率 → 自动 beginExploration(userId) 直接把搭搭送出去，
+  //         导致新用户第一次进入搭搭 tab 就看到"搭搭出去逛逛啦"（搭搭不在家），体验极差。
+  // 新逻辑：四状态机的 explore_time 仅作为"逛逛时段"提示（前端显示"开始探索"按钮），
+  //         外出必须由用户手动点"开始探索" → 前端调用 petApi.startExplore() →
+  //         后端 startExplore() → beginExploration() 才送搭搭出门。
+  //         新用户初始化 pet_states.location='home'（见 ensurePetState），进 tab 必在家，与用户预期一致。
 
   const feedLimits = getFeedLimits();
   const exerciseLimits = getExerciseLimits();
@@ -474,6 +464,13 @@ function getPet(userId, sceneKey = null) {
     homeActivity = getHomeActivity(userId, sceneKey);
   }
 
+  // 诊断日志：帮助排查线上 pet_sprite 配置是否为空
+  const spriteCfg = getAppConfig('pet_sprite');
+  const spriteFrames = Array.isArray(spriteCfg.frames) ? spriteCfg.frames : [];
+  if (spriteFrames.length === 0) {
+    console.warn(`[PetService] userId=${userId} 的 pet_sprite.frames 为空，前端将 fallback 到 pet_skin / 前端默认形象`);
+  }
+
   return {
     ...pet,
     state: freshState,
@@ -487,6 +484,16 @@ function getPet(userId, sceneKey = null) {
     anim: getAppConfig('pet_global').anim || 'idle',
     // 形象展示配置（CMS pet_sprite：坐标/尺寸/序列帧/播放速率），前端兜底默认
     sprite: getAppConfig('pet_sprite'),
+    // 当前穿戴皮肤（pet_skins 表），当 pet_sprite 未配置时作为兜底形象
+    skin: {
+      skin_id: pet.skin_id || 'default',
+      name: pet.skin_name || '默认皮肤',
+      static_url: pet.skin_static_url || null,
+      gif_url: pet.skin_gif_url || null,
+      lottie_url: pet.skin_lottie_url || null,
+      icon_url: pet.skin_icon_url || null,
+      frames: pet.skin_static_url ? [pet.skin_static_url] : []
+    },
     // 场景配置（CMS pet_scenes：场景名称/时段背景图/比例），前端兜底单场景小窝
     scenes: getAppConfig('pet_scenes'),
     daily_feed_count: freshState ? freshState.daily_feed_count : 0,
@@ -789,7 +796,7 @@ function startExplore(userId) {
 
     const todayCount = db.prepare(`
       SELECT COUNT(*) as count FROM pet_explorations
-      WHERE user_id = ? AND date(start_at) = date('now') AND status = 'completed'
+      WHERE user_id = ? AND date(start_at, '+8 hours') = date('now', '+8 hours') AND status = 'completed'
     `).get(userId).count;
 
     if (todayCount >= (config.explore?.daily_max_count || 3)) {

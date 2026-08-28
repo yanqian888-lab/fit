@@ -231,7 +231,8 @@ onMounted(load);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 28rpx 32rpx 16rpx;
+  /* 底部 padding 减 16rpx（8px），滚动内容整体上移，滚动空间扩大 8px */
+  padding: 28rpx 32rpx 0;
   position: relative;
 }
 .overlay-title {
@@ -254,10 +255,19 @@ onMounted(load);
 .overlay-scroll {
   flex: 1;
   height: 0;
-  padding: 0 32rpx;
-  box-sizing: border-box;
-  /* 滚动条向右移 12px（24rpx），不压「去完成」按钮；面板 overflow:hidden 裁掉超出部分 */
-  margin-right: -24rpx;
+  overflow-y: auto;
+  /*
+   * [搭搭页4弹层滚动条避让最终版（与ShopPanel完全一致，对齐overlay真实父宽750rpx）]
+   *
+   * 对齐基准：overlay-header padding 左右 32rpx / close right:32rpx → 内容左右必须 32rpx 对齐头部
+   * 左视觉边距 = padding-left 32rpx
+   * 右视觉边距 = padding-right 72(32+40避让) - |margin-right|(40) = 32rpx → 完全对称
+   * box-sizing: content-box → 负margin真正外伸40rpx避让带，滚动条画在避让区，不压任务卡 ✅
+   */
+  padding-left: 32rpx;
+  padding-right: 72rpx;
+  margin-right: -40rpx;
+  box-sizing: content-box;
 }
 .bottom-safe {
   /* 列表末尾任务能完整滚入视口，不被底部手势条/tab 遮挡 */

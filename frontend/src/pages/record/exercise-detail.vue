@@ -1,20 +1,6 @@
 <template>
+  <AppPage :showHeader="true" title="记运动">
   <view class="exercise-page">
-    <!-- 顶部渐变背景 -->
-    <view class="header-bg"></view>
-
-    <!-- 状态栏占位 -->
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-
-    <!-- 页面标题栏 -->
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <text class="page-title">运动记录</text>
-      <view class="header-right"></view>
-    </view>
-
     <!-- 日期模块 -->
     <view class="date-module">
       <!-- 收起状态：固定展示选中日期所在周 -->
@@ -91,6 +77,7 @@
 
           <view class="record-body">
             <text class="record-duration">{{ item.total_duration }} 分钟</text>
+            <text v-if="getExerciseDistance(item.exercises)" class="record-distance">{{ getExerciseDistance(item.exercises) }} 公里</text>
             <view class="record-actions">
               <view class="action-btn edit" @click="editItem(item)">修改</view>
               <view class="action-btn delete" @click="deleteItem(item.id)">删除</view>
@@ -170,18 +157,17 @@
       @confirm="confirmDeleteItem"
     />
   </view>
+  </AppPage>
 </template>
 
 <script setup>
+import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi } from '../../api';
 import { EXERCISE_TYPES } from '../../utils/constants';
 import { getToday, formatDate } from '../../utils/date';
-import { goBack as navigateBack } from '../../utils/navigate';
 import AppModal from '../../components/AppModal.vue';
-
-const statusBarHeight = ref(44);
 
 // 删除确认弹框
 const showDeleteModal = ref(false);
@@ -302,8 +288,8 @@ function getCalendarDays(monthDate) {
     });
   }
 
-  // 下月补位，固定 42 格
-  const remaining = 42 - days.length;
+  // 下月补位：只补齐当前周；末行若没有当月日期则整行不展示
+  const remaining = (7 - (days.length % 7)) % 7;
   for (let i = 1; i <= remaining; i++) {
     const cur = new Date(year, month + 1, i);
     const curStr = formatDate(cur.toISOString());
@@ -314,6 +300,16 @@ function getCalendarDays(monthDate) {
       isToday: curStr === today,
       isSelected: curStr === selectedDate.value
     });
+  }
+  // 末行校验：最后一周里「当月日期数 ≤ 2」（即 ≥5/7 都是下月日期），整周删除。
+  // 避免月底 1-2 天 + 下月 5-6 天凑一周时，flex-wrap 拆开后最后出现仅 2-3 个零星下月日期的空白行。
+  // 2026.8 月底实测：最后一周 = [8/30, 8/31, 9/1~5] → 当月仅 2 天 → 触发删除 ✅
+  const weeks = Math.floor(days.length / 7);
+  if (weeks >= 2) {
+    const lastIdx = (weeks - 1) * 7;
+    const lastWeek = days.slice(lastIdx, lastIdx + 7);
+    const currentCount = lastWeek.filter(d => d.isCurrentMonth).length;
+    if (currentCount <= 2) days.splice(lastIdx, 7);
   }
   return days;
 }
@@ -352,6 +348,13 @@ function getExerciseNames(exercises) {
   return uniqueNames.join('、');
 }
 
+// 汇总记录中的距离（公里），无距离数据时返回空串
+function getExerciseDistance(exercises) {
+  if (!exercises || exercises.length === 0) return '';
+  const total = exercises.reduce((sum, e) => sum + (parseFloat(e.distance) || 0), 0);
+  return total > 0 ? (Math.round(total * 10) / 10).toString() : '';
+}
+
 async function load(date = getToday()) {
   try {
     const res = await recordApi.getExercise(date);
@@ -370,10 +373,6 @@ async function loadRecordDates() {
   } catch (err) {
     console.error('加载运动记录日期失败', err);
   }
-}
-
-function goBack() {
-  navigateBack('/pages/record/index');
 }
 
 function addExercise() {
@@ -457,17 +456,6 @@ async function confirmDeleteItem() {
 }
 
 onMounted(() => {
-  // #ifdef H5
-  statusBarHeight.value = 44;
-  // #endif
-  // #ifndef H5
-  const sysInfo = uni.getSystemInfoSync();
-  statusBarHeight.value = sysInfo.statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-  // #endif
-
   load();
   loadRecordDates();
 });
@@ -488,64 +476,6 @@ onShow(() => {
   background: #F7FbF4;
   overflow: hidden;
 }
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 360rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 32rpx 24rpx;
-}
-
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 48rpx;
-  color: #666666;
-  font-weight: 700;
-  line-height: 1;
-  margin-left: -8rpx;
-}
-
-.page-title {
-  flex: 1;
-  text-align: center;
-  font-size: 36rpx;
-  font-weight: 700;
-  color: #27282D;
-  line-height: 40rpx;
-}
-
-.header-right {
-  width: 60rpx;
-}
-
 /* 日期模块 */
 .date-module {
   position: relative;
@@ -674,12 +604,15 @@ onShow(() => {
 .calendar-days {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  /* 强制左对齐：只剩 2-3 个日期时也紧贴左侧，不会被 space-between 分到两端中间空一大段 */
+  justify-content: flex-start;
   padding: 0 8rpx;
 }
 
 .calendar-day {
-  width: 60rpx;
+  /* 严格 1/7 百分比宽度：每行恰好 7 个日期，不随容器宽度浮动折行到错乱 */
+  width: 14.2857%;
+  flex: 0 0 14.2857%;
   height: 60rpx;
   display: flex;
   flex-direction: column;
@@ -782,6 +715,13 @@ onShow(() => {
   font-size: 26rpx;
   color: #999999;
   line-height: 40rpx;
+}
+
+.record-distance {
+  font-size: 26rpx;
+  color: #8DBB77;
+  line-height: 40rpx;
+  margin-left: 16rpx;
 }
 
 .record-actions {

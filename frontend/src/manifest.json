@@ -8,9 +8,28 @@
   "mp-weixin": {
     "appid": "wx75c8626270f27ea1",
     "setting": {
-      "urlCheck": false
+      "urlCheck": false,
+      "es6": true,
+      "postcss": true,
+      "minified": true,
+      "uglifyFileName": true,
+      "enhance": true,
+      "minifyWXML": true,
+      "minifyWXSS": true,
+      "packNpmManually": false,
+      "packNpmRelationList": [],
+      "babelSetting": {
+        "ignore": [],
+        "disablePlugins": [],
+        "outputPath": ""
+      },
+      "useCompilerPlugins": false
     },
-    "usingComponents": true
+    "usingComponents": true,
+    "lazyCodeLoading": "requiredComponents",
+    "optimization": {
+      "subPackages": true
+    }
   },
   "uniStatistics": {
     "enable": false

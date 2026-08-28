@@ -23,43 +23,64 @@ export function request(options) {
       uni.showLoading({ title: loadingTitle, mask: options.loadingMask !== false });
     }
 
-    uni.request({
-      url: `${getBaseUrl()}${options.url}`,
-      method: options.method || 'GET',
-      data: options.data || {},
-      timeout: 65000,
-      header: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(options.header || {})
-      },
-      success: (res) => {
-        if (showLoading) uni.hideLoading();
-        const data = res.data || {};
-        if (res.statusCode === 200 && data.code === 0) {
-          resolve(data);
-        } else if (res.statusCode === 401) {
-          uni.removeStorageSync('token');
-          if (!options.skip401Redirect && !isRedirecting401) {
-            isRedirecting401 = true;
-            uni.showToast({ title: '登录已过期', icon: 'none' });
-            setTimeout(() => {
-              uni.reLaunch({ url: '/pages/login/index' });
-              isRedirecting401 = false;
-            }, 300);
+    try {
+      uni.request({
+        url: `${getBaseUrl()}${options.url}`,
+        method: options.method || 'GET',
+        data: options.data || {},
+        timeout: 65000,
+        header: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(options.header || {})
+        },
+        success: (res) => {
+          try {
+            if (showLoading) uni.hideLoading();
+            const data = res.data || {};
+            if (res.statusCode === 200 && data.code === 0) {
+              resolve(data);
+            } else if (res.statusCode === 401) {
+              uni.removeStorageSync('token');
+              // 同步清除 store 中的 token ref，避免 isLoggedIn 仍为 true 反复触发 401
+              uni.$emit('auth:expired');
+              // 后置登录：401 只清除登录态，不跳转登录页
+              // 用户可以继续浏览 4 个 tab，执行操作时 requireAuth() 会引导登录
+              if (!options.skip401Redirect && !isRedirecting401) {
+                isRedirecting401 = true;
+                uni.showToast({ title: '登录已过期', icon: 'none' });
+                setTimeout(() => {
+                  isRedirecting401 = false;
+                }, 300);
+              }
+              reject(data);
+            } else {
+              uni.showToast({ title: data.message || `请求失败(${res.statusCode})`, icon: 'none' });
+              reject(data);
+            }
+          } catch (err) {
+            console.error('[request] success 回调异常', err);
+            reject(err);
           }
-          reject(data);
-        } else {
-          uni.showToast({ title: data.message || `请求失败(${res.statusCode})`, icon: 'none' });
-          reject(data);
+        },
+        fail: (err) => {
+          try {
+            if (showLoading) uni.hideLoading();
+            uni.showToast({ title: '网络错误', icon: 'none' });
+          } catch (e) {
+            // 忽略 hideLoading/showToast 异常
+          }
+          reject(err);
         }
-      },
-      fail: (err) => {
-        if (showLoading) uni.hideLoading();
-        uni.showToast({ title: '网络错误', icon: 'none' });
-        reject(err);
+      });
+    } catch (syncErr) {
+      // 捕获 uni.request 同步抛出的异常（如渲染层未就绪导致的 addListener 错误）
+      console.warn('[request] uni.request 同步异常', syncErr?.message || syncErr);
+      if (showLoading) {
+        try { uni.hideLoading(); } catch (e) {}
       }
-    });
+      reject(syncErr);
+    }
   });
 }
 
@@ -109,8 +130,8 @@ export function uploadFile(url, filePath, name = 'file', formData = {}, loading 
           resolve(data);
         } else if (res.statusCode === 401) {
           uni.removeStorageSync('token');
+          uni.$emit('auth:expired');
           uni.showToast({ title: '登录已过期', icon: 'none' });
-          uni.reLaunch({ url: '/pages/login/index' });
           reject(data);
         } else {
           uni.showToast({ title: data.message || '上传失败', icon: 'none' });

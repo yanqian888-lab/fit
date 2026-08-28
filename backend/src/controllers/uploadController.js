@@ -25,10 +25,14 @@ const imageUpload = multer({
   storage: imageStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype && file.mimetype.startsWith('image/')) {
+    // 双重校验：MIME类型 + 文件扩展名白名单
+    // MIME 可被客户端伪造，必须同时校验扩展名防止恶意文件上传
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (file.mimetype && file.mimetype.startsWith('image/') && allowedExts.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('仅支持上传图片文件'));
+      cb(new Error('仅支持上传 jpg、png、gif、webp、bmp 格式的图片文件'));
     }
   }
 });
@@ -45,7 +49,9 @@ function uploadImage(req, res) {
       return res.status(400).json(error('请选择要上传的图片', 400));
     }
 
-    const url = staticUrl(req, `/static/uploads/${req.file.filename}`);
+    // 返回相对路径（不含域名），由前端根据环境拼接服务器地址
+    // 这样开发/测试/生产环境都能正确访问，避免 localhost 硬编码问题
+    const url = `/static/uploads/${req.file.filename}`;
     return res.json(success({ url }, '上传成功'));
   });
 }
@@ -63,11 +69,14 @@ const videoUpload = multer({
   storage: videoStorage,
   limits: { fileSize: 200 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowed = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo'];
-    if (file.mimetype && allowed.includes(file.mimetype)) {
+    // 双重校验：MIME类型 + 文件扩展名白名单
+    const allowedMimeTypes = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo'];
+    const allowedExts = ['.mp4', '.mov', '.webm', '.avi'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (file.mimetype && allowedMimeTypes.includes(file.mimetype) && allowedExts.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('仅支持上传 MP4/MOV/WebM/AVI 视频文件'));
+      cb(new Error('仅支持上传 MP4/MOV/WebM/AVI 格式的视频文件'));
     }
   }
 });
@@ -84,7 +93,9 @@ function uploadVideo(req, res) {
       return res.status(400).json(error('请选择要上传的视频', 400));
     }
 
-    const url = staticUrl(req, `/static/uploads/${req.file.filename}`);
+    // 返回相对路径（不含域名），由前端根据环境拼接服务器地址
+    // 这样开发/测试/生产环境都能正确访问，避免 localhost 硬编码问题
+    const url = `/static/uploads/${req.file.filename}`;
     return res.json(success({ url }, '上传成功'));
   });
 }

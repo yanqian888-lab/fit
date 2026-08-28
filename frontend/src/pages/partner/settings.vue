@@ -1,14 +1,5 @@
 <template>
-  <AppPage>
-    <view class="header-bg"></view>
-    <view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-    <view class="page-header">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">‹</text>
-      </view>
-      <text class="page-title">搭子设置</text>
-      <view class="header-right"></view>
-    </view>
+  <AppPage :showHeader="true" title="搭子设置">
     <view class="partner-settings">
       <view class="partner-card">
         <image class="partner-avatar" :src="partnerAvatarUrl" mode="aspectFill" />
@@ -50,15 +41,6 @@
 import { ref, computed, onMounted } from 'vue';
 import { partnerApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';
-import { goBack } from '../../utils/navigate';
-
-const statusBarHeight = ref(44);
-try {
-  statusBarHeight.value = uni.getSystemInfoSync().statusBarHeight || 44;
-  // #ifdef MP-WEIXIN
-  statusBarHeight.value += 44; // 小程序胶囊高度
-  // #endif
-} catch (e) {}
 
 const partner = ref({});
 const currentMode = ref('gentle');
@@ -111,61 +93,6 @@ async function selectMode(mode) {
   z-index: 1;
   padding-top: $spacing-md;
 }
-
-.header-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 360rpx;
-  background: linear-gradient(180deg, #DDF2D2 0%, #F7FbF4 100%);
-  z-index: 0;
-}
-
-.status-bar {
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.page-header {
-  /* #ifdef MP-WEIXIN */
-  margin-top: -88rpx; /* 标题/返回按钮上移到胶囊所在顶部栏 */
-  /* #endif */
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 32rpx 24rpx;
-  flex-shrink: 0;
-}
-
-.back-btn {
-  width: 60rpx;
-  height: 60rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.back-icon {
-  font-size: 48rpx;
-  color: #27282D;
-  font-weight: 700;
-  line-height: 1;
-  margin-left: -4rpx;
-}
-
-.page-title {
-  flex: 1;
-  text-align: center;
-  font-size: 36rpx;
-  font-weight: 700;
-  color: #27282D;
-  line-height: 40rpx;
-}
-
 .partner-card {
   background: $bg-card;
   border-radius: $radius-xl;

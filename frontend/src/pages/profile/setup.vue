@@ -57,6 +57,7 @@ import AppPage from '../../components/AppPage.vue';
 import AppInput from '../../components/AppInput.vue';
 import AppButton from '../../components/AppButton.vue';
 import { getToday } from '../../utils/date';
+import { safeSwitchTab } from '../../utils/safeSwitchTab';
 
 const userStore = useUserStore();
 const loading = ref(false);
@@ -168,7 +169,7 @@ async function submit() {
         if (!settings.guide_completed) {
           uni.redirectTo({ url: '/pages/partner/select-mode' });
         } else {
-          uni.switchTab({ url: '/pages/index/index' });
+          safeSwitchTab('/pages/index/index');
         }
       }, 1000);
     } catch (err) {
@@ -193,14 +194,21 @@ function skip() {
 // 沉睡老用户跳过：记住跳过标记避免每次登录强制拦截，直接进首页（其引导早已完成）
 function skipToHome() {
   uni.setStorageSync('profile_setup_skipped', 1);
-  uni.switchTab({ url: '/pages/index/index' });
+  safeSwitchTab('/pages/index/index');
 }
 </script>
 
 <style lang="scss" scoped>
 .setup-page {
   position: relative;
-  padding-top: 60rpx;
+  /*
+   * 顶部占位：标杆双行兜底 + 原内容顶部留白 60rpx
+   *   calc(44px + 88rpx)：与 AppPage 自绘 status-bar 高度完全一致（先硬码兜底，再覆盖变量版）
+   *   + 60rpx：原页面设计内容顶部 padding
+   * → 整体内容下移到状态栏 + 导航栏下方，不再顶到胶囊按钮（用户红框越界问题解决）
+   */
+  padding-top: calc(44px + 88rpx + 60rpx);
+  padding-top: calc(var(--status-bar-height, 44px) + 88rpx + 60rpx);
 }
 
 .page-header {

@@ -10,6 +10,8 @@ export const useUserStore = defineStore('user', () => {
 
   /**
    * 启动初始化：从 storage 恢复 userInfo 并从后端同步
+   * 使用 skip401Redirect 防止启动期间 401 跳转登录页
+   * token 失效时静默清除登录态，让用户以游客身份浏览 tab 页
    */
   async function init() {
     // 启动时从 storage 恢复 userInfo（不然后续判断会认为未登录）
@@ -24,7 +26,11 @@ export const useUserStore = defineStore('user', () => {
       }
     }
     if (token.value) {
-      await fetchUserInfo();
+      const result = await fetchUserInfo(true);
+      // token 已过期或无效：静默清除登录态，用户以游客身份浏览
+      if (!result) {
+        logout();
+      }
     }
   }
 
@@ -73,6 +79,24 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  /**
+   * 检查登录状态，未登录则跳转登录页
+   * @returns {boolean} 是否已登录
+   */
+  function requireAuth() {
+    if (!token.value) {
+      uni.navigateTo({ url: '/pages/login/index' });
+      return false;
+    }
+    return true;
+  }
+
+  // 监听 request.js 401 事件：同步清除 token ref，避免 isLoggedIn 仍为 true 反复触发 401
+  uni.$on('auth:expired', () => {
+    token.value = '';
+    userInfo.value = null;
+  });
+
   // 切换搭子模式
   function setPartnerMode(mode) {
     if (userInfo.value && userInfo.value.partner) {
@@ -89,6 +113,7 @@ export const useUserStore = defineStore('user', () => {
     login,
     logout,
     fetchUserInfo,
+    requireAuth,
     setPartnerMode
   };
 });
