@@ -187,7 +187,6 @@
           <image class="card-photo" :src="newEventPhoto" mode="aspectFill" />
           <image class="card-frame" :src="newEvent.review ? '/static/image/icon/huigu.png' : '/static/image/icon/xinshijian.png'" mode="aspectFit" />
         </view>
-        <view class="card-close" @click="closeNewEvent">✕</view>
         <!-- 绿色信息面板 -->
         <view class="card-panel">
           <text v-if="newEvent.collection_name" class="event-coll-pill">{{ newEvent.collection_name }}</text>

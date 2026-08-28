@@ -57,14 +57,5 @@ config.global.mocks = {
   $t: (key: string) => key
 };
 
-// Setup for Pinia
-vi.mock('pinia', async () => {
-  const pinia = await import('pinia');
-  return {
-    ...pinia,
-    createPinia: vi.fn(() => ({
-      state: {},
-      install: vi.fn()
-    }))
-  };
-});
+// 注意：不 mock pinia，使用真实 pinia 以保证 setActivePinia(createPinia())
+// 后 useUserStore() 能正常实例化（真实 Pinia 实例包含 _s Map 用于注册 store）
