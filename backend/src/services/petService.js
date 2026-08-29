@@ -574,16 +574,19 @@ function saveRecipeToMuseum(userId, recipe) {
   `).get(userId, title);
   if (existing) return { saved: false, title };
 
-  // 计算总克数/总热量（有食材用量数据时）
+  // 计算总克数/总热量：优先使用已提供的准确值，没有时再根据食材用量估算
   let extractedData = recipe.extracted_data || null;
   if (extractedData && Array.isArray(extractedData.ingredients)) {
-    const totals = computeRecipeTotals(extractedData.ingredients);
-    extractedData = { ...extractedData, total_weight: totals.totalWeight, total_calorie: totals.totalCalorie };
+    const hasTotals = (extractedData.total_weight > 0 || extractedData.total_calorie > 0);
+    if (!hasTotals) {
+      const totals = computeRecipeTotals(extractedData.ingredients);
+      extractedData = { ...extractedData, total_weight: totals.totalWeight, total_calorie: totals.totalCalorie };
+    }
   }
 
   const id = db.prepare(`
     INSERT INTO museum_items (user_id, type, sub_type, title, content, extracted_data, author, tags, status)
-    VALUES (?, 'recipe', 'precipitation_recipe', ?, ?, ?, 'partner', ?, 1)
+    VALUES (?, 'recipe', 'dada_recipe', ?, ?, ?, 'partner', ?, 1)
   `).run(
     userId,
     title,
