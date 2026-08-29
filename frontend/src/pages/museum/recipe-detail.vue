@@ -67,10 +67,10 @@
       </view>
     </scroll-view>
 
-    <!-- 底部操作按钮 -->
+    <!-- 底部操作按钮：搭搭食谱为系统下发，仅允许查看和添加到饮食 -->
     <view class="action-btns">
       <view class="action-btn primary" @click="addToDiet">添加到今日饮食</view>
-      <view class="action-btn" @click="editRecipe">编辑食谱</view>
+      <view v-if="isEditableRecipe" class="action-btn" @click="editRecipe">编辑食谱</view>
     </view>
 
     <!-- 餐次选择弹层（App 风格底部弹层） -->
@@ -119,6 +119,9 @@ const recipeId = ref(null);
 
 // 删除确认弹框状态
 const showDeleteModal = ref(false);
+
+// 搭搭食谱为系统下发，用户不可编辑
+const isEditableRecipe = computed(() => recipe.value.sub_type !== 'dada_recipe');
 
 // 食谱图片：blob: 是历史前端临时地址（已失效），只展示有效的 http/静态路径
 const recipeImage = computed(() => {

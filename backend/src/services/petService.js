@@ -565,8 +565,11 @@ function resolveItemRecipe(inventory) {
 
 /**
  * 将食谱保存到博物馆食谱库（同一用户同一标题不重复保存）
+ * @param {number} userId 用户ID
+ * @param {object} recipe 食谱数据
+ * @param {string} [iconUrl] 商店/库存中的配图URL，写入 extracted_data.image 供列表/详情展示
  */
-function saveRecipeToMuseum(userId, recipe) {
+function saveRecipeToMuseum(userId, recipe, iconUrl = null) {
   const title = recipe.title || recipe.content.slice(0, 32);
   const existing = db.prepare(`
     SELECT id FROM museum_items
@@ -582,6 +585,12 @@ function saveRecipeToMuseum(userId, recipe) {
       const totals = computeRecipeTotals(extractedData.ingredients);
       extractedData = { ...extractedData, total_weight: totals.totalWeight, total_calorie: totals.totalCalorie };
     }
+  }
+  // 补全商店配图：优先使用传入的 iconUrl，其次使用 recipe.extracted_data.image
+  if (iconUrl) {
+    extractedData = { ...extractedData, image: iconUrl };
+  } else if (extractedData && !extractedData.image && recipe.image) {
+    extractedData = { ...extractedData, image: recipe.image };
   }
 
   const id = db.prepare(`
@@ -672,7 +681,7 @@ function feed(userId, inventoryItemIds) {
     // 关联食谱自动保存到博物馆（已保存过的不重复，即仅首次喂食掉落）
     const recipesUnlocked = [];
     for (const item of recipes) {
-      const result = saveRecipeToMuseum(userId, item.recipe);
+      const result = saveRecipeToMuseum(userId, item.recipe, item.icon_url);
       if (result.saved) {
         recipesUnlocked.push({
           title: item.recipe.title || result.title,

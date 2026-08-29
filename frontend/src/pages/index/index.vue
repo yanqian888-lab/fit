@@ -876,7 +876,8 @@ async function checkAdviceMessage() {
   if (checkingAdvice) return;
   checkingAdvice = true;
   try {
-    const res = await chatApi.getAdvice();
+    // silent: 触发建议只是后台异步任务，失败会自愈（advice_pending 恢复），不需要弹 Toast 打扰用户
+    const res = await chatApi.getAdvice({ silent: true });
     if (res.code === 0 && res.data && res.data.pending) {
       // AI 已在后台开始生成（耗时可达 1~2 分钟），启动轮询等待新建议到达
       startAdvicePolling();
@@ -900,7 +901,8 @@ async function checkAdviceMessage() {
       scrollToBottom();
     }
   } catch (err) {
-    console.error('获取减重建议失败:', err);
+    // 后台生成失败会恢复 advice_pending 标记，下次进入聊聊页自动重试；此处静默处理避免在其他页面使用时弹出报错
+    console.warn('获取减重建议失败（已静默，下次可自愈）:', err);
   } finally {
     checkingAdvice = false;
   }

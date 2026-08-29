@@ -33,9 +33,9 @@
 
             <view class="form-item">
               <text class="input-label">配图</text>
-              <view class="recipe-image-upload disabled">
+              <view class="recipe-image-upload" :class="{ disabled: !canUploadImage }" @click="chooseImage">
                 <image v-if="recipe.image" :src="recipe.image" mode="aspectFill" />
-                <text v-else class="upload-hint">配图上传功能暂未开放</text>
+                <text v-else class="upload-hint">{{ canUploadImage ? '点击上传配图' : '配图上传功能暂未开放' }}</text>
               </view>
             </view>
 
@@ -96,6 +96,7 @@
 import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { museumApi } from '../../api';
+import { uploadFile } from '../../utils/request';
 
 const types = [
   { label: '金句', value: 'quote' },
@@ -157,6 +158,22 @@ const typeIndex = computed(() => types.findIndex(t => t.value === form.value.typ
 const isRecipe = computed(() => form.value.type === 'recipe');
 const isInsight = computed(() => form.value.type === 'insight');
 const isMethod = computed(() => form.value.type === 'method');
+
+/**
+ * 判断当前食谱是否允许用户编辑/上传配图：
+ * 搭搭食谱为系统下发，仅允许查看；聊聊食谱和自定义食谱可编辑、可上传配图
+ */
+const isEditableRecipe = computed(() => {
+  if (!isRecipe.value) return true;
+  // 新建食谱默认允许编辑
+  if (!isEdit.value) return true;
+  return form.value.sub_type !== 'dada_recipe';
+});
+
+const canUploadImage = computed(() => {
+  if (!isRecipe.value) return false;
+  return isEditableRecipe.value;
+});
 const typeLabelMap = {
   quote: '金句',
   recipe: '食谱',
@@ -197,6 +214,13 @@ async function loadItem() {
     form.value.content = item.content || '';
     form.value.emotion = item.emotion || '';
 
+    // 搭搭食谱为系统下发，不允许用户编辑
+    if (isRecipe.value && form.value.sub_type === 'dada_recipe') {
+      uni.showToast({ title: '搭搭食谱不支持编辑', icon: 'none' });
+      setTimeout(() => uni.navigateBack(), 1200);
+      return;
+    }
+
     const data = item.extracted_data || {};
     extractedData.value = data;
     image.value = data.image || '';
@@ -217,23 +241,42 @@ function onTypeChange(e) {
 }
 
 /**
- * 博物馆对比记录：上传配图功能暂未开放（提审阶段相机/相册读取权限暂不声明）
- * 后续开放时恢复下面的 uni.chooseImage 调用（原 chooseImage 函数体保留在注释里）
+ * 选择并上传配图：仅对聊聊食谱、自定义食谱开放
+ * 搭搭食谱为系统下发，不支持用户修改配图
  */
 function chooseImage() {
-  uni.showToast({ title: '配图上传功能暂未开放', icon: 'none' });
-  /*
+  if (!canUploadImage.value) {
+    uni.showToast({ title: '配图上传功能暂未开放', icon: 'none' });
+    return;
+  }
+
   uni.chooseImage({
     count: 1,
-    success: (res) => {
-      if (isRecipe.value) {
-        recipe.value.image = res.tempFilePaths[0];
-      } else {
-        image.value = res.tempFilePaths[0];
+    sizeType: ['compressed'],
+    sourceType: ['album', 'camera'],
+    success: async (res) => {
+      try {
+        const uploadRes = await uploadFile('/upload/image', res.tempFilePaths[0], 'image', {}, '上传配图中...');
+        const url = uploadRes.data && uploadRes.data.url ? uploadRes.data.url : '';
+        if (!url) {
+          uni.showToast({ title: '上传失败，请重试', icon: 'none' });
+          return;
+        }
+        if (isRecipe.value) {
+          recipe.value.image = url;
+        } else {
+          image.value = url;
+        }
+      } catch (err) {
+        console.error('上传配图失败', err);
+      }
+    },
+    fail: (err) => {
+      if (err && err.errMsg && !err.errMsg.includes('cancel')) {
+        uni.showToast({ title: '选择图片失败', icon: 'none' });
       }
     }
   });
-  */
 }
 
 function addIngredient() {
@@ -269,11 +312,12 @@ async function save() {
 
     if (isRecipe.value) {
       const validIngredients = recipe.value.ingredients.filter(i => i.name.trim());
-      payload.sub_type = recipe.value.title || '健康食谱';
+      // 编辑时保持原 sub_type；新建时统一标记为自定义食谱
+      payload.sub_type = isEdit.value ? (form.value.sub_type || 'custom_recipe') : 'custom_recipe';
       payload.content = recipe.value.steps || recipe.value.title;
       payload.emotion = null;
       payload.extracted_data = {
-        title: payload.sub_type,
+        title: recipe.value.title || '健康食谱',
         image: recipe.value.image || '',
         content: payload.content,
         ingredients: validIngredients,

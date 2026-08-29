@@ -55,7 +55,9 @@ export function request(options) {
               }
               reject(data);
             } else {
-              uni.showToast({ title: data.message || `请求失败(${res.statusCode})`, icon: 'none' });
+              if (!options.silent) {
+                uni.showToast({ title: data.message || `请求失败(${res.statusCode})`, icon: 'none' });
+              }
               reject(data);
             }
           } catch (err) {

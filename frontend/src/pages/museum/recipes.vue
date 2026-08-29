@@ -43,7 +43,7 @@
           </view>
           <view class="recipe-actions">
             <text class="recipe-date">{{ formatDate(item.created_at) }}</text>
-            <view class="recipe-action-group">
+            <view v-if="isEditableRecipe(item)" class="recipe-action-group">
               <text class="recipe-action" @click="editItem(item)">编辑</text>
               <text class="recipe-action danger" @click="deleteItem(item)">删除</text>
             </view>
@@ -202,7 +202,15 @@ function addRecipe() {
   uni.navigateTo({ url: '/pages/museum/item-edit?type=recipe' });
 }
 
+/**
+ * 判断食谱是否允许用户编辑/删除：搭搭食谱为系统下发，仅允许查看
+ */
+function isEditableRecipe(item) {
+  return item.sub_type !== 'dada_recipe';
+}
+
 function editItem(item) {
+  if (!isEditableRecipe(item)) return;
   uni.navigateTo({ url: `/pages/museum/item-edit?id=${item.id}&type=recipe` });
 }
 
