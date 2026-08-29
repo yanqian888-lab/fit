@@ -7,7 +7,7 @@
       :before-upload="beforeUpload"
     >
       <div class="upload-box" :style="{ width, height }">
-        <img v-if="modelValue" :src="modelValue" class="preview" />
+        <img v-if="modelValue" :src="previewUrl" class="preview" />
         <el-icon v-else class="plus"><Plus /></el-icon>
         <div v-if="uploading" class="mask">上传中…</div>
       </div>
@@ -20,10 +20,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import request from '@/api/request'
+import { getFullUrl } from '@/config/env'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -34,6 +35,9 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const uploading = ref(false)
+
+// 后台上传接口返回相对路径，需要拼接服务器域名才能正常预览
+const previewUrl = computed(() => getFullUrl(props.modelValue))
 
 function beforeUpload(file) {
   const ok = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)

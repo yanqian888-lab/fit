@@ -143,7 +143,13 @@ function buildEffectJson() {
 
 function parseEffect(json) {
   const e = emptyEffect()
-  const data = json && typeof json === 'object' ? json : {}
+  let data = {}
+  // 后端返回的 effect_json 是 JSON 字符串，需要先解析
+  if (typeof json === 'string') {
+    try { data = JSON.parse(json) } catch (_) { data = {} }
+  } else if (json && typeof json === 'object') {
+    data = json
+  }
   if (data.recipe) {
     e.has_recipe = true
     e.recipe_title = data.recipe.title || ''
