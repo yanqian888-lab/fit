@@ -785,7 +785,8 @@ async function loadPetConfig() {
  */
 async function loadPet() {
   try {
-    const res = await petApi.getPet({ scene: currentSceneKey.value });
+    // 加时间戳随机数，彻底排除 HTTP/小程序层面对 getPet 接口的任何缓存，确保后台坐标变更即时生效
+    const res = await petApi.getPet({ scene: currentSceneKey.value, _t: Date.now() });
     pet.value = res.data || {};
     state.value = pet.value.state || {};
     // 调试日志：查看 API 返回的形象来源数据
