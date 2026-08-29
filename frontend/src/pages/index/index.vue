@@ -6,14 +6,14 @@
     <!-- 顶部搭子信息 -->
     <view class="header">
       <view class="header-inner">
-        <image class="header-avatar" src="/static/image/icon/liaoliao01@3x.png" mode="aspectFit" />
+        <image class="header-avatar" :src="resolveStaticUrl('/static/image/icon/liaoliao01@3x.png')" mode="aspectFit" />
         <view class="header-title-wrap">
           <text class="header-title">搭搭</text>
           <text class="header-subtitle">👋 我是你的掉秤搭搭～</text>
         </view>
         <view class="header-actions">
           <view class="header-setting" @click="goUser">
-            <image class="header-setting-icon" src="/static/image/icon/setting@3x.png" mode="aspectFit" />
+            <image class="header-setting-icon" :src="resolveStaticUrl('/static/image/icon/setting@3x.png')" mode="aspectFit" />
           </view>
         </view>
       </view>
@@ -132,7 +132,7 @@
           @confirm="sendMessage"
         />
         <view class="send-btn-wrap" @click="sendMessage">
-          <image class="send-btn" src="/static/image/icon/send@3x.png" />
+          <image class="send-btn" :src="resolveStaticUrl('/static/image/icon/send@3x.png')" />
         </view>
       </view>
     </view>
@@ -379,6 +379,7 @@
 </template>
 
 <script setup>
+import { resolveStaticUrl } from '../../utils/environment.js';
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { onShow, onHide } from '@dcloudio/uni-app';
 import { useUserStore } from '../../store';
@@ -573,16 +574,19 @@ const modes = [
 // 搭子名字固定为「搭搭」，不可修改
 const partnerName = computed(() => '搭搭');
 const currentMode = computed(() => userStore.userInfo?.partner?.mode || 'gentle');
+/** 搭子模式头像：改为远程 CDN 加载以减小小程序包体积 */
+const modeAvatarMap = {
+  gentle: resolveStaticUrl('/static/image/icon/rou.png'),
+  strict: resolveStaticUrl('/static/image/icon/zhuan.png'),
+  tease: resolveStaticUrl('/static/image/icon/sun.png')
+};
+const defaultModeAvatar = resolveStaticUrl('/static/image/icon/rou.png');
+
 const partnerAvatarUrl = computed(() => {
   if (avatarLoadError.value) {
-    return '/static/image/icon/rou.png';
+    return defaultModeAvatar;
   }
-  const map = {
-    gentle: '/static/image/icon/rou.png',
-    strict: '/static/image/icon/zhuan.png',
-    tease: '/static/image/icon/sun.png'
-  };
-  return map[currentMode.value] || '/static/image/icon/rou.png';
+  return modeAvatarMap[currentMode.value] || defaultModeAvatar;
 });
 
 function onAvatarLoad() {
@@ -842,9 +846,9 @@ onMounted(() => {
 function preloadAvatarImages() {
   if (typeof Image === 'undefined') return;
   const paths = [
-    '/static/image/icon/rou.png',
-    '/static/image/icon/zhuan.png',
-    '/static/image/icon/sun.png'
+    resolveStaticUrl('/static/image/icon/rou.png'),
+    resolveStaticUrl('/static/image/icon/zhuan.png'),
+    resolveStaticUrl('/static/image/icon/sun.png')
   ];
   paths.forEach(src => {
     const img = new Image();

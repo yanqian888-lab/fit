@@ -25,7 +25,7 @@
 
       <scroll-view class="overlay-scroll" scroll-y :scroll-top="scrollTop">
         <view v-if="!activeCollection || activeCollection.slots.length === 0" class="empty-state">
-          <image class="empty-img" src="/static/image/icon/quesheng01.png" mode="aspectFit" />
+          <image class="empty-img" :src="resolveStaticUrl('/static/image/icon/quesheng01.png')" mode="aspectFit" />
           <text class="empty-text">{{ activeCollection ? '这个集合还没有配置事件' : '还没有配置事件集' }}</text>
         </view>
         <view v-else class="slot-grid">
@@ -50,9 +50,9 @@
 </template>
 
 <script setup>
+import { resolveStaticUrl } from '../../../utils/environment.js';
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { petApi } from '../../../api';
-import { resolveStaticUrl } from '../../../utils/environment';
 
 const emit = defineEmits(['close', 'selectEvent']);
 

@@ -71,7 +71,7 @@
           </view>
           <text v-if="selectedDiary" class="diary-content">{{ selectedDiary }}</text>
           <view v-else class="diary-empty">
-            <image class="empty-image" src="/static/image/icon/quesheng01.png" mode="aspectFit" />
+            <image class="empty-image" :src="resolveStaticUrl('/static/image/icon/quesheng01.png')" mode="aspectFit" />
             <text class="empty-text">这一天还没有日记</text>
           </view>
         </view>
@@ -118,6 +118,7 @@
 </template>
 
 <script setup>
+import { resolveStaticUrl } from '../../utils/environment.js';
 import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { aiApi, museumApi, recordApi } from '../../api';

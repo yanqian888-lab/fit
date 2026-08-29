@@ -21,7 +21,7 @@
 
       <scroll-view class="overlay-scroll" scroll-y>
         <view v-if="items.length === 0" class="empty-state">
-          <image class="empty-img" src="/static/image/icon/quesheng01.png" mode="aspectFit" />
+          <image class="empty-img" :src="resolveStaticUrl('/static/image/icon/quesheng01.png')" mode="aspectFit" />
           <text class="empty-text">背包里空空如也</text>
           <text class="empty-sub" @click="$emit('goShop')">去商城看看 ›</text>
         </view>
@@ -104,9 +104,9 @@
 </template>
 
 <script setup>
+import { resolveStaticUrl } from '../../../utils/environment.js';
 import { ref, computed, onMounted } from 'vue';
 import { petApi } from '../../../api';
-import { resolveStaticUrl } from '../../../utils/environment';
 import RecipeUnlockPopup from '../../../components/RecipeUnlockPopup.vue';
 import ExerciseCountdownPopup from '../../../components/ExerciseCountdownPopup.vue';
 
@@ -224,14 +224,17 @@ async function loadItems() {
   } catch (e) {}
 }
 
+/** 背包分类图标：改为远程 CDN 加载以减小小程序包体积 */
+const categoryImageMap = {
+  food: resolveStaticUrl('/static/image/icon/jiyinshi@3x.png'),
+  equipment: resolveStaticUrl('/static/image/icon/jiyundong.png'),
+  prop: resolveStaticUrl('/static/image/icon/gongjvxiang@3x.png'),
+  skin: resolveStaticUrl('/static/image/icon/baobao@3x.png')
+};
+const defaultBagImage = resolveStaticUrl('/static/image/icon/quesheng01.png');
+
 function categoryImage(category) {
-  const map = {
-    food: '/static/image/icon/jiyinshi@3x.png',
-    equipment: '/static/image/icon/jiyundong.png',
-    prop: '/static/image/icon/gongjvxiang@3x.png',
-    skin: '/static/image/icon/baobao@3x.png'
-  };
-  return map[category] || '/static/image/icon/quesheng01.png';
+  return categoryImageMap[category] || defaultBagImage;
 }
 
 function effectText(effectJson, category) {

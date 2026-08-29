@@ -46,15 +46,22 @@ import { partnerApi, systemApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';
 import AppButton from '../../components/AppButton.vue';
 import { safeSwitchTab } from '../../utils/safeSwitchTab';
+import { resolveStaticUrl } from '../../utils/environment.js';
 
 const userStore = useUserStore();
 const selected = ref('gentle');
-const loading = ref(false);
+
+/** 模式头像：改为远程 CDN 加载以减小小程序包体积 */
+const modeAvatarMap = {
+  gentle: resolveStaticUrl('/static/image/icon/rou.png'),
+  strict: resolveStaticUrl('/static/image/icon/zhuan.png'),
+  tease: resolveStaticUrl('/static/image/icon/sun.png')
+};
 
 const modes = [
-  { value: 'gentle', label: '温柔鼓励型', desc: '永远先安慰，再鼓励，绝不批评', emoji: '🌸', color: '#B5E2FF', avatar: '/static/image/icon/rou.png' },
-  { value: 'strict', label: '严格监督型', desc: '坚定直接，该严格时绝不心软', emoji: '💪', color: '#B5E2FF', avatar: '/static/image/icon/zhuan.png' },
-  { value: 'tease', label: '毒舌模式', desc: '直接犀利不留情面，扎心但有效', emoji: '😏', color: '#FFD6E0', avatar: '/static/image/icon/sun.png' }
+  { value: 'gentle', label: '温柔鼓励型', desc: '永远先安慰，再鼓励，绝不批评', emoji: '🌸', color: '#B5E2FF', avatar: modeAvatarMap.gentle },
+  { value: 'strict', label: '严格监督型', desc: '坚定直接，该严格时绝不心软', emoji: '💪', color: '#B5E2FF', avatar: modeAvatarMap.strict },
+  { value: 'tease', label: '毒舌模式', desc: '直接犀利不留情面，扎心但有效', emoji: '😏', color: '#FFD6E0', avatar: modeAvatarMap.tease }
 ];
 
 const previews = {

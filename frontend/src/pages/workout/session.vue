@@ -17,7 +17,7 @@
           object-fit="contain"
         ></video>
         <view v-else class="video-placeholder">
-          <image class="placeholder-img" :src="detail.cover_url || '/static/image/icon/jiyundong.png'" mode="aspectFit" />
+          <image class="placeholder-img" :src="detail.cover_url || defaultWorkoutCoverUrl" mode="aspectFit" />
           <text class="placeholder-text">视频准备中，先跟着动作完成吧</text>
         </view>
 
@@ -80,6 +80,10 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { workoutApi } from '../../api';
 import { goBack as navigateBack } from '../../utils/navigate';
+import { resolveStaticUrl } from '../../utils/environment.js';
+
+/** 跟练页默认封面：改为远程 CDN 加载以减小小程序包体积 */
+const defaultWorkoutCoverUrl = resolveStaticUrl('/static/image/icon/jiyundong.png');
 
 const workoutKey = ref('');
 const detail = ref({});

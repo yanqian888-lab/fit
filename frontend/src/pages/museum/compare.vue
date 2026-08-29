@@ -25,13 +25,14 @@
         </view>
       </view>
 
-      <AppEmpty v-else image="/static/image/icon/quesheng01.png" title="暂无照片" subtitle="去上传你的第一张照片吧" full />
+      <AppEmpty v-else :image="resolveStaticUrl('/static/image/icon/quesheng01.png')" title="暂无照片" subtitle="去上传你的第一张照片吧" full />
     </view>
     <view v-if="photos.length === 0" class="empty-action-btn" @click="goUpload">上传照片</view>
   </AppPage>
 </template>
 
 <script setup>
+import { resolveStaticUrl } from '../../utils/environment.js';
 import { ref, onMounted } from 'vue';
 import { photoApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';

@@ -5,7 +5,7 @@
     <view class="page-header">
       <view class="header-bg"></view>
       <view class="header-content">
-        <image class="header-panda" src="/static/image/icon/gongjvxiang01@3x.png" mode="aspectFit" />
+        <image class="header-panda" :src="resolveStaticUrl('/static/image/icon/gongjvxiang01@3x.png')" mode="aspectFit" />
         <view class="header-tabs">
           <view class="header-tab" :class="{ active: activeTab === 'data' }" @click="activeTab = 'data'">
             <text>今日数据</text>
@@ -23,19 +23,19 @@
     <view class="quick-actions">
       <view class="action-item" @click="goTo('/pages/record/diet-detail')">
         <view class="action-icon-box">
-          <image class="action-icon-img" src="/static/image/icon/jiyinshi@3x.png" mode="aspectFit" />
+          <image class="action-icon-img" :src="resolveStaticUrl('/static/image/icon/jiyinshi@3x.png')" mode="aspectFit" />
         </view>
         <text class="action-label">记饮食</text>
       </view>
       <view class="action-item" @click="goTo('/pages/record/exercise-detail')">
         <view class="action-icon-box">
-          <image class="action-icon-img" src="/static/image/icon/jiyundong.png" mode="aspectFit" />
+          <image class="action-icon-img" :src="resolveStaticUrl('/static/image/icon/jiyundong.png')" mode="aspectFit" />
         </view>
         <text class="action-label">记运动</text>
       </view>
       <view class="action-item" @click="goTo('/pages/record/body-data')">
         <view class="action-icon-box">
-          <image class="action-icon-img" src="/static/image/icon/jitizhong@3x.png" mode="aspectFit" />
+          <image class="action-icon-img" :src="resolveStaticUrl('/static/image/icon/jitizhong@3x.png')" mode="aspectFit" />
         </view>
         <text class="action-label">记体重</text>
       </view>
@@ -174,7 +174,7 @@
           :class="{ locked: !item.is_unlocked }"
           @click="handleWorkoutClick(item)"
         >
-          <image class="workout-cover" :src="item.cover_url || '/static/image/icon/jiyundong.png'" mode="aspectFill" />
+          <image class="workout-cover" :src="item.cover_url || defaultWorkoutCoverUrl" mode="aspectFill" />
           <view class="workout-info">
             <text class="workout-name">{{ item.name }}</text>
             <text class="workout-desc">{{ item.description }}</text>
@@ -309,6 +309,7 @@
   </view>
 </template>
 <script setup>
+import { resolveStaticUrl } from '../../utils/environment.js';
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi, aiApi, workoutApi } from '../../api';
@@ -324,6 +325,9 @@ const userStore = useUserStore();
 const pageCache = usePageCacheStore();
 
 const today = getToday();
+
+/** 运动卡片默认封面：改为远程 CDN 加载以减小小程序包体积 */
+const defaultWorkoutCoverUrl = resolveStaticUrl('/static/image/icon/jiyundong.png');
 
 // 页内 tab：今日数据 / 陪你动
 const activeTab = ref('data');

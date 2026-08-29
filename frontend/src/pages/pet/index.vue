@@ -63,7 +63,7 @@
             :animations="spriteAnimations"
             :anim="petAnim"
             :show-bubble="showPetBubble"
-            bubble-icon="/static/image/icon/tanhao@3x.png"
+            :bubble-icon="resolveStaticUrl('/static/image/icon/tanhao@3x.png')"
             @bubbleClick="onPetBubbleClick"
             @animationEnd="onPetAnimationEnd"
             @spriteClick="onPetSpriteClick"
@@ -100,19 +100,19 @@
 
       <view class="bottom-panel">
         <view class="bottom-item" @click="goTasks">
-          <image class="bottom-icon" src="/static/image/icon/renwu@3x.png" mode="aspectFit" />
+          <image class="bottom-icon" :src="resolveStaticUrl('/static/image/icon/renwu@3x.png')" mode="aspectFit" />
           <text class="bottom-text">任务</text>
         </view>
         <view class="bottom-item" @click="goInventory">
-          <image class="bottom-icon" src="/static/image/icon/beibao@3x.png" mode="aspectFit" />
+          <image class="bottom-icon" :src="resolveStaticUrl('/static/image/icon/beibao@3x.png')" mode="aspectFit" />
           <text class="bottom-text">背包</text>
         </view>
         <view class="bottom-item" @click="openEventsPanel">
-          <image class="bottom-icon" src="/static/image/icon/shijian@3x.png" mode="aspectFit" />
+          <image class="bottom-icon" :src="resolveStaticUrl('/static/image/icon/shijian@3x.png')" mode="aspectFit" />
           <text class="bottom-text">事件</text>
         </view>
         <view class="bottom-item" @click="goShop">
-          <image class="bottom-icon" src="/static/image/icon/shangdianicon@3x.png" mode="aspectFit" />
+          <image class="bottom-icon" :src="resolveStaticUrl('/static/image/icon/shangdianicon@3x.png')" mode="aspectFit" />
           <text class="bottom-text">商店</text>
         </view>
       </view>
@@ -120,7 +120,7 @@
 
     <!-- 弹窗层：吃饭/运动提示 -->
     <view v-if="hintBubbleVisible" class="hint-mask" @click="closeHintBubble">
-      <image class="hint-pet" src="/static/image/icon/dada02@3x.png" mode="aspectFit"/>
+      <image class="hint-pet" :src="dadaHintUrl" mode="aspectFit"/>
       <view class="hint-bubble">
         <text class="hint-bubble-text">{{ hintType === 'exercise' ? '该运动啦，帮我选一个吧' : '好饿呀，给我吃点东西吧!' }}</text>
       </view>
@@ -185,7 +185,7 @@
         <!-- 顶部插画：事件图垫在外框内（位置偏下，对齐外框窗口） -->
         <view class="card-frame-wrap">
           <image class="card-photo" :src="newEventPhoto" mode="aspectFill" />
-          <image class="card-frame" :src="newEvent.review ? '/static/image/icon/huigu.png' : '/static/image/icon/xinshijian.png'" mode="aspectFit" />
+          <image class="card-frame" :src="newEventFrameUrl" mode="aspectFit" />
         </view>
         <!-- 绿色信息面板 -->
         <view class="card-panel">
@@ -239,6 +239,7 @@
 </template>
 
 <script setup>
+import { resolveStaticUrl } from '../../utils/environment.js';
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import PetSprite from '../../components/PetSprite.vue';
@@ -250,7 +251,6 @@ import RecipeUnlockPopup from '../../components/RecipeUnlockPopup.vue';
 import AppModal from '../../components/AppModal.vue';
 import { petApi } from '../../api';
 import { fallbackScenes, defaultSceneKey } from './sceneConfig.js';
-import { resolveStaticUrl } from '../../utils/environment';
 import { getSystemInfoSafe } from '../../utils/systemInfo';
 import { useUserStore } from '../../store';
 import { usePageCacheStore, CACHE_KEYS } from '../../store/page-cache';
@@ -645,15 +645,21 @@ function itemBubbleVisible(item) {
   return !!sceneFlags.value[bubble.showKey];
 }
 
+/** 任务气泡默认图标：改为远程 CDN 加载以减小小程序包体积 */
+const defaultBubbleIcon = resolveStaticUrl('/static/image/icon/tanhao@3x.png');
+
 function bubbleIcon(bubbleKey) {
-  return (currentScene.value.bubbles || {})[bubbleKey]?.icon || '/static/image/icon/tanhao@3x.png';
+  return resolveStaticUrl((currentScene.value.bubbles || {})[bubbleKey]?.icon) || defaultBubbleIcon;
 }
+
+/** 任务气泡弹窗默认占位图：改为远程 CDN 加载以减小小程序包体积 */
+const taskPopupPlaceholderUrl = resolveStaticUrl('/static/image/icon/dada@3x.png');
 
 function onItemBubbleClick(item) {
   // 模拟从接口获取弹窗内容
   taskPopup.value = {
     type: 'gif',
-    url: '/static/image/icon/dada@3x.png',
+    url: taskPopupPlaceholderUrl,
     description: `点击了【${item.name}】的任务气泡，这里应展示后台配置的 GIF/视频。`
   };
   taskPopupVisible.value = true;
@@ -1067,9 +1073,21 @@ function closeNewEvent() {
   newEventReward.value = null;
 }
 
+/** 事件默认图：改为远程 CDN 加载以减小小程序包体积 */
+const eventDefaultUrl = resolveStaticUrl('/static/image/icon/event_default.jpg');
+/** 吃饭/运动提示搭搭形象：改为远程 CDN 加载以减小小程序包体积 */
+const dadaHintUrl = resolveStaticUrl('/static/image/icon/dada02@3x.png');
+
 const newEventPhoto = computed(() => {
   if (!newEvent.value) return '';
-  return resolveStaticUrl(newEvent.value.photo_url || newEvent.value.image_url) || '/static/image/icon/event_default.jpg';
+  return resolveStaticUrl(newEvent.value.photo_url || newEvent.value.image_url) || eventDefaultUrl;
+});
+
+/** 新事件弹窗外框：改为远程 CDN 加载以减小小程序包体积 */
+const newEventFrameUrl = computed(() => {
+  if (!newEvent.value) return '';
+  const name = newEvent.value.review ? 'huigu.png' : 'xinshijian.png';
+  return resolveStaticUrl(`/static/image/icon/${name}`);
 });
 
 // ===== 事件分享图（拼接：事件图 + 事件集 + 标题 + 说明 + 二维码 + 应用信息） =====
@@ -1306,7 +1324,7 @@ function onAlbumSaveFail(err) {
 
 function downloadEventPhoto() {
   if (!newEvent.value) return;
-  const url = resolveStaticUrl(newEvent.value.photo_url || newEvent.value.image_url) || '/static/image/icon/event_default.jpg';
+  const url = resolveStaticUrl(newEvent.value.photo_url || newEvent.value.image_url) || eventDefaultUrl;
   uni.showLoading({ title: '生成分享图...' });
   buildEventShareImage(newEvent.value, url)
     .then(saveShareImage)

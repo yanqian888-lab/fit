@@ -3,8 +3,8 @@
     <view class="recipe-card">
       <!-- 顶部食谱图：食物图垫在“新食谱”外框窗口内，与事件掉落外框保持一致的结构 -->
       <view class="food-image-wrap">
-        <image class="food-photo" :src="resolveStaticUrl(recipe.icon_url) || '/static/image/icon/jiyinshi@3x.png'" mode="aspectFill" />
-        <image class="food-frame" src="/static/image/icon/xinshipu.png" mode="aspectFit" />
+        <image class="food-photo" :src="resolveStaticUrl(recipe.icon_url) || recipeDefaultIconUrl" mode="aspectFill" />
+        <image class="food-frame" :src="frameUrl" mode="aspectFit" />
       </view>
       <view class="card-close" @click="$emit('close')">✕</view>
       <!-- 绿色信息面板 -->
@@ -24,6 +24,11 @@
 
 <script setup>
 import { resolveStaticUrl } from '../utils/environment';
+
+/** 食谱掉落外框图片：改为远程 CDN 加载以减小小程序包体积 */
+const frameUrl = resolveStaticUrl('/static/image/icon/xinshipu.png');
+/** 食谱默认配图：改为远程 CDN 加载以减小小程序包体积 */
+const recipeDefaultIconUrl = resolveStaticUrl('/static/image/icon/jiyinshi@3x.png');
 
 defineProps({
   recipe: { type: Object, required: true }

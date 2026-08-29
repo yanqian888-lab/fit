@@ -6,7 +6,7 @@
       <view class="slide-emoji">{{ pages[current].emoji }}</view>
       <text class="slide-title">{{ pages[current].title }}</text>
       <text class="slide-subtitle">{{ pages[current].subtitle }}</text>
-      <image class="slide-mascot" src="/static/image/icon/dada02@3x.png" mode="aspectFit" />
+      <image class="slide-mascot" :src="mascotUrl" mode="aspectFit" />
     </view>
 
     <!-- 指示器：fixed 相对于视口，永远可见不消失，容器透明 -->
@@ -30,8 +30,11 @@
 <script setup>
 import { ref } from 'vue';
 import AppButton from '../../components/AppButton.vue';
+import { resolveStaticUrl } from '../../utils/environment.js';
 
 const current = ref(0);
+/** 引导页搭搭形象：改为远程 CDN 加载以减小小程序包体积 */
+const mascotUrl = resolveStaticUrl('/static/image/icon/dada02@3x.png');
 // 引导内容（与原引导图一致，改为轻量文本版，删除大图控制包体）
 const pages = [
   { emoji: '🎯', title: '虚拟伙伴“搭搭”', subtitle: '陪你健康减脂，追赶目标' },

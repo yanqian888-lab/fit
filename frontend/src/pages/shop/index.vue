@@ -3,17 +3,17 @@
     <view class="page-header">
       <view class="currency-bar">
         <view class="currency-item">
-          <image class="currency-icon" src="/static/image/icon/jiangguo@3x.png" mode="aspectFit" />
+          <image class="currency-icon" :src="resolveStaticUrl('/static/image/icon/jiangguo@3x.png')" mode="aspectFit" />
           <text class="currency-value">{{ currency.berries || 0 }}</text>
         </view>
         <view class="currency-item">
-          <image class="currency-icon" src="/static/image/icon/xianhua@3x.png" mode="aspectFit" />
+          <image class="currency-icon" :src="resolveStaticUrl('/static/image/icon/xianhua@3x.png')" mode="aspectFit" />
           <text class="currency-value">{{ currency.flowers || 0 }}</text>
         </view>
       </view>
     </view>
 
-    <image class="shop-title" src="/static/image/icon/shangdian_biaoti@3x.png" mode="aspectFit" />
+    <image class="shop-title" :src="shopTitleUrl" mode="aspectFit" />
 
     <view class="panel">
       <view class="category-tabs">
@@ -30,7 +30,7 @@
 
       <scroll-view class="item-scroll" scroll-y refresher-enabled :refresher-triggered="refreshing" @refresherrefresh="onRefresh" @scrolltolower="loadMore">
         <view v-if="items.length === 0 && !loading" class="empty-state">
-          <image class="empty-icon" src="/static/image/icon/quesheng01.png" mode="aspectFit" />
+          <image class="empty-icon" :src="resolveStaticUrl('/static/image/icon/quesheng01.png')" mode="aspectFit" />
           <text class="empty-text">暂无商品</text>
         </view>
         <view v-else class="item-grid">
@@ -39,11 +39,11 @@
             <text class="item-name">{{ item.name }}</text>
             <view class="item-price">
               <view class="price-tag" v-if="item.price_berries > 0">
-                <image class="price-icon" src="/static/image/icon/jiangguo@3x.png" mode="aspectFit" />
+                <image class="price-icon" :src="resolveStaticUrl('/static/image/icon/jiangguo@3x.png')" mode="aspectFit" />
                 <text>{{ item.price_berries }}浆果</text>
               </view>
               <view class="price-tag" v-if="item.price_flowers > 0">
-                <image class="price-icon" src="/static/image/icon/xianhua@3x.png" mode="aspectFit" />
+                <image class="price-icon" :src="resolveStaticUrl('/static/image/icon/xianhua@3x.png')" mode="aspectFit" />
                 <text>{{ item.price_flowers }}鲜花</text>
               </view>
             </view>
@@ -65,12 +65,15 @@
 </template>
 
 <script setup>
+import { resolveStaticUrl } from '../../utils/environment.js';
 import { ref, onMounted } from 'vue';
 import { petApi } from '../../api';
-import { resolveStaticUrl } from '../../utils/environment';
 
 const tabs = ref([{ label: '全部', value: '' }]);
 const activeTab = ref('');
+
+/** 商店标题图：改为远程 CDN 加载以减小小程序包体积 */
+const shopTitleUrl = resolveStaticUrl('/static/image/icon/shangdian_biaoti@3x.png');
 const items = ref([]);
 const currency = ref({});
 const refreshing = ref(false);
@@ -160,14 +163,17 @@ function onRefresh() {
   });
 }
 
+/** 商店分类图标：改为远程 CDN 加载以减小小程序包体积 */
+const categoryIconMap = {
+  food: resolveStaticUrl('/static/image/icon/jiyinshi@3x.png'),
+  equipment: resolveStaticUrl('/static/image/icon/jiyundong.png'),
+  prop: resolveStaticUrl('/static/image/icon/gongjvxiang@3x.png'),
+  skin: resolveStaticUrl('/static/image/icon/baobao@3x.png')
+};
+const defaultCategoryIcon = resolveStaticUrl('/static/image/icon/shangdianicon@3x.png');
+
 function categoryIcon(category) {
-  const map = {
-    food: '/static/image/icon/jiyinshi@3x.png',
-    equipment: '/static/image/icon/jiyundong.png',
-    prop: '/static/image/icon/gongjvxiang@3x.png',
-    skin: '/static/image/icon/baobao@3x.png'
-  };
-  return map[category] || '/static/image/icon/shangdianicon@3x.png';
+  return categoryIconMap[category] || defaultCategoryIcon;
 }
 
 function effectText(effectJson, category) {

@@ -1,7 +1,7 @@
 <template>
   <view class="inventory-page">
     <!-- 顶部标题图 -->
-    <image class="title-img" src="/static/image/icon/shangdian_biaoti@3x.png" mode="aspectFit" />
+    <image class="title-img" :src="inventoryTitleUrl" mode="aspectFit" />
 
     <!-- 底部浅色面板 -->
     <view class="panel">
@@ -19,7 +19,7 @@
 
       <scroll-view class="item-scroll" scroll-y refresher-enabled :refresher-triggered="refreshing" @refresherrefresh="onRefresh">
         <view v-if="items.length === 0" class="empty-state">
-          <image class="empty-img" src="/static/image/icon/quesheng01.png" mode="aspectFit" />
+          <image class="empty-img" :src="resolveStaticUrl('/static/image/icon/quesheng01.png')" mode="aspectFit" />
           <text class="empty-text">背包里空空如也</text>
           <text class="empty-sub" @click="goShop">去商城看看 ›</text>
         </view>
@@ -52,6 +52,10 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { petApi } from '../../api';
+import { resolveStaticUrl } from '../../utils/environment.js';
+
+/** 背包标题图：改为远程 CDN 加载以减小小程序包体积 */
+const inventoryTitleUrl = resolveStaticUrl('/static/image/icon/shangdian_biaoti@3x.png');
 
 const tabs = ref([{ label: '全部', value: '' }]);
 const activeTab = ref('');
@@ -132,14 +136,17 @@ function goShop() {
   uni.navigateTo({ url: '/pages/shop/index' });
 }
 
+/** 背包分类图标：改为远程 CDN 加载以减小小程序包体积 */
+const categoryImageMap = {
+  food: resolveStaticUrl('/static/image/icon/jiyinshi@3x.png'),
+  equipment: resolveStaticUrl('/static/image/icon/jiyundong.png'),
+  prop: resolveStaticUrl('/static/image/icon/gongjvxiang@3x.png'),
+  skin: resolveStaticUrl('/static/image/icon/baobao@3x.png')
+};
+const defaultInventoryImage = resolveStaticUrl('/static/image/icon/quesheng01.png');
+
 function categoryImage(category) {
-  const map = {
-    food: '/static/image/icon/jiyinshi@3x.png',
-    equipment: '/static/image/icon/jiyundong.png',
-    prop: '/static/image/icon/gongjvxiang@3x.png',
-    skin: '/static/image/icon/baobao@3x.png'
-  };
-  return map[category] || '/static/image/icon/quesheng01.png';
+  return categoryImageMap[category] || defaultInventoryImage;
 }
 
 function effectText(effectJson, category) {

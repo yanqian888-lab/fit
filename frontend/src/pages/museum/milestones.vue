@@ -1,7 +1,7 @@
 <template>
   <AppPage :showHeader="true" title="里程碑中心">
     <view class="milestones-page">
-      <AppEmpty v-if="milestones.length === 0" image="/static/image/icon/quesheng01.png" title="还没有里程碑" subtitle="坚持记录，达成目标后会自动解锁成就" full />
+      <AppEmpty v-if="milestones.length === 0" :image="resolveStaticUrl('/static/image/icon/quesheng01.png')" title="还没有里程碑" subtitle="坚持记录，达成目标后会自动解锁成就" full />
 
       <view class="milestone-list">
         <view v-for="item in milestones" :key="item.id" class="milestone-card">
@@ -18,6 +18,7 @@
 </template>
 
 <script setup>
+import { resolveStaticUrl } from '../../utils/environment.js';
 import { ref, onMounted } from 'vue';
 import { aiApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';

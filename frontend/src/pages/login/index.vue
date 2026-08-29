@@ -17,7 +17,7 @@
         <template v-if="!useDadaFallback && !useBoxFallback">
           <image
             class="logo-image"
-            src="/static/image/icon/login-logo.png"
+            :src="loginLogoUrl"
             mode="aspectFit"
             @error="onLogoErrorLogin"
           />
@@ -25,7 +25,7 @@
         <template v-else-if="useDadaFallback && !useBoxFallback">
           <image
             class="logo-image"
-            src="/static/image/icon/dada.png"
+            :src="dadaFallbackUrl"
             mode="aspectFit"
             @error="onLogoErrorDada"
           />
@@ -217,9 +217,15 @@ import { useUserStore } from '../../store';
 import { getDeviceId } from '../../utils/trial.js';
 import { handlePostAuthRedirect } from '../../utils/authRedirect';
 import { safeSwitchTab } from '../../utils/safeSwitchTab';
+import { resolveStaticUrl } from '../../utils/environment.js';
 
 const userStore = useUserStore();
 const isFromSetup = ref(false);
+
+/** 登录页 logo：改为远程 CDN 加载以减小小程序包体积 */
+const loginLogoUrl = resolveStaticUrl('/static/image/icon/login-logo.png');
+/** 登录页 logo 兜底图：改为远程 CDN 加载以减小小程序包体积 */
+const dadaFallbackUrl = resolveStaticUrl('/static/image/icon/dada.png');
 
 // 顶部返回按钮栏的动态样式，与右侧微信胶囊按钮精确上下居中对齐
 const navBarStyle = ref('');

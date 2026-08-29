@@ -54,7 +54,7 @@
       @click="onBubbleClick"
     >
       <slot name="bubble">
-        <image v-if="bubbleIcon" :src="bubbleIcon" mode="aspectFit" class="task-bubble-icon" />
+        <image v-if="bubbleIcon" :src="resolveStaticUrl(bubbleIcon)" mode="aspectFit" class="task-bubble-icon" />
         <text v-else class="task-bubble-text">!</text>
       </slot>
     </view>

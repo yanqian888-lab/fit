@@ -1,7 +1,7 @@
 <template>
   <view class="tasks-page">
     <!-- 顶部标题图 -->
-    <image class="title-img" src="/static/image/icon/renwuban_biaoti@3x.png" mode="aspectFit" />
+    <image class="title-img" :src="tasksTitleUrl" mode="aspectFit" />
 
     <!-- 底部浅色面板 -->
     <view class="panel">
@@ -19,15 +19,15 @@
       <!-- 快捷入口 -->
       <view class="quick-entry">
         <view class="entry-card" @click="goAchievements">
-          <image class="entry-icon" src="/static/image/icon/bowuguan@3x.png" mode="aspectFit" />
+          <image class="entry-icon" :src="resolveStaticUrl('/static/image/icon/bowuguan@3x.png')" mode="aspectFit" />
           <text class="entry-label">成就</text>
         </view>
         <view class="entry-card" @click="goMilestones">
-          <image class="entry-icon" src="/static/image/icon/lichengbei.png" mode="aspectFit" />
+          <image class="entry-icon" :src="resolveStaticUrl('/static/image/icon/lichengbei.png')" mode="aspectFit" />
           <text class="entry-label">里程碑</text>
         </view>
         <view class="entry-card" @click="goNewbieTasks">
-          <image class="entry-icon" src="/static/image/icon/renwu@3x.png" mode="aspectFit" />
+          <image class="entry-icon" :src="resolveStaticUrl('/static/image/icon/renwu@3x.png')" mode="aspectFit" />
           <text class="entry-label">新手任务</text>
         </view>
       </view>
@@ -55,16 +55,16 @@
     <!-- 奖励回执弹层 -->
     <view v-if="receiptVisible" class="receipt-mask" @click="closeReceipt">
       <view class="receipt-panel" @click.stop>
-        <image class="receipt-avatar" src="/static/image/icon/celebrate01.jpg" mode="aspectFit" />
+        <image class="receipt-avatar" :src="celebrateAvatarUrl" mode="aspectFit" />
         <text class="receipt-title">搭搭给你发奖励啦</text>
         <text class="receipt-content">{{ receipt.content }}</text>
         <view class="receipt-rewards">
           <view v-if="receipt.berries" class="receipt-reward">
-            <image class="reward-icon" src="/static/image/icon/jiangguo@3x.png" mode="aspectFit" />
+            <image class="reward-icon" :src="resolveStaticUrl('/static/image/icon/jiangguo@3x.png')" mode="aspectFit" />
             <text class="reward-text">{{ receipt.berries }} 浆果</text>
           </view>
           <view v-if="receipt.flowers" class="receipt-reward">
-            <image class="reward-icon" src="/static/image/icon/xianhua@3x.png" mode="aspectFit" />
+            <image class="reward-icon" :src="resolveStaticUrl('/static/image/icon/xianhua@3x.png')" mode="aspectFit" />
             <text class="reward-text">{{ receipt.flowers }} 鲜花</text>
           </view>
         </view>
@@ -77,10 +77,16 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { petApi } from '../../api';
+import { resolveStaticUrl } from '../../utils/environment.js';
 
 const tasks = ref([]);
 const checkin = ref({});
 const receiptVisible = ref(false);
+
+/** 奖励回执头像：改为远程 CDN 加载以减小小程序包体积 */
+const celebrateAvatarUrl = resolveStaticUrl('/static/image/icon/celebrate01.jpg');
+/** 任务中心标题图：改为远程 CDN 加载以减小小程序包体积 */
+const tasksTitleUrl = resolveStaticUrl('/static/image/icon/renwuban_biaoti@3x.png');
 const receipt = ref({ content: '', berries: 0, flowers: 0 });
 
 const sections = computed(() => [

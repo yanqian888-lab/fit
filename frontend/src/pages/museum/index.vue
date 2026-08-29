@@ -104,6 +104,8 @@ import { onShow } from '@dcloudio/uni-app';
 import { museumApi, userApi } from '../../api';
 import { useUserStore } from '../../store';
 import { usePageCacheStore, CACHE_KEYS } from '../../store/page-cache';
+import { resolveStaticUrl } from '../../utils/environment.js';
+
 const userStore = useUserStore();
 const pageCache = usePageCacheStore();
 const overview = ref({});
@@ -147,13 +149,23 @@ const statsList = computed(() => [
   { label: '运动分钟', value: overview.value.total_exercise_minutes || 0 }
 ]);
 
+/** 博物馆入口图标：改为远程 CDN 加载以减小小程序包体积 */
+const museumIconMap = {
+  recipe: resolveStaticUrl('/static/image/icon/shipuku.png'),
+  insight: resolveStaticUrl('/static/image/icon/ganwuji.png'),
+  photo: resolveStaticUrl('/static/image/icon/zhaopianqiang.png'),
+  method: resolveStaticUrl('/static/image/icon/fangfaku.png'),
+  diary: resolveStaticUrl('/static/image/icon/rijiji.png'),
+  milestone: resolveStaticUrl('/static/image/icon/lichengbei.png')
+};
+
 const allEntries = [
-  { key: 'recipe', name: '食谱库', icon: '/static/image/icon/shipuku.png', url: '/pages/museum/recipes' },
-  { key: 'insight', name: '感悟与心情', icon: '/static/image/icon/ganwuji.png', url: '/pages/museum/insights' },
-  { key: 'photo', name: '照片墙', icon: '/static/image/icon/zhaopianqiang.png', url: '/pages/museum/compare' },
-  { key: 'method', name: '方法库', icon: '/static/image/icon/fangfaku.png', url: '/pages/museum/methods' },
-  { key: 'diary', name: '日记与分析', icon: '/static/image/icon/rijiji.png', url: '/pages/museum/diary' },
-  { key: 'milestone', name: '里程碑', icon: '/static/image/icon/lichengbei.png', url: '/pages/museum/milestones' }
+  { key: 'recipe', name: '食谱库', icon: museumIconMap.recipe, url: '/pages/museum/recipes' },
+  { key: 'insight', name: '感悟与心情', icon: museumIconMap.insight, url: '/pages/museum/insights' },
+  { key: 'photo', name: '照片墙', icon: museumIconMap.photo, url: '/pages/museum/compare' },
+  { key: 'method', name: '方法库', icon: museumIconMap.method, url: '/pages/museum/methods' },
+  { key: 'diary', name: '日记与分析', icon: museumIconMap.diary, url: '/pages/museum/diary' },
+  { key: 'milestone', name: '里程碑', icon: museumIconMap.milestone, url: '/pages/museum/milestones' }
 ];
 
 const visibleEntries = computed(() => {

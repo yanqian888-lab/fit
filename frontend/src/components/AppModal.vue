@@ -5,9 +5,9 @@
       <!-- 标题区域（可带图标/小熊猫） -->
       <view v-if="!hideHeader" class="modal-header">
         <image
-          v-if="icon === 'panda' && pandaIcon"
+          v-if="icon === 'panda' && resolvedPandaIcon"
           class="modal-panda"
-          :src="pandaIcon"
+          :src="resolvedPandaIcon"
           mode="aspectFit"
         />
         <text v-if="title" class="modal-title">{{ title }}</text>
@@ -83,6 +83,7 @@
  *  - update:visible: 双向绑定显示状态
  */
 import { computed } from 'vue';
+import { resolveStaticUrl } from '../utils/environment';
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -102,6 +103,9 @@ const props = defineProps({
   cardClass: { type: String, default: '' },
   pandaIcon: { type: String, default: '/static/image/icon/gongjvxiang01@3x.png' }
 });
+
+/** 弹窗小熊猫图标：支持相对路径自动解析为远程 CDN 地址 */
+const resolvedPandaIcon = computed(() => resolveStaticUrl(props.pandaIcon));
 
 const emit = defineEmits(['confirm', 'cancel', 'update:visible']);
 

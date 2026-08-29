@@ -52,16 +52,16 @@
       <!-- 奖励回执弹层 -->
       <view v-if="receiptVisible" class="receipt-mask" @click="receiptVisible = false">
         <view class="receipt-panel" @click.stop>
-          <image class="receipt-avatar" src="/static/image/icon/celebrate01.jpg" mode="aspectFit" />
+          <image class="receipt-avatar" :src="celebrateAvatarUrl" mode="aspectFit" />
           <text class="receipt-title">搭搭给你发奖励啦</text>
           <text class="receipt-content">{{ receipt.content }}</text>
           <view class="receipt-rewards">
             <view v-if="receipt.berries" class="receipt-reward">
-              <image class="reward-icon" src="/static/image/icon/jiangguo@3x.png" mode="aspectFit" />
+              <image class="reward-icon" :src="resolveStaticUrl('/static/image/icon/jiangguo@3x.png')" mode="aspectFit" />
               <text class="reward-text">{{ receipt.berries }} 浆果</text>
             </view>
             <view v-if="receipt.flowers" class="receipt-reward">
-              <image class="reward-icon" src="/static/image/icon/xianhua@3x.png" mode="aspectFit" />
+              <image class="reward-icon" :src="resolveStaticUrl('/static/image/icon/xianhua@3x.png')" mode="aspectFit" />
               <text class="reward-text">{{ receipt.flowers }} 鲜花</text>
             </view>
           </view>
@@ -75,8 +75,12 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { petApi } from '../../../api';
+import { resolveStaticUrl } from '../../../utils/environment.js';
 
 const emit = defineEmits(['close', 'updated', 'openShop']);
+
+/** 奖励回执头像：改为远程 CDN 加载以减小小程序包体积 */
+const celebrateAvatarUrl = resolveStaticUrl('/static/image/icon/celebrate01.jpg');
 
 const tasks = ref([]);
 const checkin = ref({});

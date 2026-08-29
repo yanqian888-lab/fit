@@ -4,12 +4,12 @@
     <!-- 余额卡片 -->
     <view class="balance-row">
       <view class="balance-card">
-        <image class="balance-icon" src="/static/image/icon/jiangguo@3x.png" mode="aspectFit" />
+        <image class="balance-icon" :src="berryIconUrl" mode="aspectFit" />
         <text class="balance-num">{{ currency.berries ?? 0 }}</text>
         <text class="balance-label">浆果</text>
       </view>
       <view class="balance-card">
-        <image class="balance-icon" src="/static/image/icon/xianhua@3x.png" mode="aspectFit" />
+        <image class="balance-icon" :src="flowerIconUrl" mode="aspectFit" />
         <text class="balance-num">{{ currency.flowers ?? 0 }}</text>
         <text class="balance-label">鲜花</text>
       </view>
@@ -24,7 +24,7 @@
             <text class="tx-time">{{ formatTime(tx.created_at) }}</text>
           </view>
           <view class="tx-amount" :class="{ minus: tx.amount < 0 }">
-            <image class="tx-icon" :src="tx.currency_type === 'flowers' ? '/static/image/icon/xianhua@3x.png' : '/static/image/icon/jiangguo@3x.png'" mode="aspectFit" />
+            <image class="tx-icon" :src="tx.currency_type === 'flowers' ? flowerIconUrl : berryIconUrl" mode="aspectFit" />
             <text>{{ tx.amount > 0 ? '+' : '' }}{{ tx.amount }}</text>
           </view>
         </view>
@@ -38,9 +38,14 @@
 </template>
 
 <script setup>
+import { resolveStaticUrl } from '../../utils/environment.js';
 import AppPage from '../../components/AppPage.vue';
 import { ref, onMounted } from 'vue';
 import { petApi } from '../../api';
+
+/** 货币明细图标：改为远程 CDN 加载以减小小程序包体积 */
+const berryIconUrl = resolveStaticUrl('/static/image/icon/jiangguo@3x.png');
+const flowerIconUrl = resolveStaticUrl('/static/image/icon/xianhua@3x.png');
 
 const currency = ref({});
 const list = ref([]);

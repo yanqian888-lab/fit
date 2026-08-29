@@ -38,7 +38,7 @@
     <!-- 奖励回执弹层 -->
     <view v-if="receiptVisible" class="receipt-mask" @click="closeReceipt">
       <view class="receipt-panel" @click.stop>
-        <image class="receipt-avatar" src="/static/image/icon/celebrate01.jpg" mode="aspectFit" />
+        <image class="receipt-avatar" :src="celebrateAvatarUrl" mode="aspectFit" />
         <text class="receipt-title">搭搭给你发奖励啦</text>
         <text class="receipt-content">{{ receipt.content }}</text>
         <view class="receipt-rewards">
@@ -56,6 +56,10 @@ import AppPage from '../../components/AppPage.vue';
 import AppHeader from '../../components/AppHeader.vue';
 import AppButton from '../../components/AppButton.vue';
 import { newbieTaskApi } from '../../api';
+import { resolveStaticUrl } from '../../utils/environment.js';
+
+/** 奖励回执头像：改为远程 CDN 加载以减小小程序包体积 */
+const celebrateAvatarUrl = resolveStaticUrl('/static/image/icon/celebrate01.jpg');
 
 const tasks = ref([]);
 const receiptVisible = ref(false);

@@ -41,23 +41,27 @@
 import { ref, computed, onMounted } from 'vue';
 import { partnerApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';
+import { resolveStaticUrl } from '../../utils/environment.js';
 
 const partner = ref({});
 const currentMode = ref('gentle');
 
+/** 模式头像：改为远程 CDN 加载以减小小程序包体积 */
+const modeAvatarMap = {
+  gentle: resolveStaticUrl('/static/image/icon/rou.png'),
+  strict: resolveStaticUrl('/static/image/icon/zhuan.png'),
+  tease: resolveStaticUrl('/static/image/icon/sun.png')
+};
+const defaultModeAvatar = resolveStaticUrl('/static/image/icon/rou.png');
+
 const modes = [
-  { value: 'gentle', label: '温柔模式', icon: '🌸', avatar: '/static/image/icon/rou.png', desc: '像朋友一样鼓励你，适合需要陪伴感' },
-  { value: 'strict', label: '严格模式', icon: '💪', avatar: '/static/image/icon/zhuan.png', desc: '目标导向，监督打卡不手软' },
-  { value: 'tease', label: '毒舌模式', icon: '😏', avatar: '/static/image/icon/sun.png', desc: '直接犀利不留情面，扎心但有效' }
+  { value: 'gentle', label: '温柔模式', icon: '🌸', avatar: modeAvatarMap.gentle, desc: '像朋友一样鼓励你，适合需要陪伴感' },
+  { value: 'strict', label: '严格模式', icon: '💪', avatar: modeAvatarMap.strict, desc: '目标导向，监督打卡不手软' },
+  { value: 'tease', label: '毒舌模式', icon: '😏', avatar: modeAvatarMap.tease, desc: '直接犀利不留情面，扎心但有效' }
 ];
 
 const partnerAvatarUrl = computed(() => {
-  const map = {
-    gentle: '/static/image/icon/rou.png',
-    strict: '/static/image/icon/zhuan.png',
-    tease: '/static/image/icon/sun.png'
-  };
-  return map[currentMode.value] || '/static/image/icon/rou.png';
+  return modeAvatarMap[currentMode.value] || defaultModeAvatar;
 });
 
 const modeLabel = computed(() => {

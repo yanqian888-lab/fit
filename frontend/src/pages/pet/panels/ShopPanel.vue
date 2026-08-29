@@ -9,11 +9,11 @@
 
       <view class="header-currency" @click="goCurrencyDetail">
         <view class="currency-item">
-          <image class="currency-icon" src="/static/image/icon/jiangguo@3x.png" mode="aspectFit" />
+          <image class="currency-icon" :src="resolveStaticUrl('/static/image/icon/jiangguo@3x.png')" mode="aspectFit" />
           <text class="currency-value">{{ currency.berries || 0 }}</text>
         </view>
         <view class="currency-item">
-          <image class="currency-icon" src="/static/image/icon/xianhua@3x.png" mode="aspectFit" />
+          <image class="currency-icon" :src="resolveStaticUrl('/static/image/icon/xianhua@3x.png')" mode="aspectFit" />
           <text class="currency-value">{{ currency.flowers || 0 }}</text>
         </view>
       </view>
@@ -32,7 +32,7 @@
 
       <scroll-view class="overlay-scroll" scroll-y @scrolltolower="loadMore" :scroll-top="scrollTop">
         <view v-if="items.length === 0 && !loading" class="empty-state">
-          <image class="empty-icon" src="/static/image/icon/quesheng01.png" mode="aspectFit" />
+          <image class="empty-icon" :src="resolveStaticUrl('/static/image/icon/quesheng01.png')" mode="aspectFit" />
           <text class="empty-text">暂无商品</text>
         </view>
         <view v-else class="item-grid">
@@ -41,11 +41,11 @@
             <text class="item-name">{{ item.name }}</text>
             <view class="item-price">
               <view class="price-tag" v-if="item.price_berries > 0">
-                <image class="price-icon" src="/static/image/icon/jiangguo@3x.png" />
+                <image class="price-icon" :src="resolveStaticUrl('/static/image/icon/jiangguo@3x.png')" />
                 <text>{{ item.price_berries }}浆果</text>
               </view>
               <view class="price-tag" v-if="item.price_flowers > 0">
-                <image class="price-icon" src="/static/image/icon/xianhua@3x.png" />
+                <image class="price-icon" :src="resolveStaticUrl('/static/image/icon/xianhua@3x.png')" />
                 <text>{{ item.price_flowers }}鲜花</text>
               </view>
             </view>
@@ -67,9 +67,9 @@
 </template>
 
 <script setup>
+import { resolveStaticUrl } from '../../../utils/environment.js';
 import { ref, onMounted, nextTick } from 'vue';
 import { petApi } from '../../../api';
-import { resolveStaticUrl } from '../../../utils/environment';
 
 const emit = defineEmits(['close', 'bought']);
 
@@ -167,14 +167,17 @@ function loadMore() {
   loadItems();
 }
 
+/** 商店面板分类图标：改为远程 CDN 加载以减小小程序包体积 */
+const categoryIconMap = {
+  food: resolveStaticUrl('/static/image/icon/jiyinshi@3x.png'),
+  equipment: resolveStaticUrl('/static/image/icon/jiyundong.png'),
+  prop: resolveStaticUrl('/static/image/icon/gongjvxiang@3x.png'),
+  skin: resolveStaticUrl('/static/image/icon/baobao@3x.png')
+};
+const defaultShopIcon = resolveStaticUrl('/static/image/icon/shangdianicon@3x.png');
+
 function categoryIcon(category) {
-  const map = {
-    food: '/static/image/icon/jiyinshi@3x.png',
-    equipment: '/static/image/icon/jiyundong.png',
-    prop: '/static/image/icon/gongjvxiang@3x.png',
-    skin: '/static/image/icon/baobao@3x.png'
-  };
-  return map[category] || '/static/image/icon/shangdianicon@3x.png';
+  return categoryIconMap[category] || defaultShopIcon;
 }
 
 function canBuy(item) {
