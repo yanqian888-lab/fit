@@ -177,16 +177,18 @@ const items = ref([]);
 
 /**
  * 判断是否为运动时间
+ * 注意：后端 computeTimeState 返回的 time_state 为 'exercise_time'，不是 'exercise'
  */
 const isExerciseTime = computed(() => {
-  return props.petData?.time_state === 'exercise';
+  return props.petData?.time_state === 'exercise_time';
 });
 
 /**
  * 判断是否为进食时间
+ * 注意：后端 computeTimeState 返回的 time_state 为 'meal_time'，不是 'feed'
  */
 const isFeedTime = computed(() => {
-  return props.petData?.time_state === 'feed';
+  return props.petData?.time_state === 'meal_time';
 });
 
 /**
