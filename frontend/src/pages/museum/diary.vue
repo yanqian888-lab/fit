@@ -1,7 +1,7 @@
 <template>
-  <AppPage :showHeader="true" title="每日分析">
+  <AppPage :fixed="true" :showHeader="true" title="每日分析">
   <view class="diary-page">
-    <scroll-view class="diary-scroll" scroll-y>
+    <scroll-view class="diary-scroll" scroll-y :show-scrollbar="false">
       <!-- 日期模块 -->
       <view class="date-module">
         <view class="calendar-panel">
@@ -420,7 +420,9 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .diary-page {
-  height: 100vh;
+  /* AppPage fixed 模式：flex:1 占满 header 以下剩余空间，页面本身不滚动 */
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -433,6 +435,13 @@ onMounted(() => {
   flex: 1;
   height: 100%;
   padding: 0 32rpx;
+  /* 隐藏原生滚动条：系统滚动条长条常驻且压住右侧卡片内容，
+     scroll-view 滚动条长度/位置无法自定义，按项目已有模式（tab 栏/侧边栏）隐藏，
+     触摸滚动手感不受影响 */
+  scrollbar-width: none;
+}
+.diary-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .bottom-placeholder {
