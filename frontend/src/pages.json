@@ -418,7 +418,7 @@
   "preloadRule": {
     "pages/index/index": {
       "network": "all",
-      "packages": ["pages/user", "pages/record", "pages/museum"]
+      "packages": ["pages/user"]
     },
     "pages/pet/index": {
       "network": "all",
