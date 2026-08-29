@@ -13,13 +13,139 @@
       }
     },
     {
+      "path": "pages/pet/currency-detail",
+      "style": {
+        "navigationBarTitleText": "货币明细"
+      }
+    },
+    {
       "path": "pages/record/index",
       "style": {
         "navigationStyle": "custom"
       }
     },
     {
+      "path": "pages/record/diet-detail",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/record/add-food",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/record/create-food",
+      "style": {
+        "navigationBarTitleText": "创建食物"
+      }
+    },
+    {
+      "path": "pages/record/food-detail",
+      "style": {
+        "navigationBarTitleText": "食物详情"
+      }
+    },
+    {
+      "path": "pages/record/habit",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/record/mood",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/record/exercise-detail",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/record/add-exercise",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/record/body-data",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/museum/index",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/museum/diary",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/museum/diary-generate",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/museum/diary-detail",
+      "style": {
+        "navigationBarTitleText": "日记详情"
+      }
+    },
+    {
+      "path": "pages/museum/milestones",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/museum/recipes",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/museum/insights",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/museum/item-edit",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/museum/compare",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/museum/photo-upload",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/museum/recipe-detail",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/museum/methods",
       "style": {
         "navigationStyle": "custom"
       }
@@ -105,80 +231,10 @@
       ]
     },
     {
-      "root": "pages/pet",
-      "pages": [
-        {
-          "path": "currency-detail",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        }
-      ]
-    },
-    {
       "root": "pages/chat",
       "pages": [
         {
           "path": "settings",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        }
-      ]
-    },
-    {
-      "root": "pages/record",
-      "pages": [
-        {
-          "path": "diet-detail",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "add-food",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "create-food",
-          "style": {
-            "navigationBarTitleText": "创建食物"
-          }
-        },
-        {
-          "path": "food-detail",
-          "style": {
-            "navigationBarTitleText": "食物详情"
-          }
-        },
-        {
-          "path": "habit",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "mood",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "exercise-detail",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "add-exercise",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "body-data",
           "style": {
             "navigationStyle": "custom"
           }
@@ -192,77 +248,6 @@
           "path": "session",
           "style": {
             "navigationBarTitleText": "跟练"
-          }
-        }
-      ]
-    },
-    {
-      "root": "pages/museum",
-      "pages": [
-        {
-          "path": "diary",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "diary-generate",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "diary-detail",
-          "style": {
-            "navigationBarTitleText": "日记详情"
-          }
-        },
-        {
-          "path": "milestones",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "recipes",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "insights",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "item-edit",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "compare",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "photo-upload",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "recipe-detail",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "methods",
-          "style": {
-            "navigationStyle": "custom"
           }
         }
       ]
