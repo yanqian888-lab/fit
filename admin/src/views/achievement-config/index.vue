@@ -30,7 +30,7 @@
         <el-table-column prop="reward_flowers" label="花朵奖励" width="90" />
         <el-table-column label="徽章图标" width="80">
           <template #default="{ row }">
-            <img :src="row.badge_icon || DEFAULT_BADGE_ICON" class="badge-thumb" />
+            <img :src="getFullUrl(row.badge_icon) || getFullUrl(DEFAULT_BADGE_ICON)" class="badge-thumb" />
           </template>
         </el-table-column>
         <el-table-column prop="sort_order" label="排序" width="80" />
@@ -148,7 +148,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { cmsAchievementConfigApi } from '@/api/cms'
 import { useAuthStore } from '@/store/auth'
 import ImageUpload from '@/components/ImageUpload.vue'
+import { getFullUrl } from '@/config/env'
 
+// 默认徽章图标放在后端静态资源目录，通过 API 域名访问
 const DEFAULT_BADGE_ICON = '/static/image/icon/default_badge.png'
 
 const auth = useAuthStore()
