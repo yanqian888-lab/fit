@@ -1,5 +1,5 @@
 <template>
-  <AppPage :showHeader="true" title="感悟与心情">
+  <AppPage :fixed="true" :showHeader="true" title="感悟与心情">
   <view class="insights-page">
     <view class="search-bar">
       <input
@@ -12,7 +12,7 @@
       <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" @click="onSearch" />
     </view>
 
-    <scroll-view class="list-scroll" scroll-y>
+    <scroll-view class="list-scroll" scroll-y @scrolltolower="loadMore">
       <view class="list-content">
         <view v-if="sortedList.length > 0" class="insights-list">
           <view v-for="item in sortedList" :key="item.type + '-' + item.id" class="insight-card" :class="{ quote: item.type === 'quote' }">
@@ -65,7 +65,7 @@
 <script setup>
 import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
-import { onShow, onReachBottom } from '@dcloudio/uni-app';
+import { onShow } from '@dcloudio/uni-app';
 import { museumApi } from '../../api';
 import { formatDate } from '../../utils/date';
 import AppEmpty from '../../components/AppEmpty.vue';
@@ -214,18 +214,22 @@ onShow(() => {
   load();
 });
 
-onReachBottom(() => {
+/**
+ * 列表滚动到底部加载更多（scroll-view 内部滚动，页面级 onReachBottom 不会触发）
+ */
+function loadMore() {
   if (!hasMore.value) return;
   if (hasMoreQuote.value) quotePage.value++;
   if (hasMoreInsight.value) insightPage.value++;
   load(true);
-});
+}
 </script>
 
 <style lang="scss" scoped>
 .insights-page {
-  height: 100vh;
-  height: 100dvh;
+  /* AppPage fixed 模式：flex:1 占满 header 以下剩余空间，页面本身不滚动 */
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -386,10 +390,13 @@ onReachBottom(() => {
   color: $text-tertiary;
 }
 
+/* 添加按钮固定屏幕底部，不随列表滚动（与食谱库/创建食谱按钮一致） */
 .add-insight-btn {
-  flex-shrink: 0;
+  position: fixed;
+  left: 48rpx;
+  right: 48rpx;
+  bottom: calc(40rpx + env(safe-area-inset-bottom));
   height: 88rpx;
-  margin: 24rpx 48rpx calc(40rpx + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -398,5 +405,6 @@ onReachBottom(() => {
   font-size: 30rpx;
   font-weight: 500;
   color: #27282D;
+  z-index: 100;
 }
 </style>

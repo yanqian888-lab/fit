@@ -1,5 +1,5 @@
 <template>
-  <AppPage :showHeader="true" title="食谱库">
+  <AppPage :fixed="true" :showHeader="true" title="食谱库">
   <view class="recipes-page">
     <view class="search-bar">
       <input
@@ -23,7 +23,7 @@
       </view>
     </view>
 
-    <scroll-view class="list-scroll" scroll-y>
+    <scroll-view class="list-scroll" scroll-y @scrolltolower="loadMore">
       <view class="list-content">
         <view v-if="displayList.length > 0" class="recipes-list">
         <view v-for="item in displayList" :key="item.id" class="recipe-card">
@@ -73,7 +73,7 @@
 <script setup>
 import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
-import { onShow, onReachBottom } from '@dcloudio/uni-app';
+import { onShow } from '@dcloudio/uni-app';
 import { museumApi } from '../../api';
 import { formatDate } from '../../utils/date';
 import AppEmpty from '../../components/AppEmpty.vue';
@@ -237,17 +237,21 @@ onShow(() => {
   load();
 });
 
-onReachBottom(() => {
+/**
+ * 列表滚动到底部加载更多（scroll-view 内部滚动，页面级 onReachBottom 不会触发）
+ */
+function loadMore() {
   if (!hasMore.value) return;
   page.value++;
   load(true);
-});
+}
 </script>
 
 <style lang="scss" scoped>
 .recipes-page {
-  height: 100vh;
-  height: 100dvh;
+  /* AppPage fixed 模式：flex:1 占满 header 以下剩余空间，页面本身不滚动 */
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;

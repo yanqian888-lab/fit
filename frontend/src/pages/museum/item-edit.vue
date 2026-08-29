@@ -1,5 +1,5 @@
 <template>
-  <AppPage :showHeader="true" title="编辑">
+  <AppPage :fixed="true" :showHeader="true" title="编辑">
   <view class="edit-page">
     <scroll-view class="content-scroll" scroll-y>
       <view class="content-wrapper">
@@ -309,8 +309,9 @@ async function save() {
 
 <style lang="scss" scoped>
 .edit-page {
-  height: 100vh;
-  height: 100dvh;
+  /* AppPage fixed 模式：flex:1 占满 header 以下剩余空间，页面本身不滚动 */
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;

@@ -1,5 +1,5 @@
 <template>
-  <AppPage :showHeader="true" title="我的方法库">
+  <AppPage :fixed="true" :showHeader="true" title="我的方法库">
   <view class="methods-page">
     <view class="search-bar">
       <input
@@ -11,7 +11,7 @@
       <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" />
     </view>
 
-    <scroll-view class="list-scroll" scroll-y>
+    <scroll-view class="list-scroll" scroll-y @scrolltolower="loadMore">
       <view class="list-content">
         <view v-if="displayList.length > 0" class="methods-list">
         <view v-for="item in displayList" :key="item.id" class="method-card">
@@ -54,7 +54,6 @@
 <script setup>
 import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
-import { onReachBottom } from '@dcloudio/uni-app';
 import { museumApi } from '../../api';
 import AppEmpty from '../../components/AppEmpty.vue';
 import AppLoadMore from '../../components/AppLoadMore.vue';
@@ -104,11 +103,14 @@ onMounted(() => {
   load();
 });
 
-onReachBottom(() => {
+/**
+ * 列表滚动到底部加载更多（scroll-view 内部滚动，页面级 onReachBottom 不会触发）
+ */
+function loadMore() {
   if (!hasMore.value) return;
   page.value++;
   load(true);
-});
+}
 
 function editItem(item) {
   uni.navigateTo({ url: `/pages/museum/item-edit?id=${item.id}&type=method` });
@@ -143,8 +145,9 @@ async function confirmDelete() {
 
 <style lang="scss" scoped>
 .methods-page {
-  height: 100vh;
-  height: 100dvh;
+  /* AppPage fixed 模式：flex:1 占满 header 以下剩余空间，页面本身不滚动 */
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -264,10 +267,13 @@ async function confirmDelete() {
   color: #E57373;
 }
 
+/* 添加按钮固定屏幕底部，不随列表滚动（与食谱库/创建食谱按钮一致） */
 .add-method-btn {
-  flex-shrink: 0;
+  position: fixed;
+  left: 48rpx;
+  right: 48rpx;
+  bottom: calc(40rpx + env(safe-area-inset-bottom));
   height: 88rpx;
-  margin: 24rpx 48rpx calc(40rpx + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -276,5 +282,6 @@ async function confirmDelete() {
   font-size: 30rpx;
   font-weight: 500;
   color: #27282D;
+  z-index: 100;
 }
 </style>
