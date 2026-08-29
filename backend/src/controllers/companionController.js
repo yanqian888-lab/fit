@@ -4,6 +4,7 @@
  */
 const { db } = require('../db');
 const { success, error } = require('../utils/response');
+const { staticUrl } = require('../utils/staticUrl');
 const petService = require('../services/petService');
 const currencyService = require('../services/currencyService');
 const shopService = require('../services/shopService');
@@ -11,6 +12,20 @@ const inventoryService = require('../services/inventoryService');
 const eventService = require('../services/eventService');
 const taskService = require('../services/taskService');
 const achievementService = require('../services/achievementService');
+
+/**
+ * 将相对路径图片 URL 规范化为完整可访问 URL
+ * 已是 http(s) 完整地址则原样返回，否则用 staticUrl 拼接 API 域名
+ * 避免事件照片相对路径在前端无法展示（与 cmsAchievementController 修复方式一致）
+ * @param {object} req - Express 请求对象，用于读取反代后的 host
+ * @param {string|null|undefined} url - 原始图片 URL
+ * @returns {string} 完整可访问 URL，空值返回空串
+ */
+function normalizePhotoUrl(req, url) {
+  if (!url) return '';
+  if (typeof url === 'string' && /^https?:\/\//.test(url)) return url;
+  return staticUrl(req, url);
+}
 
 // ==================== 宠物 ====================
 /**
@@ -121,6 +136,11 @@ function completeExplore(req, res) {
 function getEvents(req, res) {
   const userId = req.userId;
   const list = petService.getUserEvents(userId);
+  // 拼接事件照片/事件图片完整 URL，避免相对路径前端无法展示
+  for (const item of list) {
+    if (item.image_url) item.image_url = normalizePhotoUrl(req, item.image_url);
+    if (item.photo_url) item.photo_url = normalizePhotoUrl(req, item.photo_url);
+  }
   return res.json(success({ list }));
 }
 
@@ -136,6 +156,15 @@ function getDialogues(req, res) {
 function getEventAlbum(req, res) {
   const userId = req.userId;
   const collections = petService.getEventAlbum(userId);
+  // 拼接已解锁槽位的图片 URL，未解锁槽位不下发图片无需处理
+  for (const col of collections) {
+    if (!Array.isArray(col.slots)) continue;
+    for (const slot of col.slots) {
+      if (slot.unlocked && slot.image_url) {
+        slot.image_url = normalizePhotoUrl(req, slot.image_url);
+      }
+    }
+  }
   return res.json(success({ collections }));
 }
 

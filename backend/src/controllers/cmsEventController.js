@@ -332,17 +332,22 @@ function remove(req, res) {
   return res.json(success(null, '删除成功'));
 }
 
+// 事件照片 URL 校验：接受完整 http(s) URL 或 /static/uploads/ 相对路径
+// 与 photoController.URL_REGEX 保持一致，防止脏数据进库后前端无法展示
+const EVENT_PHOTO_URL_REGEX = /^(https?:\/\/.+|\/static\/uploads\/.+)/;
+
 /**
  * 同步事件照片：与前端提交的照片数组保持一致
  * - 已存在且仍在前端列表中的 id，更新 url/sort/enabled
  * - 新增的（无 id 或 id 不在本事件），插入
  * - 前端列表中已删除的，从数据库移除
+ * - 仅保留合法 URL（http(s) 完整地址或 /static/uploads/ 相对路径），其余过滤丢弃
  */
 function syncEventPhotos(eventId, photos, req) {
   if (!Array.isArray(photos)) return;
 
   const valid = photos
-    .filter(p => p && p.photo_url && String(p.photo_url).trim())
+    .filter(p => p && p.photo_url && EVENT_PHOTO_URL_REGEX.test(String(p.photo_url).trim()))
     .map(p => ({
       id: p.id ? parseInt(p.id, 10) : null,
       photo_url: String(p.photo_url).trim(),
