@@ -533,18 +533,11 @@ const spriteConfig = computed(() => {
     return { x, y, width, height, fps, frames };
   }
 
-  // 吃饭/运动时段：始终使用 CMS pet_sprite 主形象并顶气泡
-  if (showHint.value) {
-    const frames = normalizeFrames(s.frames);
-    if (frames.length === 0) {
-      console.warn('[PetSprite] 提示时段但 pet_sprite.frames 为空，使用兜底形象');
-      return buildFallbackConfig();
-    }
-    return buildFrom(s, frames, 'pet_sprite(hint)');
-  }
+  // 【形象优先级（2026-08-29 最终修复）】：showHint 仅控制"是否顶气泡提示"，不影响形象选择
+  // 1. 状态库活动形象（home_activity）> 2. CMS pet_sprite 主形象 > 3. 当前穿戴皮肤 pet_skin
+  //    吃饭/运动时段：搭搭仍维持看书/冥想等居家状态，只是头顶多出一个气泡（🍚/💪）提示
+  //    之前 bug：showHint=true 强制返回 pet_sprite → 时段内 home_activity 永不生效，改坐标完全没反应
 
-  // 非吃饭/运动时段：按优先级选择形象来源
-  // 【2026-08-28 修复：home_activity 特殊居家状态优先级最高】
   // 1. 状态库活动形象（home_activity）：按时段/概率随机触发的特殊状态（看书/冥想/看窗外等）
   //    有值时必须优先展示，否则用户永远只看到默认形象，看不到在家其他状态
   const activityFrames = normalizeFrames(activity.frames);
