@@ -201,7 +201,8 @@ const categories = [
 onMounted(() => {
   const pages = getCurrentPages();
   const cur = pages[pages.length - 1];
-  pageQuery.value = cur.$page?.options || {};
+  // 微信端参数在原生 page.options 上，$page?.options 仅作兜底
+  pageQuery.value = cur.options || cur.$page?.options || {};
   if (pageQuery.value.date) {
     recordDate.value = pageQuery.value.date;
   }

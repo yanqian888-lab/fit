@@ -25,7 +25,9 @@ const content = ref('');
 
 onMounted(() => {
   const pages = getCurrentPages();
-  const query = pages[pages.length - 1].$page?.options || {};
+  // 微信端参数在原生 page.options 上，$page?.options 仅作兜底
+  const page = pages[pages.length - 1];
+  const query = page.options || page.$page?.options || {};
   title.value = decodeURIComponent(query.title || '');
   content.value = decodeURIComponent(query.content || '');
 });

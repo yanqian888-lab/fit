@@ -178,7 +178,8 @@ const saveBtnText = computed(() => {
 onMounted(() => {
   const pages = getCurrentPages();
   const cur = pages[pages.length - 1];
-  const query = cur.$page?.options || {};
+  // 微信端参数在原生 page.options 上，$page?.options 仅作兜底
+  const query = cur.options || cur.$page?.options || {};
   if (query.type) form.value.type = query.type;
   if (query.id) {
     isEdit.value = true;
