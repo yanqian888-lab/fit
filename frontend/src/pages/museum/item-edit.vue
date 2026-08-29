@@ -333,7 +333,8 @@ async function save() {
   background: $bg-card;
   border-radius: 32rpx;
   padding: $spacing-md;
-  margin: 48rpx 48rpx 0;
+  /* 左右归零：父级 app-page 已保留 32rpx（16px）屏幕边距，避免双重边距过宽 */
+  margin: 48rpx 0 0;
   box-shadow: $shadow-card;
 }
 
@@ -418,7 +419,8 @@ async function save() {
 
 .add-link {
   font-size: $text-sm;
-  color: $mint-dark;
+  /* 全局主题绿：与添加/确认类操作色统一 */
+  color: #8EBB77;
   margin-top: $spacing-xs;
 }
 

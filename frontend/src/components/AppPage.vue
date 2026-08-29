@@ -13,7 +13,7 @@
       'pad-capsule-top': !showHeader && padCapsuleTop,
       'pad-status-bar': !showHeader && padStatusBar
     }"
-    :style="pageStyle"
+    :style="[navAlignStyle, pageStyle]"
   >
     <!-- 自绘导航区：仅风格A二级页 showHeader=true 时渲染 -->
     <template v-if="showHeader">
@@ -72,6 +72,22 @@ const capsulePadTop = ref(0);
 try {
   const rect = uni.getMenuButtonBoundingClientRect();
   if (rect && rect.bottom) capsulePadTop.value = rect.bottom + 8;
+} catch (e) {}
+// #endif
+
+/**
+ * 自绘导航（showHeader=true）与胶囊按钮上下居中对齐：
+ * - status-bar 精确高度 = 胶囊 top（状态栏 + 胶囊上间隙）
+ * - page-header 行高 = 胶囊高度，行内 align-items:center 让返回键/标题中心线与胶囊中心线重合
+ * - 通过 CSS 变量注入（--nav-status-h / --nav-header-h），非微信端或获取失败时回落 CSS 兜底值
+ */
+const navAlignStyle = ref('');
+// #ifdef MP-WEIXIN
+try {
+  const menu = uni.getMenuButtonBoundingClientRect ? uni.getMenuButtonBoundingClientRect() : null;
+  if (menu && menu.height && menu.top) {
+    navAlignStyle.value = `--nav-status-h:${menu.top}px;--nav-header-h:${menu.height}px;`;
+  }
 } catch (e) {}
 // #endif
 
@@ -143,12 +159,13 @@ defineExpose({ goBack });
 /**
  * status-bar：标杆样式（来源：pages/record/index.vue .status-bar）
  * - 双行 height 兜底是关键，保证 navigateTo 转场不抖动下坠
+ * - 微信端由 navAlignStyle 注入 --nav-status-h（= 胶囊 top，精确到胶囊上沿），与胶囊行无缝衔接
  * - 亮绿 bg 保证渐变起点从 y=0 无缝衔接
  * - 左右负 margin 抵消父级 32rpx padding，拉满不透底
  */
 .status-bar {
   height: calc(44px + 88rpx);
-  height: calc(var(--status-bar-height, 44px) + 88rpx);
+  height: var(--nav-status-h, calc(var(--status-bar-height, 44px) + 44rpx));
   background: #F7FbF4;
   margin-left: -32rpx;
   margin-right: -32rpx;
@@ -159,6 +176,7 @@ defineExpose({ goBack });
  * page-header：吸顶标题行
  * - 与 record/index 的 page-header 保持同色系亮绿背景（通过内部 header-bg 绝对定位）
  * - margin 0 -32rpx 同样抵消父级 padding，横向拉满
+ * - 行高微信端 = 胶囊高度（--nav-header-h），返回键/标题 align-items:center 与胶囊上下居中
  * - flex 三列：左返回键（56rpx 定宽）、中标题（flex:1 居中）、右占位（56rpx 定宽平衡居中）
  */
 .page-header {
@@ -166,7 +184,9 @@ defineExpose({ goBack });
   display: flex;
   align-items: center;
   margin: 0 -32rpx 28rpx;
-  padding: 16rpx 32rpx 20rpx;
+  height: 88rpx;
+  height: var(--nav-header-h, 88rpx);
+  padding: 0 32rpx;
   overflow: hidden;
   z-index: 50;
 }
