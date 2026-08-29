@@ -533,35 +533,57 @@ const spriteConfig = computed(() => {
     return { x, y, width, height, fps, frames };
   }
 
-  // 【形象优先级（2026-08-29 最终修复）】：showHint 仅控制"是否顶气泡提示"，不影响形象选择
-  // 1. 状态库活动形象（home_activity）> 2. CMS pet_sprite 主形象 > 3. 当前穿戴皮肤 pet_skin
-  //    吃饭/运动时段：搭搭仍维持看书/冥想等居家状态，只是头顶多出一个气泡（🍚/💪）提示
-  //    之前 bug：showHint=true 强制返回 pet_sprite → 时段内 home_activity 永不生效，改坐标完全没反应
+  // 【正确产品逻辑（2026-08-29 按用户要求恢复）】：
+  // 吃饭/运动时段未完成任务 → 必须打断看书/冥想/看窗外等其他状态
+  // → 强制切回默认形象 pet_sprite + 头顶吃饭/运动气泡提示用户
+  if (showHint.value) {
+    const frames = normalizeFrames(s.frames);
+    if (frames.length === 0) {
+      console.warn('[PetSprite] 提示时段但 pet_sprite.frames 为空，使用兜底形象');
+    }
+    const finalFrames = frames.length > 0 ? frames : (() => {
+      const skinFallback = normalizeFrames(skin.frames || (skin.static_url ? [skin.static_url] : []));
+      return skinFallback.length > 0 ? skinFallback : [];
+    })();
+    const sourceForHint = finalFrames.length > 0 ? (frames.length > 0 ? s : { ...EMPTY_CONFIG, ...skin }) : EMPTY_CONFIG;
+    const hintLabel = 'pet_sprite(hint)';
+    const result = buildFrom(sourceForHint, finalFrames.length > 0 ? finalFrames : [], hintLabel);
+    // 【调试日志】帮助用户快速判断当前应该去Admin哪个tab改坐标，避免走错入口
+    const timeTypeText = hintType.value === 'exercise' ? '运动时间(exercise_time)' : '吃饭时间(meal_time)';
+    console.log(`[Pet] 🕒 当前时段：${timeTypeText} → ⚠️ 形象来源：${hintLabel} → ✏️ Admin改坐标入口：【形象配置】tab 的 X/Y 坐标（不要改【状态库】的 pos_x/pos_y！）`);
+    return result;
+  }
 
-  // 1. 状态库活动形象（home_activity）：按时段/概率随机触发的特殊状态（看书/冥想/看窗外等）
-  //    有值时必须优先展示，否则用户永远只看到默认形象，看不到在家其他状态
+  // 非吃饭/运动时段：按优先级选择形象来源（home_activity 特殊居家状态优先级最高）
+  // 1. 状态库活动形象（home_activity）：看书/冥想/看窗外等
   const activityFrames = normalizeFrames(activity.frames);
   if (activityFrames.length > 0) {
-    return buildFrom(
+    const label = 'home_activity';
+    const result = buildFrom(
       { ...activity, fps: activity.frame_rate },
       activityFrames,
-      'home_activity'
+      label
     );
+    console.log(`[Pet] 🏠 当前时段：居家(home) → ⚠️ 形象来源：${label}(${activity.state_key || 'unknown'} - ${activity.name || ''}) → ✏️ Admin改坐标入口：【状态库】tab编辑「${activity.name || '对应状态'}」的 pos_x/pos_y（不要改【形象配置】的 X/Y！）`);
+    return result;
   }
 
   // 2. CMS 形象配置（pet_sprite）：用户主动上传的默认形象
   const spriteFrames = normalizeFrames(s.frames);
   if (spriteFrames.length > 0) {
-    return buildFrom(s, spriteFrames, 'pet_sprite');
+    const label = 'pet_sprite';
+    const result = buildFrom(s, spriteFrames, label);
+    console.log(`[Pet] 🏠 当前时段：居家(home) → ⚠️ 形象来源：${label}（默认主形象兜底） → ✏️ Admin改坐标入口：【形象配置】tab 的 X/Y`);
+    return result;
   }
 
-  // 3. 当前穿戴皮肤（pet_skins 表）：当 pet_sprite 未配置时的兜底
+  // 3. 当前穿戴皮肤（pet_skins 表）
   const skinFrames = normalizeFrames(skin.frames || (skin.static_url ? [skin.static_url] : []));
   if (skinFrames.length > 0) {
     return buildFrom({ ...EMPTY_CONFIG, ...skin }, skinFrames, 'pet_skin');
   }
 
-  // 4. 最终兜底：所有形象来源均为空时，返回空帧配置
+  // 4. 兜底
   console.warn('[PetSprite] 所有形象来源均为空（home_activity/pet_sprite/skin），宠物暂不显示');
   return {
     x: EMPTY_CONFIG.x,
