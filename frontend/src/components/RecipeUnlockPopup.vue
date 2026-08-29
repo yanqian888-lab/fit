@@ -1,9 +1,10 @@
 <template>
   <view class="recipe-mask">
     <view class="recipe-card">
-      <!-- 顶部食物图（压在绿色面板上方） -->
+      <!-- 顶部食谱图：食物图垫在“新食谱”外框窗口内，与事件掉落外框保持一致的结构 -->
       <view class="food-image-wrap">
-        <image class="food-image" :src="resolveStaticUrl(recipe.icon_url) || '/static/image/icon/jiyinshi@3x.png'" mode="aspectFit" />
+        <image class="food-photo" :src="resolveStaticUrl(recipe.icon_url) || '/static/image/icon/jiyinshi@3x.png'" mode="aspectFill" />
+        <image class="food-frame" src="/static/image/icon/xinshipu.png" mode="aspectFit" />
       </view>
       <view class="card-close" @click="$emit('close')">✕</view>
       <!-- 绿色信息面板 -->
@@ -57,21 +58,39 @@ defineEmits(['close']);
   100% { transform: translateY(0); }
 }
 
-/* 顶部食物图：198×165px，压在面板上方 */
+/* 顶部食谱图外框：与事件掉落弹窗保持一致的层叠结构 */
 .food-image-wrap {
   position: relative;
   z-index: 2;
-  width: 396rpx;
-  height: 330rpx;
+  width: 560rpx;
+  aspect-ratio: 1262 / 1452;
   margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.food-image {
+/* 食物图：垫在外框窗口区域内 */
+.food-photo {
+  position: absolute;
+  left: 10%;
+  top: 24%;
+  width: 80%;
+  height: 66%;
+  z-index: 1;
+  border-radius: 32rpx;
+  background: #F8FBF4;
+}
+
+/* 新食谱外框：压在最上层 */
+.food-frame {
+  position: absolute;
+  left: 0;
+  top: 0;
   width: 100%;
   height: 100%;
+  z-index: 2;
+  pointer-events: none;
 }
 
 /* 关闭按钮：右上角白色圆圈 ✕ */
@@ -97,11 +116,11 @@ defineEmits(['close']);
 .card-panel {
   position: relative;
   z-index: 1;
-  margin-top: -140rpx;
+  margin-top: -120rpx;
   background: #E8F6D7;
   border: 4rpx solid #563E22;
   border-radius: 24rpx;
-  padding: 180rpx 46rpx 48rpx;
+  padding: 160rpx 46rpx 48rpx;
   display: flex;
   flex-direction: column;
   align-items: center;

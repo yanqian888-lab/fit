@@ -32,7 +32,10 @@
               <image :src="getRecipeImage(item)" mode="aspectFill" />
             </view>
             <view class="recipe-main">
-              <text class="recipe-title">{{ item.title || getRecipeTitle(item) || '健康食谱' }}</text>
+              <view class="recipe-title-row">
+                <text class="recipe-title">{{ item.title || getRecipeTitle(item) || '健康食谱' }}</text>
+                <text class="recipe-type-tag">{{ getRecipeTypeLabel(item) }}</text>
+              </view>
               <text class="recipe-desc">{{ getRecipeContent(item) }}</text>
               <text v-if="recipeTotalsText(item)" class="recipe-totals">{{ recipeTotalsText(item) }}</text>
               <text v-if="getRecipeTags(item)" class="recipe-tags">{{ getRecipeTags(item) }}</text>
@@ -113,10 +116,6 @@ const displayList = computed(() => {
 const emptyTitle = computed(() => keyword.value.trim() ? '未找到相关食谱' : '暂无食谱');
 const emptySubtitle = computed(() => keyword.value.trim() ? '换个关键词试试' : '去添加你的第一条食谱吧');
 
-function formatTags(tags) {
-  return Array.isArray(tags) ? tags.join(' · ') : tags;
-}
-
 /**
  * 安全获取食谱图片地址，防止 extracted_data 为 null/undefined 时访问属性报错
  */
@@ -171,6 +170,18 @@ function getRecipeTags(item) {
     return Object.values(t).filter(v => typeof v === 'string').join(' · ');
   }
   return String(t);
+}
+
+/**
+ * 根据 sub_type 返回食谱分类标签文案
+ */
+function getRecipeTypeLabel(item) {
+  const map = {
+    dada_recipe: '搭搭食谱',
+    precipitation_recipe: '聊聊食谱',
+    custom_recipe: '自定义食谱'
+  };
+  return map[item.sub_type] || '食谱';
 }
 
 // 食谱总克数/总热量展示文案（有数据才显示）
@@ -335,7 +346,7 @@ function loadMore() {
   background: $bg-card;
   border-radius: 32rpx;
   padding: $spacing-md;
-  margin: 0 48rpx $spacing-sm;
+  margin: 0 32rpx $spacing-sm;
   box-shadow: $shadow-card;
 }
 
@@ -370,12 +381,33 @@ function loadMore() {
   min-width: 0;
 }
 
+.recipe-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
 .recipe-title {
   font-size: $text-lg;
   font-weight: $font-semibold;
   color: $text-primary;
-  display: block;
-  margin-bottom: 8rpx;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recipe-type-tag {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 24rpx;
+  background: #E8F6D7;
+  font-size: 22rpx;
+  color: #8EBB77;
+  font-weight: 500;
 }
 
 .recipe-desc {
