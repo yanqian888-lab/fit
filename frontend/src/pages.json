@@ -7,61 +7,7 @@
       }
     },
     {
-      "path": "pages/login/index",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/onboarding/index",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/onboarding/tasks",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/profile/setup",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/partner/select-mode",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/partner/settings",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/guide/feature",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
       "path": "pages/pet/index",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/pet/currency-detail",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/chat/settings",
       "style": {
         "navigationStyle": "custom"
       }
@@ -73,271 +19,427 @@
       }
     },
     {
-      "path": "pages/record/diet-detail",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/add-food",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/create-food",
-      "style": {
-        "navigationBarTitleText": "创建食物"
-      }
-    },
-    {
-      "path": "pages/record/food-detail",
-      "style": {
-        "navigationBarTitleText": "食物详情"
-      }
-    },
-    {
-      "path": "pages/record/habit",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/mood",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/exercise-detail",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/add-exercise",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/body-data",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
       "path": "pages/museum/index",
       "style": {
         "navigationStyle": "custom"
       }
-    },
-    {
-      "path": "pages/museum/diary",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/diary-generate",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/diary-detail",
-      "style": {
-        "navigationBarTitleText": "日记详情"
-      }
-    },
-    {
-      "path": "pages/workout/session",
-      "style": {
-        "navigationBarTitleText": "跟练"
-      }
-    },
-    {
-      "path": "pages/museum/milestones",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/recipes",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/insights",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/item-edit",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/compare",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/photo-upload",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/recipe-detail",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/methods",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/register/index",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/user/index",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/user/profile",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/user/data-manage",
-      "style": {
-        "navigationBarTitleText": "数据管理"
-      }
-    },
-    {
-      "path": "pages/user/achievement",
-      "style": {
-        "navigationBarTitleText": "成就中心"
-      }
-    },
-    {
-      "path": "pages/tasks/index",
-      "style": {
-        "navigationBarTitleText": "任务中心"
-      }
-    },
-    {
-      "path": "pages/shop/index",
-      "style": {
-        "navigationBarTitleText": "浆果商店"
-      }
-    },
-    {
-      "path": "pages/inventory/index",
-      "style": {
-        "navigationBarTitleText": "背包"
-      }
-    },
-    {
-      "path": "pages/user/notifications",
-      "style": {
-        "navigationBarTitleText": "通知设置"
-      }
-    },
-    {
-      "path": "pages/user/messages",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/user/about",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/user/privacy",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/user/agreement",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/user/help",
-      "style": {
-        "navigationBarTitleText": "帮助中心"
-      }
-    },
-    {
-      "path": "pages/user/help-detail",
-      "style": {
-        "navigationBarTitleText": "帮助详情"
-      }
-    },
-    {
-      "path": "pages/user/feedback",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/user/account-settings",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/user/delete-account-agreement",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/admin/feedback",
-      "style": {
-        "navigationBarTitleText": "用户反馈"
-      }
-    },
-    {
-      "path": "pages/admin/privacy",
-      "style": {
-        "navigationBarTitleText": "隐私政策"
-      }
-    },
-    {
-      "path": "pages/blank/index",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/webview/index",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTitleText": "详情"
-      }
     }
   ],
+  "subPackages": [
+    {
+      "root": "pages/login",
+      "pages": [
+        {
+          "path": "index",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/register",
+      "pages": [
+        {
+          "path": "index",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/onboarding",
+      "pages": [
+        {
+          "path": "index",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "tasks",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/profile",
+      "pages": [
+        {
+          "path": "setup",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/partner",
+      "pages": [
+        {
+          "path": "select-mode",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "settings",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/guide",
+      "pages": [
+        {
+          "path": "feature",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/pet",
+      "pages": [
+        {
+          "path": "currency-detail",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/chat",
+      "pages": [
+        {
+          "path": "settings",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/record",
+      "pages": [
+        {
+          "path": "diet-detail",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "add-food",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "create-food",
+          "style": {
+            "navigationBarTitleText": "创建食物"
+          }
+        },
+        {
+          "path": "food-detail",
+          "style": {
+            "navigationBarTitleText": "食物详情"
+          }
+        },
+        {
+          "path": "habit",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "mood",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "exercise-detail",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "add-exercise",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "body-data",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/workout",
+      "pages": [
+        {
+          "path": "session",
+          "style": {
+            "navigationBarTitleText": "跟练"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/museum",
+      "pages": [
+        {
+          "path": "diary",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "diary-generate",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "diary-detail",
+          "style": {
+            "navigationBarTitleText": "日记详情"
+          }
+        },
+        {
+          "path": "milestones",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "recipes",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "insights",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "item-edit",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "compare",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "photo-upload",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "recipe-detail",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "methods",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/shop",
+      "pages": [
+        {
+          "path": "index",
+          "style": {
+            "navigationBarTitleText": "浆果商店"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/inventory",
+      "pages": [
+        {
+          "path": "index",
+          "style": {
+            "navigationBarTitleText": "背包"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/tasks",
+      "pages": [
+        {
+          "path": "index",
+          "style": {
+            "navigationBarTitleText": "任务中心"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/user",
+      "pages": [
+        {
+          "path": "index",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "profile",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "data-manage",
+          "style": {
+            "navigationBarTitleText": "数据管理"
+          }
+        },
+        {
+          "path": "achievement",
+          "style": {
+            "navigationBarTitleText": "成就中心"
+          }
+        },
+        {
+          "path": "notifications",
+          "style": {
+            "navigationBarTitleText": "通知设置"
+          }
+        },
+        {
+          "path": "messages",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "about",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "privacy",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "agreement",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "help",
+          "style": {
+            "navigationBarTitleText": "帮助中心"
+          }
+        },
+        {
+          "path": "help-detail",
+          "style": {
+            "navigationBarTitleText": "帮助详情"
+          }
+        },
+        {
+          "path": "feedback",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "account-settings",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "delete-account-agreement",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/admin",
+      "pages": [
+        {
+          "path": "feedback",
+          "style": {
+            "navigationBarTitleText": "用户反馈"
+          }
+        },
+        {
+          "path": "privacy",
+          "style": {
+            "navigationBarTitleText": "隐私政策"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/blank",
+      "pages": [
+        {
+          "path": "index",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pages/webview",
+      "pages": [
+        {
+          "path": "index",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTitleText": "详情"
+          }
+        }
+      ]
+    }
+  ],
+  "preloadRule": {
+    "pages/index/index": {
+      "network": "all",
+      "packages": ["pages/user", "pages/record", "pages/museum"]
+    },
+    "pages/pet/index": {
+      "network": "all",
+      "packages": ["pages/shop", "pages/inventory", "pages/tasks"]
+    }
+  },
   "globalStyle": {
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "掉秤搭搭",
