@@ -1,5 +1,5 @@
 <template>
-  <AppPage>
+  <AppPage :showHeader="true" title="意见反馈">
     <view class="feedback-page">
       <view class="tab-bar">
         <view

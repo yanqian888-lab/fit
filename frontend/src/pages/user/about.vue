@@ -1,5 +1,5 @@
 <template>
-  <AppPage>
+  <AppPage :showHeader="true" title="关于我们">
     <view class="about-page">
       <view class="about-card">
         <block v-if="aboutContent">

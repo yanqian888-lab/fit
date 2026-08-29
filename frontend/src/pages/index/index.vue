@@ -380,7 +380,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { onShow, onHide } from '@dcloudio/uni-app';
 import { useUserStore } from '../../store';
 import { chatApi, partnerApi, recordApi, precipitationApi, systemApi, voiceApi } from '../../api';
 import { showRewardToast } from '../../utils/rewardToast.js';
@@ -860,18 +860,29 @@ onShow(() => {
   }
   if (userStore.isLoggedIn) {
     // 延迟检查建议消息，避免阻塞首帧渲染
-    nextTick(() => checkAdviceMessage());
+    nextTick(() => {
+      checkAdviceMessage();
+      // 增量同步迟到消息：AI 建议生成耗时可达 1~2 分钟，上次触发生成后
+      // 消息才入库，靠这次拉取补显（onShow 不做全量刷新，保护滚动位置）
+      refreshLatestMessages();
+    });
   }
 });
 
-// 检查减重建议（后端通过 advice_pending 标记幂等，无待生成时返回空）
+// 检查减重建议（后端通过 advice_pending 标记幂等，无待生成时返回空；
+// 有待生成时接口立即返回 pending:true，AI 在后台异步生成，由轮询负责补显）
 let checkingAdvice = false;
 async function checkAdviceMessage() {
   if (checkingAdvice) return;
   checkingAdvice = true;
   try {
     const res = await chatApi.getAdvice();
-    const msg = res.code === 0 && res.data ? res.data.message : null;
+    if (res.code === 0 && res.data && res.data.pending) {
+      // AI 已在后台开始生成（耗时可达 1~2 分钟），启动轮询等待新建议到达
+      startAdvicePolling();
+      return;
+    }
+    const msg = res.data && res.data.message ? res.data.message : null;
     if (msg && !messages.value.some(m => m.id === msg.id)) {
       const chatMsg = {
         id: msg.id,
@@ -892,6 +903,79 @@ async function checkAdviceMessage() {
     console.error('获取减重建议失败:', err);
   } finally {
     checkingAdvice = false;
+  }
+}
+
+/**
+ * 减重建议生成期间轮询增量同步（10s/次，最长约 2 分钟）：
+ * 后端 AI 异步生成（实测 19~74s+）完成后消息才入库，
+ * 轮询拉到新的 partner 消息即自动停止；切走页面时停止，回来由 onShow 兜底拉取
+ */
+let advicePollTimer = null;
+let advicePollCount = 0;
+function startAdvicePolling() {
+  stopAdvicePolling();
+  advicePollCount = 0;
+  advicePollTimer = setInterval(async () => {
+    advicePollCount += 1;
+    if (advicePollCount > 12) {
+      stopAdvicePolling();
+      return;
+    }
+    const got = await refreshLatestMessages();
+    if (got) stopAdvicePolling();
+  }, 10000);
+}
+
+/** 停止建议轮询定时器 */
+function stopAdvicePolling() {
+  if (advicePollTimer) {
+    clearInterval(advicePollTimer);
+    advicePollTimer = null;
+  }
+}
+
+onHide(() => {
+  // 离开聊聊页停止轮询，返回时 onShow 的增量同步会兜底补显
+  stopAdvicePolling();
+});
+
+/**
+ * 增量同步服务端最新消息（第一页 20 条），把内存中不存在的消息追加到尾部：
+ * 减重建议由后端 AI 异步生成（耗时可达 1~2 分钟），上次触发后消息才入库，
+ * onShow 时靠本次拉取补显，避免"修改目标后聊聊页看不到新建议"
+ */
+let refreshingLatest = false;
+async function refreshLatestMessages() {
+  if (refreshingLatest) return false;
+  refreshingLatest = true;
+  try {
+    const res = await chatApi.getMessages({ page: 1, size: 20 });
+    const list = (res.data.list || []).map(msg => ({
+      ...msg,
+      precipitation_status: Number(msg.precipitation_status) || 0,
+      precipitation_id: msg.precipitation_id || null,
+      precipitation_type: msg.precipitation_type || null
+    })).map(m => sanitizePartnerMessage(m));
+    const knownIds = new Set(messages.value.map(m => m.id));
+    const fresh = list.filter(m => !knownIds.has(m.id));
+    if (fresh.length === 0) return false;
+    // 服务端返回为正序（旧→新），直接追加到尾部保持时间线
+    messages.value = [...messages.value, ...fresh];
+    const ids = fresh.map(m => m.id).filter(Boolean);
+    if (ids.length) loadPendingAssets(ids);
+    const last = fresh[fresh.length - 1];
+    if (last.content && last.content.length > 60) {
+      startTypeWriter(last);
+    }
+    scrollToBottom(true);
+    // 返回是否拉到了新的 AI（partner）消息，供建议轮询判断是否停止
+    return fresh.some(m => m.role === 'partner');
+  } catch (err) {
+    console.error('同步最新消息失败:', err);
+    return false;
+  } finally {
+    refreshingLatest = false;
   }
 }
 

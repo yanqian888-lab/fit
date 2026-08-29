@@ -219,7 +219,7 @@
     {
       "path": "pages/user/profile",
       "style": {
-        "navigationBarTitleText": "个人资料"
+        "navigationStyle": "custom"
       }
     },
     {
@@ -267,7 +267,7 @@
     {
       "path": "pages/user/about",
       "style": {
-        "navigationBarTitleText": "关于我们"
+        "navigationStyle": "custom"
       }
     },
     {
@@ -297,7 +297,7 @@
     {
       "path": "pages/user/feedback",
       "style": {
-        "navigationBarTitleText": "意见反馈"
+        "navigationStyle": "custom"
       }
     },
     {

@@ -821,9 +821,64 @@ function sendWakeupMessage(req, res) {
 }
 
 /**
+ * 恢复减重建议待生成标记（AI 生成失败时兜底，下次进入聊聊页自动重试）
+ */
+function restoreAdvicePending(userId) {
+  try {
+    db.prepare('UPDATE user_profiles SET advice_pending = 1 WHERE user_id = ?').run(userId);
+  } catch (e) {
+    console.error('恢复减重建议标记失败:', e.message);
+  }
+}
+
+/**
+ * 后台异步生成减重建议并落库
+ * AI（Hy3 think_high）实测耗时 19~74s+，同步等待会把 HTTP 请求挂到前端 60s 超时，
+ * 表现为「修改目标后过一会儿报 500」，故改为后台执行：
+ * 成功 → 消息直接入库，前端靠增量同步/轮询补显；
+ * 失败（异常或两次空内容）→ 恢复 advice_pending 标记，下次进入聊聊页自动重试。
+ */
+async function generateAdviceAsync(userId, userInfoStr, mode) {
+  // AI 生成（失败自动重试 1 次：AI 服务偶发超时/空响应）
+  // max_tokens=10000：Hy3 think 模式下 reasoning_tokens 计入 completion_tokens，
+  // 实测 4000 全被思考耗尽（finish=length, contentLen=0）导致建议永远生成失败
+  const generateContent = async () => {
+    const systemPrompt = promptService.getPrompt('weight_loss_advice', { user_info: userInfoStr });
+    const opts = { temperature: 0.7, max_tokens: 10000, timeout: 180000 };
+    const response = await callWithPrompt('weight_loss_advice', [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: '请根据我的身体数据，严格按照【输出结构】给出完整的减重方案。' }
+    ], opts);
+    return (response.choices?.[0]?.message?.content || '').trim();
+  };
+
+  try {
+    let content = await generateContent();
+    if (!content) {
+      console.warn('[sendAdviceMessage] AI 返回空内容，自动重试 1 次');
+      content = await generateContent();
+    }
+    if (!content) {
+      restoreAdvicePending(userId);
+      console.error('[sendAdviceMessage] AI 两次返回空内容，已恢复标记待下次重试');
+      return;
+    }
+    db.prepare(`
+      INSERT INTO chat_messages (user_id, role, content, content_type, mode)
+      VALUES (?, 'partner', ?, 'text', ?)
+    `).run(userId, content, mode);
+    console.log('[sendAdviceMessage] 减重建议已生成并入库');
+  } catch (err) {
+    restoreAdvicePending(userId);
+    console.error('[sendAdviceMessage] 生成失败已恢复标记:', err.message);
+  }
+}
+
+/**
  * 生成减重建议消息
- * 触发场景：新用户首次填写完身体信息、或更新身体信息后进入聊聊页
- * 通过 user_profiles.advice_pending 标记保证幂等，仅在有标记时生成一次
+ * 触发场景：新用户首次填写完身体信息、或更新身体信息（初始/目标体重）后进入聊聊页
+ * 通过 user_profiles.advice_pending 标记保证幂等，仅在有标记时生成一次；
+ * 接口只负责校验并领取任务，AI 生成在后台异步执行，立即返回 pending:true
  */
 async function sendAdviceMessage(req, res) {
   const userId = req.userId;
@@ -835,14 +890,6 @@ async function sendAdviceMessage(req, res) {
   if (claimed.changes === 0) {
     return res.json(success(null, '无需生成'));
   }
-
-  const restorePending = () => {
-    try {
-      db.prepare('UPDATE user_profiles SET advice_pending = 1 WHERE user_id = ?').run(userId);
-    } catch (e) {
-      console.error('恢复减重建议标记失败:', e.message);
-    }
-  };
 
   try {
     const user = db.prepare('SELECT gender, age, height FROM users WHERE id = ?').get(userId);
@@ -867,36 +914,15 @@ async function sendAdviceMessage(req, res) {
       profile.target_date ? `目标日期：${profile.target_date}` : null
     ].filter(Boolean).join('；');
 
-    const systemPrompt = promptService.getPrompt('weight_loss_advice', { user_info: userInfoStr });
-    const response = await callWithPrompt('weight_loss_advice', [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: '请根据我的身体数据，严格按照【输出结构】给出完整的减重方案。' }
-    ], { temperature: 0.7, max_tokens: 4000, timeout: 60000 });
-
-    const content = (response.choices?.[0]?.message?.content || '').trim();
-    if (!content) {
-      restorePending();
-      return res.status(500).json(error('生成减重建议失败', 500));
-    }
-
     const partner = db.prepare('SELECT mode FROM partners WHERE user_id = ?').get(userId);
-    const result = db.prepare(`
-      INSERT INTO chat_messages (user_id, role, content, content_type, mode)
-      VALUES (?, 'partner', ?, 'text', ?)
-    `).run(userId, content, partner?.mode || 'gentle');
 
-    return res.json(success({
-      message: {
-        id: result.lastInsertRowid,
-        role: 'partner',
-        content,
-        content_type: 'text',
-        created_at: new Date().toISOString()
-      }
-    }));
+    // 后台异步生成，接口立即返回，避免 HTTP 长挂导致前端超时报错
+    generateAdviceAsync(userId, userInfoStr, partner?.mode || 'gentle');
+
+    return res.json(success({ pending: true }));
   } catch (err) {
-    // 生成失败恢复标记，下次进入聊聊页可重试
-    restorePending();
+    // 校验阶段异常恢复标记，下次进入聊聊页可重试
+    restoreAdvicePending(userId);
     console.error('生成减重建议失败:', err.message);
     return res.status(500).json(error('生成减重建议失败', 500));
   }

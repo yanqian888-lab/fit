@@ -1,6 +1,7 @@
 <template>
-  <AppPage>
+  <AppPage :showHeader="true" title="个人资料">
     <view class="profile-page">
+      <!-- 改为 custom 自绘导航：与其他二级页统一，消除 custom→native 转场时页面整体下移的跳变 -->
       <view class="avatar-card">
         <view class="avatar">
           <image v-if="user.avatar_url && !avatarError" :src="avatarFullUrl" class="avatar-img" mode="aspectFill" @error="avatarError = true" />
@@ -216,7 +217,7 @@ async function save() {
 
 <style lang="scss" scoped>
 .profile-page {
-  /* 原生导航已绘制外部返回按钮，页面不再自绘浮动返回键；顶部内容紧贴 AppPage 起点（原生导航下方） */
+  /* custom 自绘导航（AppPage showHeader 提供返回键与标题），内容从头部下方开始 */
 }
 
 .avatar-card {
