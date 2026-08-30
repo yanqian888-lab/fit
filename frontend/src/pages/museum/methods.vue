@@ -272,7 +272,7 @@ async function confirmDelete() {
   position: fixed;
   left: 48rpx;
   right: 48rpx;
-  bottom: calc(40rpx + env(safe-area-inset-bottom));
+  bottom: calc(32rpx + env(safe-area-inset-bottom));
   height: 88rpx;
   display: flex;
   align-items: center;

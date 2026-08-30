@@ -79,7 +79,6 @@ const avatarFullUrl = computed(() => {
 const menuList = [
   { title: '消息中心', iconImg: '/static/image/icon/menu_message.svg', url: '/pages/user/messages', badge: true },
   { title: '搭子设置', iconImg: '/static/image/icon/menu_partner.svg', url: '/pages/partner/settings' },
-  { title: '账户设置', iconImg: '/static/image/icon/menu_account.svg', url: '/pages/user/account-settings' },
   { title: '意见反馈', iconImg: '/static/image/icon/menu_feedback.svg', url: '/pages/user/feedback' },
   { title: '关于我们', iconImg: '/static/image/icon/menu_about.svg', url: '/pages/user/about' },
   { title: '用户协议', iconImg: '/static/image/icon/menu_agreement.svg', url: '/pages/user/agreement' },

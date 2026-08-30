@@ -361,12 +361,6 @@
           }
         },
         {
-          "path": "account-settings",
-          "style": {
-            "navigationStyle": "custom"
-          }
-        },
-        {
           "path": "delete-account-agreement",
           "style": {
             "navigationStyle": "custom"

@@ -101,7 +101,7 @@ async function submit() {
 .page-title {
   font-size: $text-2xl;
   font-weight: $font-bold;
-  color: $text-primary;
+  color: #000000;
   display: block;
 }
 

@@ -61,7 +61,6 @@ const INTERNAL_ROUTE_WHITELIST = new Set([
   '/pages/user/help',
   '/pages/user/help-detail',
   '/pages/user/feedback',
-  '/pages/user/account-settings',
   '/pages/user/delete-account-agreement',
   '/pages/onboarding/index',
   '/pages/onboarding/tasks',

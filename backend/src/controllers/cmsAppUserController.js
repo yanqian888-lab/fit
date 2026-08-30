@@ -52,26 +52,20 @@ function list(req, res) {
   const list = db.prepare(`
     SELECT
       u.id, u.user_id, u.openid, u.unionid, u.username, u.nickname, u.avatar_url, u.phone,
-      u.gender, u.age, u.birth_date, u.height, u.role, u.status, u.source,
+      u.gender, u.age, u.birth_date, u.role, u.status, u.source,
       u.created_at, u.last_login_at,
-      p.initial_weight, p.current_weight, p.target_weight,
-      pt.name as partner_name, pt.mode as partner_mode
+      pt.mode as partner_mode
     FROM users u
-    LEFT JOIN user_profiles p ON u.id = p.user_id
     LEFT JOIN partners pt ON u.id = pt.user_id
     ${where}
     ORDER BY u.created_at DESC
     LIMIT ? OFFSET ?
   `).all(...params, size, offset).map(item => {
-    const bmi = item.height && item.current_weight
-      ? (item.current_weight / Math.pow(item.height / 100, 2)).toFixed(1)
-      : null;
     return {
       ...item,
       gender_text: GENDER_MAP[item.gender] || '未知',
       mode_text: MODE_MAP[item.partner_mode] || item.partner_mode || '-',
-      source_text: SOURCE_MAP[item.source] || item.source || '-',
-      bmi
+      source_text: SOURCE_MAP[item.source] || item.source || '-'
     };
   });
 
@@ -129,7 +123,7 @@ function getById(req, res) {
       u.gender, u.age, u.birth_date, u.height, u.role, u.status, u.source,
       u.created_at, u.last_login_at,
       p.*,
-      pt.name as partner_name, pt.mode as partner_mode, pt.gender as partner_gender,
+      pt.mode as partner_mode, pt.gender as partner_gender,
       pt.voice_speed, pt.strictness, pt.humor
     FROM users u
     LEFT JOIN user_profiles p ON u.id = p.user_id

@@ -37,11 +37,6 @@
         </el-table-column>
         <el-table-column prop="gender_text" label="性别" width="80" />
         <el-table-column prop="age" label="年龄" width="80" />
-        <el-table-column prop="height" label="身高(cm)" width="100" />
-        <el-table-column prop="current_weight" label="当前体重" width="100" />
-        <el-table-column prop="target_weight" label="目标体重" width="100" />
-        <el-table-column prop="bmi" label="BMI" width="90" />
-        <el-table-column prop="partner_name" label="搭子名称" width="120" />
         <el-table-column prop="mode_text" label="搭子模式" width="90" />
         <el-table-column prop="source_text" label="注册方式" width="100">
           <template #default="{ row }">

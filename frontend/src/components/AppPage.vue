@@ -242,7 +242,7 @@ defineExpose({ goBack });
   text-align: center;
   font-size: 36rpx;
   font-weight: 700;
-  color: #563E22;
+  color: #000000;
   /* 防止超长标题换行破坏布局 */
   white-space: nowrap;
   overflow: hidden;

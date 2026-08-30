@@ -194,7 +194,7 @@ function formatMonth(dateStr) {
   position: fixed;
   left: 40rpx;
   right: 40rpx;
-  bottom: calc(40rpx + env(safe-area-inset-bottom));
+  bottom: calc(32rpx + env(safe-area-inset-bottom));
   height: 88rpx;
   display: flex;
   align-items: center;

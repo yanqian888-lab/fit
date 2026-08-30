@@ -1,12 +1,6 @@
 <template>
-  <AppPage :showHeader="true" title="食谱详情">
+  <AppPage :fixed="true" :showHeader="true" title="食谱详情">
   <view class="recipe-detail-page">
-    <view class="page-header">
-      <view class="header-right">
-        <text class="delete-btn" @click="deleteRecipe">删除</text>
-      </view>
-    </view>
-
     <scroll-view class="content-scroll" scroll-y>
       <view class="content-wrapper">
         <!-- 食谱标题卡片 -->
@@ -62,6 +56,9 @@
           <text class="raw-content-text">{{ recipe.content }}</text>
         </view>
 
+        <!-- 删除按钮放在页面内容最底部，跟随滚动 -->
+        <text class="delete-btn" @click="deleteRecipe">删除</text>
+
         <!-- 底部占位 -->
         <view class="bottom-placeholder"></view>
       </view>
@@ -112,6 +109,7 @@ import AppPage from '../../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { museumApi, recordApi } from '../../api';
 import { showRewardToast } from '../../utils/rewardToast.js';
+import { resolveStaticUrl } from '../../utils/environment.js';
 import AppModal from '../../components/AppModal.vue';
 
 const recipe = ref({});
@@ -123,10 +121,11 @@ const showDeleteModal = ref(false);
 // 搭搭食谱为系统下发，用户不可编辑
 const isEditableRecipe = computed(() => recipe.value.sub_type !== 'dada_recipe');
 
-// 食谱图片：blob: 是历史前端临时地址（已失效），只展示有效的 http/静态路径
+// 食谱图片：blob:/data: 是历史前端临时地址（已失效），相对路径拼接为后端完整 CDN 地址
 const recipeImage = computed(() => {
   const img = recipe.value.extracted_data?.image || '';
-  return (/^https?:\/\//.test(img) || img.startsWith('/')) ? img : '';
+  if (!img || img.startsWith('blob:') || img.startsWith('data:')) return '';
+  return resolveStaticUrl(img);
 });
 
 // 总克数/总热量
@@ -186,7 +185,12 @@ const steps = computed(() => {
 const tip = computed(() => {
   const data = recipe.value.extracted_data || {};
   if (data.tip && typeof data.tip === 'string' && data.tip.trim()) {
-    return data.tip;
+    return data.tip.trim();
+  }
+  // 从 content 原文兜底解析小贴士
+  if (recipe.value.content) {
+    const parsed = parseTipFromText(recipe.value.content);
+    if (parsed) return parsed;
   }
   return '';
 });
@@ -222,14 +226,19 @@ function parseIngredientString(str) {
 
 /**
  * 从 content 原文兜底解析食材列表
+ * 兼容「食材：」与「【食材】」两种标记格式
  * @param {string} content 食谱原文
  * @returns {Array<{name, amount}>} 食材数组
  */
 function parseIngredientsFromText(content) {
   if (!content) return [];
   const ingredients = [];
-  // 按「食材：」分段
-  const match = content.match(/食材[：:]\s*([\s\S]*?)(?=做法|步骤|小贴士|$)/i);
+  // 优先匹配「【食材】」括号格式
+  let match = content.match(/【食材】\s*([\s\S]*?)(?=【做法|【步骤|做法|步骤|小贴士|$)/i);
+  // 兜底匹配「食材：」冒号格式
+  if (!match) {
+    match = content.match(/食材[：:]\s*([\s\S]*?)(?=做法|步骤|小贴士|$)/i);
+  }
   if (!match) return [];
   const parts = match[1].split(/[、，,；;\n]/).map(s => s.trim()).filter(Boolean);
   for (const part of parts) {
@@ -241,12 +250,34 @@ function parseIngredientsFromText(content) {
 
 /**
  * 从 content 原文兜底解析做法步骤
+ * 兼容「做法：」「步骤：」「【做法】」「【做法步骤】」等标记格式
  * @param {string} content 食谱原文
  * @returns {string|null} 做法文本
  */
 function parseStepsFromText(content) {
   if (!content) return null;
-  const match = content.match(/(?:做法|步骤)[：:]\s*([\s\S]*?)(?=小贴士|$)/i);
+  // 优先匹配括号格式
+  let match = content.match(/【做法步骤】\s*([\s\S]*?)(?=【小贴士|小贴士|$)/i);
+  if (!match) match = content.match(/【做法】\s*([\s\S]*?)(?=【小贴士|小贴士|$)/i);
+  // 兜底匹配冒号格式
+  if (!match) match = content.match(/(?:做法|步骤)[：:]\s*([\s\S]*?)(?=小贴士|$)/i);
+  if (match) return match[1].trim();
+  return null;
+}
+
+/**
+ * 从 content 原文兜底解析小贴士
+ * 兼容「小贴士：」「提示：」「【小贴士】」等标记格式
+ * @param {string} content 食谱原文
+ * @returns {string|null} 小贴士文本
+ */
+function parseTipFromText(content) {
+  if (!content) return null;
+  // 优先匹配括号格式
+  let match = content.match(/【小贴士】\s*([\s\S]*)$/i);
+  if (!match) match = content.match(/【提示】\s*([\s\S]*)$/i);
+  // 兜底匹配冒号格式
+  if (!match) match = content.match(/(?:小贴士|提示)[：:]\s*([\s\S]*)$/i);
   if (match) return match[1].trim();
   return null;
 }
@@ -355,32 +386,21 @@ async function confirmDelete() {
 
 <style lang="scss" scoped>
 .recipe-detail-page {
-  height: 100vh;
-  height: 100dvh;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
   background: #F7FbF4;
 }
-.page-header {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 16rpx 32rpx;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
 
 .delete-btn {
+  display: block;
+  text-align: center;
   font-size: 26rpx;
   color: #E57373;
+  padding: 16rpx 0;
 }
 
 .content-scroll {
@@ -491,7 +511,7 @@ async function confirmDelete() {
   position: fixed;
   left: 48rpx;
   right: 48rpx;
-  bottom: calc(40rpx + env(safe-area-inset-bottom));
+  bottom: calc(32rpx + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: $spacing-sm;

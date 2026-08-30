@@ -1986,20 +1986,24 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
     current_time: getChinaDateTimeStr()
   });
 
+  let items = [];
   try {
     // 关键修复：Hy3 模型在 no_think/think_high 模式下配合 response_format: json_object 会返回空内容，
     // 导致饮食/运动沉淀全部失败。改为在 systemPrompt 中强制要求 JSON 输出，不传递 response_format。
-    const response = await callWithPrompt(
-      'precipitation_agent',
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: content }
-      ],
-      { temperature: 0.1, max_tokens: 2500 }
-    );
+    // 另外：沉淀是异步流程，若 LLM 长时间无响应（>6s），直接走规则兜底，避免用户等待几十秒仍无沉淀。
+    const response = await Promise.race([
+      callWithPrompt(
+        'precipitation_agent',
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: content }
+        ],
+        { temperature: 0.1, max_tokens: 2500 }
+      ),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('PRECIPITATION_TIMEOUT')), 6000))
+    ]);
 
     const resultText = response.choices[0].message.content || '{}';
-    let items = [];
     let rawItems = [];
 
     try {
@@ -2058,161 +2062,95 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
       if (item.type === 'recipe') return false;
       return true;
     });
-
-    // 兜底：当 LLM 没有提取到有效内容，但内容包含饮品/食物关键词时，
-    // 直接从 food_db 中查找匹配的食物并创建饮食记录
-    // 注意：疑问句/咨询句（"奶茶热量高吗"）不兜底，避免把提问误记为饮食
-    if (items.length === 0 && !isQuestionContent(content) && hasBeverageFoodContent(content)) {
-      console.log(`[沉淀兜底] LLM 未提取到有效内容，但检测到饮品/食物关键词，尝试从 food_db 匹配`);
-      
-      // 直接使用内容中的核心关键词（如"咖啡"、"苹果"等）来查询 food_db
-      let matchedFood = null;
-      const beverageKeywords = FALLBACK_FOOD_KEYWORDS;
-      
-      for (const kw of beverageKeywords) {
-        if (content.includes(kw)) {
-          const food = db.prepare(`
-            SELECT food_name, category, sub_category, calories_per_100g, protein_per_100g, carb_per_100g, fat_per_100g
-            FROM food_db
-            WHERE food_name LIKE ?
-            ORDER BY LENGTH(food_name) ASC
-            LIMIT 1
-          `).get(`%${kw}%`);
-          if (food) {
-            matchedFood = food;
-            console.log(`[沉淀兜底] 使用关键词 "${kw}" 匹配到: ${food.food_name}`);
-            break;
-          }
-        }
-      }
-      
-      if (matchedFood) {
-        const nutrition = {
-          calorie_per_100g: matchedFood.calories_per_100g || 0,
-          protein_per_100g: matchedFood.protein_per_100g || 0,
-          carb_per_100g: matchedFood.carb_per_100g || 0,
-          fat_per_100g: matchedFood.fat_per_100g || 0
-        };
-        const caloriePer100g = nutrition.calorie_per_100g;
-        
-        // 估算重量：如果用户没有明确说出重量，按常见饮品量估算
-        let weight = 200; // 默认 200g
-        const qtyMatch = content.match(/(\d+(?:\.\d+)?)\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗)/i);
-        if (qtyMatch) {
-          const qty = parseFloat(qtyMatch[1]);
-          const unit = qtyMatch[2].toLowerCase();
-          if (['克', 'g', '毫升', 'ml'].includes(unit)) weight = qty;
-          else if (['杯'].includes(unit)) weight = qty * 250;
-          else if (['瓶'].includes(unit)) weight = qty * 500;
-          else if (['盒'].includes(unit)) weight = qty * 200;
-          else if (['罐'].includes(unit)) weight = qty * 330;
-          else if (['碗'].includes(unit)) weight = qty * 250;
-        }
-        
-        const ratio = weight / 100;
-        const food = {
-          name: matchedFood.food_name,
-          weight: Math.round(weight),
-          quantity: 1,
-          unit: 'g',
-          calorie: Math.round(caloriePer100g * ratio),
-          protein: Math.round((nutrition.protein_per_100g || 0) * ratio * 10) / 10,
-          carb: Math.round((nutrition.carb_per_100g || 0) * ratio * 10) / 10,
-          fat: Math.round((nutrition.fat_per_100g || 0) * ratio * 10) / 10
-        };
-        
-        items.push({
-          type: 'diet_record',
-          extracted_data: {
-            foods: [food],
-            total_calorie: food.calorie,
-            total_protein: food.protein,
-            total_carb: food.carb,
-            total_fat: food.fat,
-            meal_time: inferMealTimeByContent(content) || normalizeMealTime(null, content, [], [])
-          },
-          confidence: 0.8
-        });
-        console.log(`[沉淀兜底] 从 food_db 匹配到食物: ${food.name}, 重量: ${food.weight}g, 热量: ${food.calorie}千卡`);
-      }
-    }
-
-    if (items.length === 0) {
-      return { extracted: false, reason: '未提取到有效内容' };
-    }
-
-    // 疑问句额外守卫：个人资产类沉淀必须置信度高且有实质内容
-    if (isQuestionContent(content)) {
-      const before = items.length;
-      items = items.filter(item => {
-        if (!ASSET_TYPES.includes(item.type)) return true;
-        const confidence = parseFloat(item.confidence) || 0;
-        if (confidence < 0.85) {
-          console.log(`[沉淀过滤] 疑问句中 ${item.type} 置信度不足: ${confidence}`);
-          return false;
-        }
-        if (!hasAssetContent(item.extracted_data)) {
-          console.log(`[沉淀过滤] 疑问句中 ${item.type} 无实质内容`);
-          return false;
-        }
-        return true;
-      });
-      if (items.length < before) {
-        console.log(`[沉淀] 疑问句守卫过滤：${before} → ${items.length} 条`);
-      }
-    }
-
-    // 同一条消息内运动记录去重（防止 LLM 输出泛称+具体动作等重复项）
-    const originalCount = items.length;
-    items = deduplicateExercisesInBatch(items);
-    if (items.length < originalCount) {
-      console.log(`[沉淀] 同消息运动去重：${originalCount} → ${items.length} 条`);
-    }
-
-    console.log(`[沉淀] 提取到 ${items.length} 条记录`);
-
-    const processed = [];
-    const processedCount = 0;
-    for (const item of items) {
-      try {
-        const result = withTransaction(() => {
-          const r = processSinglePrecipitation(userId, chatId, content, item, recordDate);
-          if (!r) return null;
-          if (r.status === 1) {
-            const syncResult = syncToBusinessTable(userId, r.type, content, r.extracted_data, recordDate, r.sub_type, r.precipitation_id, chatId);
-            if (syncResult && syncResult.skipped) {
-              console.log(`[去重] 沉淀ID ${r.precipitation_id} 被跳过，原因: ${syncResult.reason}`);
-            } else if (syncResult && syncResult.updated) {
-              console.log(`[更新] 沉淀ID ${r.precipitation_id} 更新了现有记录 ${syncResult.recordId}`);
-            }
-
-            if (syncResult && !syncResult.skipped) {
-              const relatedId = syncResult.recordId || r.precipitation_id;
-              rewardService.rewardForPrecipitationRecord(userId, r.type, r.sub_type, r.extracted_data, relatedId);
-            }
-          }
-          return r;
-        });
-        if (result) {
-          processed.push(result);
-        }
-      } catch (err) {
-        console.error('[沉淀] 单条记录事务失败:', err.message);
-      }
-    }
-
-    // 关键修复：批量处理完后进行最终数据对账
-    // 问题根源：多个 food item 被分别合并到同一条 diet_record 时，
-    // 只有第一个 precipitation_id 能正确同步，其余 precipitation_record 保持 LLM 原始值。
-    // 解决：收集本批次所有 precipitation_id，拉取所有关联的 diet_records，合并后写回每一个。
-    finalReconcilePrecipitations(userId, chatId, processed, recordDate);
-
-    console.log(`[沉淀] 成功处理 ${processed.length}/${items.length} 条记录`);
-    return processed.length > 0 ? processed[processed.length - 1] : { extracted: false, reason: '处理失败' };
   } catch (error) {
     console.error('沉淀 Agent 调用失败:', error.message);
-    return { extracted: false, reason: 'API调用失败' };
+    // 超时/异常时继续走外层兜底逻辑
   }
+
+  // 兜底：当 LLM 没有提取到有效内容或调用超时，但内容明显是饮食/运动陈述句时，
+  // 使用规则化方法强制生成沉淀记录，避免简单记录消息漏掉
+  // 疑问句/咨询句（"奶茶热量高吗"）不兜底，避免把提问误记为饮食
+  if (items.length === 0 && !isQuestionContent(content) && shouldPrecipitate(content)) {
+    console.log(`[沉淀兜底] LLM 未提取到有效内容，尝试规则化兜底提取`);
+    const fallbackItem = fallbackExtractDietRecord(content, userId, recordDate);
+    if (fallbackItem) {
+      items.push(fallbackItem);
+      console.log(`[沉淀兜底] 生成饮食记录: ${fallbackItem.extracted_data.foods.map(f => f.name).join(',')}, 热量: ${fallbackItem.extracted_data.total_calorie}千卡`);
+    }
+  }
+
+  if (items.length === 0) {
+    return { extracted: false, reason: '未提取到有效内容' };
+  }
+
+  // 疑问句额外守卫：个人资产类沉淀必须置信度高且有实质内容
+  if (isQuestionContent(content)) {
+    const before = items.length;
+    items = items.filter(item => {
+      if (!ASSET_TYPES.includes(item.type)) return true;
+      const confidence = parseFloat(item.confidence) || 0;
+      if (confidence < 0.85) {
+        console.log(`[沉淀过滤] 疑问句中 ${item.type} 置信度不足: ${confidence}`);
+        return false;
+      }
+      if (!hasAssetContent(item.extracted_data)) {
+        console.log(`[沉淀过滤] 疑问句中 ${item.type} 无实质内容`);
+        return false;
+      }
+      return true;
+    });
+    if (items.length < before) {
+      console.log(`[沉淀] 疑问句守卫过滤：${before} → ${items.length} 条`);
+    }
+  }
+
+  // 同一条消息内运动记录去重（防止 LLM 输出泛称+具体动作等重复项）
+  const originalCount = items.length;
+  items = deduplicateExercisesInBatch(items);
+  if (items.length < originalCount) {
+    console.log(`[沉淀] 同消息运动去重：${originalCount} → ${items.length} 条`);
+  }
+
+  console.log(`[沉淀] 提取到 ${items.length} 条记录`);
+
+  const processed = [];
+  const processedCount = 0;
+  for (const item of items) {
+    try {
+      const result = withTransaction(() => {
+        const r = processSinglePrecipitation(userId, chatId, content, item, recordDate);
+        if (!r) return null;
+        if (r.status === 1) {
+          const syncResult = syncToBusinessTable(userId, r.type, content, r.extracted_data, recordDate, r.sub_type, r.precipitation_id, chatId);
+          if (syncResult && syncResult.skipped) {
+            console.log(`[去重] 沉淀ID ${r.precipitation_id} 被跳过，原因: ${syncResult.reason}`);
+          } else if (syncResult && syncResult.updated) {
+            console.log(`[更新] 沉淀ID ${r.precipitation_id} 更新了现有记录 ${syncResult.recordId}`);
+          }
+
+          if (syncResult && !syncResult.skipped) {
+            const relatedId = syncResult.recordId || r.precipitation_id;
+            rewardService.rewardForPrecipitationRecord(userId, r.type, r.sub_type, r.extracted_data, relatedId);
+          }
+        }
+        return r;
+      });
+      if (result) {
+        processed.push(result);
+      }
+    } catch (err) {
+      console.error('[沉淀] 单条记录事务失败:', err.message);
+    }
+  }
+
+  // 关键修复：批量处理完后进行最终数据对账
+  // 问题根源：多个 food item 被分别合并到同一条 diet_record 时，
+  // 只有第一个 precipitation_id 能正确同步，其余 precipitation_record 保持 LLM 原始值。
+  // 解决：收集本批次所有 precipitation_id，拉取所有关联的 diet_records，合并后写回每一个。
+  finalReconcilePrecipitations(userId, chatId, processed, recordDate);
+
+  console.log(`[沉淀] 成功处理 ${processed.length}/${items.length} 条记录`);
+  return processed.length > 0 ? processed[processed.length - 1] : { extracted: false, reason: '处理失败' };
 }
 
 /**
@@ -2305,6 +2243,146 @@ function parseStepsFromContent(content) {
   const match = content.match(/(?:做法|步骤)[：:]\s*([\s\S]*?)(?=小贴士|$)/i);
   if (match) return match[1].trim();
   return null;
+}
+
+/**
+ * 规则化兜底提取一条饮食记录
+ * 用于 LLM 未提取成功，但消息明显是饮食陈述句时
+ */
+function fallbackExtractDietRecord(content, userId, recordDate) {
+  const text = String(content || '').trim();
+  if (!text) return null;
+
+  // 提取食物名称：去掉时间/餐别/动词/量词/语气词等
+  let foodName = text
+    .replace(/早上|上午|中午|下午|晚上|夜宵|早餐|午餐|晚餐|加餐|今天|昨天|刚才|刚刚|现在|待会|等下|一会儿|马上|已经|就|只|又|还|想|要|准备|打算|计划/g, '')
+    .replace(/吃了|吃过|吃|喝了|喝|啦|呢|啊|哦|嗯|吧|嘛/g, '')
+    .replace(/一份|一碗|一杯|一盘|一个|一些|一点|大约|大概|约|差不多|可能|应该/g, '')
+    .replace(/\d+(?:\.\d+)?\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/gi, '')
+    .replace(/[，。！？；、,.!?;]/g, '')
+    .trim();
+  if (!foodName) foodName = text;
+
+  // 优先从 food_db / custom_foods / favorite_foods 查找
+  let matchedFood = db.prepare(`
+    SELECT food_name, calories_per_100g, protein_per_100g, carb_per_100g, fat_per_100g
+    FROM food_db WHERE food_name = ? LIMIT 1
+  `).get(foodName);
+
+  if (!matchedFood && userId) {
+    matchedFood = db.prepare(`
+      SELECT name as food_name, calorie_per_100g as calories_per_100g, protein_per_100g, carb_per_100g, fat_per_100g
+      FROM custom_foods WHERE user_id = ? AND name = ? LIMIT 1
+    `).get(userId, foodName);
+  }
+  if (!matchedFood && userId) {
+    matchedFood = db.prepare(`
+      SELECT fd.food_name, fd.calories_per_100g, fd.protein_per_100g, fd.carb_per_100g, fd.fat_per_100g
+      FROM favorite_foods ff
+      JOIN food_db fd ON fd.food_id = ff.food_id
+      WHERE ff.user_id = ? AND fd.food_name = ? LIMIT 1
+    `).get(userId, foodName);
+  }
+  // 模糊匹配
+  if (!matchedFood) {
+    matchedFood = db.prepare(`
+      SELECT food_name, calories_per_100g, protein_per_100g, carb_per_100g, fat_per_100g
+      FROM food_db WHERE food_name LIKE ? ORDER BY LENGTH(food_name) ASC LIMIT 1
+    `).get(`%${foodName}%`);
+  }
+  if (!matchedFood && foodName.length >= 2) {
+    matchedFood = db.prepare(`
+      SELECT food_name, calories_per_100g, protein_per_100g, carb_per_100g, fat_per_100g
+      FROM food_db WHERE ? LIKE '%' || food_name || '%' ORDER BY LENGTH(food_name) DESC LIMIT 1
+    `).get(foodName);
+  }
+
+  let caloriePer100g = 0;
+  let proteinPer100g = 0;
+  let carbPer100g = 0;
+  let fatPer100g = 0;
+  let displayName = foodName;
+
+  if (matchedFood) {
+    caloriePer100g = Number(matchedFood.calories_per_100g) || 0;
+    proteinPer100g = Number(matchedFood.protein_per_100g) || 0;
+    carbPer100g = Number(matchedFood.carb_per_100g) || 0;
+    fatPer100g = Number(matchedFood.fat_per_100g) || 0;
+    displayName = matchedFood.food_name;
+  } else {
+    // 通用估算
+    displayName = foodName;
+    if (/面|粉|米线|拉面|板面|刀削面|炸酱面|拌面|炒面|热干面|螺蛳粉|酸辣粉|米粉|河粉|凉皮|面皮/.test(foodName)) {
+      caloriePer100g = 140;
+    } else if (/饭|炒饭|盖饭|拌饭|焖饭|焗饭|烩饭|煲仔饭|粥|稀饭|燕麦粥|小米粥/.test(foodName)) {
+      caloriePer100g = /粥|稀饭/.test(foodName) ? 50 : 130;
+    } else if (/包|馒头|花卷|饺子|馄饨|抄手|小笼包|生煎|锅贴|馅饼|包子|烧麦|春卷|油条|煎饼|烧饼|烙饼|面包|蛋糕|饼干|甜点|甜品/.test(foodName)) {
+      caloriePer100g = /面包|蛋糕|饼干|甜点|甜品/.test(foodName) ? 300 : 200;
+    } else if (/肉|鸡|牛|猪|羊|鱼|虾|蛋|豆腐|豆干|豆皮|腐竹|千张|素鸡/.test(foodName)) {
+      caloriePer100g = 150;
+    } else if (/水果|苹果|香蕉|橙子|葡萄|西瓜|草莓|蓝莓|猕猴桃|梨|桃|李子|樱桃|芒果|菠萝|柚子|橘子|柠檬|火龙果|哈密瓜|木瓜|百香果|杨梅|荔枝|龙眼|榴莲|山竹|椰子|甘蔗|柿子|枣|山楂|桑葚|无花果|牛油果|圣女果|黄瓜|西红柿|胡萝卜|生菜|菠菜|芹菜|西兰花|花菜|卷心菜|白菜|洋葱|大蒜|葱|姜|辣椒|茄子|豆角|豌豆|玉米|土豆|红薯|紫薯|南瓜|冬瓜|丝瓜|苦瓜|芦笋|竹笋|香菇|蘑菇|木耳|海带|紫菜/.test(foodName)) {
+      caloriePer100g = 60;
+    } else if (/奶|酸奶|牛奶|豆浆|咖啡|奶茶|果汁|可乐|雪碧|饮料|茶|水/.test(foodName)) {
+      caloriePer100g = 50;
+    } else {
+      caloriePer100g = 100;
+    }
+  }
+
+  // 估算重量
+  let weight = 200;
+  const qtyMatch = text.match(/(\d+(?:\.\d+)?)\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/i);
+  if (qtyMatch) {
+    const qty = parseFloat(qtyMatch[1]);
+    const unit = qtyMatch[2].toLowerCase();
+    if (['克', 'g', '毫升', 'ml'].includes(unit)) weight = qty;
+    else if (['杯'].includes(unit)) weight = qty * 250;
+    else if (['瓶'].includes(unit)) weight = qty * 500;
+    else if (['盒'].includes(unit)) weight = qty * 200;
+    else if (['罐'].includes(unit)) weight = qty * 330;
+    else if (['碗'].includes(unit)) weight = qty * 400;
+    else if (['个'].includes(unit)) weight = qty * 80;
+    else if (['份'].includes(unit)) weight = qty * 300;
+    else if (['片'].includes(unit)) weight = qty * 30;
+    else if (['根'].includes(unit)) weight = qty * 100;
+    else if (['只'].includes(unit)) weight = qty * 50;
+    else if (['块'].includes(unit)) weight = qty * 50;
+    else if (['勺'].includes(unit)) weight = qty * 15;
+  } else if (/一碗|一大碗|一份|一大盘|一杯/.test(text)) {
+    if (/一碗|一大碗/.test(text)) weight = 400;
+    else if (/一大盘/.test(text)) weight = 350;
+    else if (/一杯/.test(text)) weight = 250;
+  }
+
+  // 若数据库未提供宏量素，按热量估算合理比例（蛋白10%/碳水65%/脂肪25%），保证数值自洽
+  if (!(proteinPer100g > 0)) proteinPer100g = (caloriePer100g * 0.10) / 4;
+  if (!(carbPer100g > 0)) carbPer100g = (caloriePer100g * 0.65) / 4;
+  if (!(fatPer100g > 0)) fatPer100g = (caloriePer100g * 0.25) / 9;
+
+  const ratio = weight / 100;
+  const food = {
+    name: displayName,
+    weight: Math.round(weight),
+    quantity: 1,
+    unit: 'g',
+    calorie: Math.round(caloriePer100g * ratio),
+    protein: Math.round(proteinPer100g * ratio * 10) / 10,
+    carb: Math.round(carbPer100g * ratio * 10) / 10,
+    fat: Math.round(fatPer100g * ratio * 10) / 10
+  };
+
+  return {
+    type: 'diet_record',
+    extracted_data: {
+      foods: [food],
+      total_calorie: food.calorie,
+      total_protein: food.protein,
+      total_carb: food.carb,
+      total_fat: food.fat,
+      meal_time: inferMealTimeByContent(text) || normalizeMealTime(null, text, [], [])
+    },
+    confidence: 0.9
+  };
 }
 
 module.exports = { callPrecipitationAgent, syncToBusinessTable, isValidPrecipitationItem, shouldPrecipitate };

@@ -414,7 +414,8 @@ async function sendMessage(req, res) {
 
           console.log('[AsyncHelper] 沉淀等待完成，开始调用 helperAgent');
           const helperAnswer = await helperAgent.callHelperAgent(helperQuestion, user, partner);
-          if (helperAnswer && helperAnswer !== '这个问题有点复杂，我慢慢算一下，你先忙别的～') {
+          const isUnhelpful = !helperAnswer || /没有思路|换个问法|我不太明白|不知道你在说什么/i.test(helperAnswer);
+          if (helperAnswer && helperAnswer !== '这个问题有点复杂，我慢慢算一下，你先忙别的～' && !isUnhelpful) {
             // 一次性保存完整 helper 回答，避免分片丢失后续内容
             const insertHelperMsg = db.prepare(`
               INSERT INTO chat_messages (user_id, role, content, content_type, mode)

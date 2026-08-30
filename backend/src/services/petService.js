@@ -547,6 +547,7 @@ function getExerciseOptions(userId) {
 /**
  * 从食物关联的食谱信息（优先背包快照，其次商城商品当前配置）
  * 食物关联食谱配置在 effect_json.recipe = { title, content, tags? }
+ * Excel 导入的搭搭食谱可能只存了 ingredients/steps/tips，这里补全 title/content
  */
 function resolveItemRecipe(inventory) {
   const ownEffect = safeJsonParse(inventory.effect_json, {});
@@ -554,13 +555,36 @@ function resolveItemRecipe(inventory) {
     return ownEffect.recipe;
   }
   if (inventory.shop_item_id) {
-    const shopItem = db.prepare('SELECT effect_json FROM shop_items WHERE id = ?').get(inventory.shop_item_id);
+    const shopItem = db.prepare('SELECT name, effect_json FROM shop_items WHERE id = ?').get(inventory.shop_item_id);
     const shopEffect = shopItem ? safeJsonParse(shopItem.effect_json, {}) : {};
-    if (shopEffect.recipe && (shopEffect.recipe.title || shopEffect.recipe.content)) {
-      return shopEffect.recipe;
+    const recipe = shopEffect.recipe;
+    if (recipe && (recipe.title || recipe.content || recipe.ingredients || recipe.steps || recipe.tips)) {
+      return {
+        title: recipe.title || shopItem.name,
+        content: recipe.content || recipe.tips || recipe.ingredients || '',
+        ...recipe
+      };
     }
   }
   return null;
+}
+
+/**
+ * 根据食谱标题查找对应商店食物商品
+ * 用于探索/事件掉落食谱时补全 extracted_data 中的配图、总重量、总热量
+ * @param {string} title 食谱标题
+ * @returns {{icon_url:string|null, effect_json:object|null}} 商店商品信息
+ */
+function findShopRecipeByTitle(title) {
+  if (!title) return { icon_url: null, effect_json: null };
+  const shopItem = db.prepare(`
+    SELECT icon_url, effect_json FROM shop_items
+    WHERE category = 'food' AND name = ? AND status = 1
+    LIMIT 1
+  `).get(title);
+  if (!shopItem) return { icon_url: null, effect_json: null };
+  const effect = safeJsonParse(shopItem.effect_json, {});
+  return { icon_url: shopItem.icon_url || null, effect_json: effect };
 }
 
 /**
@@ -577,13 +601,35 @@ function saveRecipeToMuseum(userId, recipe, iconUrl = null) {
   `).get(userId, title);
   if (existing) return { saved: false, title };
 
-  // 计算总克数/总热量：优先使用已提供的准确值，没有时再根据食材用量估算
+  // 计算总克数/总热量：优先使用已提供的准确值，没有时根据食材用量估算，
+  // 仍缺失时从商店食物商品（Excel 导入的搭搭食谱）中补全
   let extractedData = recipe.extracted_data || null;
   if (extractedData && Array.isArray(extractedData.ingredients)) {
     const hasTotals = (extractedData.total_weight > 0 || extractedData.total_calorie > 0);
     if (!hasTotals) {
       const totals = computeRecipeTotals(extractedData.ingredients);
       extractedData = { ...extractedData, total_weight: totals.totalWeight, total_calorie: totals.totalCalorie };
+    }
+  }
+  // 从商店食物商品补全总重量/总热量/配图
+  const hasTotalsNow = extractedData && (extractedData.total_weight > 0 || extractedData.total_calorie > 0);
+  const hasImageNow = extractedData && extractedData.image;
+  if (!hasTotalsNow || !hasImageNow) {
+    const shop = findShopRecipeByTitle(title);
+    const nutrition = shop.effect_json && shop.effect_json.nutrition;
+    if (nutrition) {
+      extractedData = { ...extractedData };
+      if (!(extractedData.total_weight > 0) && nutrition.weight) {
+        const w = Number(String(nutrition.weight).replace(/[^0-9.]/g, ''));
+        if (w > 0) extractedData.total_weight = w;
+      }
+      if (!(extractedData.total_calorie > 0) && nutrition.calories) {
+        const c = Number(String(nutrition.calories).replace(/[^0-9.]/g, ''));
+        if (c > 0) extractedData.total_calorie = c;
+      }
+    }
+    if (!hasImageNow && shop.icon_url) {
+      extractedData = { ...extractedData, image: shop.icon_url };
     }
   }
   // 补全商店配图：优先使用传入的 iconUrl，其次使用 recipe.extracted_data.image
@@ -864,14 +910,36 @@ function completeExplore(userId, explorationId = null) {
       `).get(userId, recipeTitle);
       if (!existingRecipe) {
         // 计算总克数/总热量（有食材用量数据时）
-        let recipeExtracted = reward.recipe.extracted_data ? JSON.stringify(reward.recipe.extracted_data) : null;
+        let extractedData = reward.recipe.extracted_data || null;
         try {
           const exData = reward.recipe.extracted_data;
           if (exData && Array.isArray(exData.ingredients)) {
             const totals = computeRecipeTotals(exData.ingredients);
-            recipeExtracted = JSON.stringify({ ...exData, total_weight: totals.totalWeight, total_calorie: totals.totalCalorie });
+            extractedData = { ...exData, total_weight: totals.totalWeight, total_calorie: totals.totalCalorie };
           }
         } catch (e) { /* 忽略结构化数据异常 */ }
+        // 从商店食物商品补全总重量/总热量/配图
+        const hasTotalsNow = extractedData && (extractedData.total_weight > 0 || extractedData.total_calorie > 0);
+        const hasImageNow = extractedData && extractedData.image;
+        if (!hasTotalsNow || !hasImageNow) {
+          const shop = findShopRecipeByTitle(recipeTitle);
+          const nutrition = shop.effect_json && shop.effect_json.nutrition;
+          if (nutrition) {
+            extractedData = { ...extractedData };
+            if (!(extractedData.total_weight > 0) && nutrition.weight) {
+              const w = Number(String(nutrition.weight).replace(/[^0-9.]/g, ''));
+              if (w > 0) extractedData.total_weight = w;
+            }
+            if (!(extractedData.total_calorie > 0) && nutrition.calories) {
+              const c = Number(String(nutrition.calories).replace(/[^0-9.]/g, ''));
+              if (c > 0) extractedData.total_calorie = c;
+            }
+          }
+          if (!hasImageNow && shop.icon_url) {
+            extractedData = { ...extractedData, image: shop.icon_url };
+          }
+        }
+        const recipeExtracted = extractedData ? JSON.stringify(extractedData) : null;
         const recipeId = db.prepare(`
           INSERT INTO museum_items (user_id, type, sub_type, title, content, extracted_data, author, tags, status)
           VALUES (?, 'recipe', 'dada_recipe', ?, ?, ?, 'partner', ?, 1)

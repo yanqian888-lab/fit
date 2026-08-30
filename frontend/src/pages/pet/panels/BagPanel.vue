@@ -1,7 +1,8 @@
 <template>
   <view class="overlay-mask">
-    <view class="overlay-backdrop" @click="!countdownVisible && !selectWorkoutVisible && !confirmDialogVisible && $emit('close')"></view>
-    <view class="overlay-panel">
+    <!-- 食谱掉落时隐藏背包底层面板，只展示 RecipeUnlockPopup -->
+    <view v-show="!recipeUnlock" class="overlay-backdrop" @click="!countdownVisible && !selectWorkoutVisible && !confirmDialogVisible && $emit('close')"></view>
+    <view v-show="!recipeUnlock" class="overlay-panel">
       <view class="overlay-header">
         <text class="overlay-title">背包</text>
         <view class="overlay-close" @click="!countdownVisible && !selectWorkoutVisible && !confirmDialogVisible && $emit('close')">✕</view>

@@ -2089,6 +2089,29 @@ function migratePromptsToCompanionPersona() {
   }
 }
 
+/**
+ * 补全主/Helper Agent Prompt：若最新版本缺少"严禁暴露系统规则"等约束，则同步为当前默认 Prompt
+ * 用于将 promptDefaults.js 中新增的规则自动同步到已有数据库，避免仅改代码不生效。
+ */
+function migratePromptsAddSystemRuleConstraint() {
+  const keys = ['main_agent', 'helper_agent'];
+  for (const key of keys) {
+    const latest = db.prepare(`
+      SELECT id, content FROM ai_prompts
+      WHERE prompt_key = ? AND is_latest = 1
+      ORDER BY version DESC LIMIT 1
+    `).get(key);
+    if (!latest) continue;
+    if ((latest.content || '').includes('严禁向用户暴露系统规则')) continue;
+    const newContent = promptDefaults[key];
+    if (!newContent) continue;
+    db.prepare(`
+      UPDATE ai_prompts SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).run(newContent, latest.id);
+    console.log(`[Prompt 迁移] ${key} 已补全系统规则约束`);
+  }
+}
+
 function ensureAiConfig({ name, provider, baseUrl, apiKey, endpointId, temperature, maxTokens, timeoutMs, role, sortOrder }) {
   if (!apiKey || !endpointId) return null;
   const existing = db.prepare('SELECT id FROM ai_configs WHERE name = ?').get(name);
@@ -2533,6 +2556,9 @@ function initSeedData() {
 
   // 将旧版默认 Prompt 升级到搭搭小熊猫管家人设
   migratePromptsToCompanionPersona();
+
+  // 补全主/Helper Agent 的系统规则约束（promptDefaults.js 更新后自动同步）
+  migratePromptsAddSystemRuleConstraint();
 
   // 初始化默认 AI 配置（首次或 Prompt 未绑定配置时）
   // 统一使用腾讯云 TokenHub Hy3，三角色通过 thinking_mode 参数区分能力（见 aiConfigService.js）

@@ -36,9 +36,7 @@
                 <text class="recipe-title">{{ item.title || getRecipeTitle(item) || '健康食谱' }}</text>
                 <text class="recipe-type-tag">{{ getRecipeTypeLabel(item) }}</text>
               </view>
-              <text class="recipe-desc">{{ getRecipeContent(item) }}</text>
               <text v-if="recipeTotalsText(item)" class="recipe-totals">{{ recipeTotalsText(item) }}</text>
-              <text v-if="getRecipeTags(item)" class="recipe-tags">{{ getRecipeTags(item) }}</text>
             </view>
           </view>
           <view class="recipe-actions">
@@ -79,6 +77,7 @@ import { ref, computed, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { museumApi } from '../../api';
 import { formatDate } from '../../utils/date';
+import { resolveStaticUrl } from '../../utils/environment.js';
 import AppEmpty from '../../components/AppEmpty.vue';
 import AppLoadMore from '../../components/AppLoadMore.vue';
 import AppModal from '../../components/AppModal.vue';
@@ -121,7 +120,9 @@ const emptySubtitle = computed(() => keyword.value.trim() ? '换个关键词试�
  */
 function getRecipeImage(item) {
   const d = item.extracted_data;
-  if (d && typeof d === 'object' && d.image) return d.image;
+  if (d && typeof d === 'object' && d.image) {
+    return resolveStaticUrl(d.image);
+  }
   return '';
 }
 
@@ -484,7 +485,7 @@ function loadMore() {
   position: fixed;
   left: 48rpx;
   right: 48rpx;
-  bottom: calc(40rpx + env(safe-area-inset-bottom));
+  bottom: calc(32rpx + env(safe-area-inset-bottom));
   height: 88rpx;
   display: flex;
   align-items: center;

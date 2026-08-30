@@ -80,6 +80,6 @@ function onBack() {
   text-align: center;
   font-size: $text-xl;
   font-weight: $font-bold;
-  color: $text-primary;
+  color: #000000;
 }
 </style>
