@@ -71,7 +71,7 @@ import { ref, onMounted } from 'vue';
 import { authApi, userApi } from '../../api';
 import { useUserStore } from '../../store';
 import { getDeviceId } from '../../utils/trial.js';
-import { handlePostAuthRedirect } from '../../utils/authRedirect';
+import { handlePostAuthRedirect } from '../login/utils/authRedirect';
 
 const userStore = useUserStore();
 const isFromSetup = ref(false);
