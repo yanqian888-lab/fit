@@ -461,14 +461,14 @@ function getCalendarDays(monthDate) {
     const curStr = formatDate(cur.toISOString());
     days.push({ date: curStr, day: cur.getDate(), isCurrentMonth: false, isToday: curStr === today, isSelected: curStr === selectedDate.value, hasRecord: recordDates.value.has(curStr) });
   }
-  // 末行校验：最后一周里「当月日期数 ≤ 2」（即 ≥5/7 都是下月日期），整周删除。
-  // 避免月底 1-2 天 + 下月 5-6 天凑一周时，flex-wrap 拆开后最后出现仅 2-3 个零星下月日期的空白行。
+  // 末行校验：最后一周完全没有当月日期时才删除。
+  // 关键修复：原逻辑「当月日期数 ≤ 2 即删除」会导致月底日期被从当月日历移除。
   const weeks = Math.floor(days.length / 7);
   if (weeks >= 2) {
     const lastIdx = (weeks - 1) * 7;
     const lastWeek = days.slice(lastIdx, lastIdx + 7);
     const currentCount = lastWeek.filter(d => d.isCurrentMonth).length;
-    if (currentCount <= 2) days.splice(lastIdx, 7);
+    if (currentCount === 0) days.splice(lastIdx, 7);
   }
   return days;
 }

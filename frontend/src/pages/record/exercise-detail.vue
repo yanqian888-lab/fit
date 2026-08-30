@@ -301,15 +301,15 @@ function getCalendarDays(monthDate) {
       isSelected: curStr === selectedDate.value
     });
   }
-  // 末行校验：最后一周里「当月日期数 ≤ 2」（即 ≥5/7 都是下月日期），整周删除。
-  // 避免月底 1-2 天 + 下月 5-6 天凑一周时，flex-wrap 拆开后最后出现仅 2-3 个零星下月日期的空白行。
-  // 2026.8 月底实测：最后一周 = [8/30, 8/31, 9/1~5] → 当月仅 2 天 → 触发删除 ✅
+  // 末行校验：最后一周完全没有当月日期时才删除，避免展示空白的全下月周。
+  // 关键修复：原逻辑「当月日期数 ≤ 2 即删除」会导致 8/30、8/31 这类月底日期
+  // 被从当月日历移除，用户记录显示到下一月去，造成日期错位。
   const weeks = Math.floor(days.length / 7);
   if (weeks >= 2) {
     const lastIdx = (weeks - 1) * 7;
     const lastWeek = days.slice(lastIdx, lastIdx + 7);
     const currentCount = lastWeek.filter(d => d.isCurrentMonth).length;
-    if (currentCount <= 2) days.splice(lastIdx, 7);
+    if (currentCount === 0) days.splice(lastIdx, 7);
   }
   return days;
 }

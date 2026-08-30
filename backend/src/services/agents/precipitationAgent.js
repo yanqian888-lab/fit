@@ -1987,13 +1987,15 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
   });
 
   try {
+    // 关键修复：Hy3 模型在 no_think/think_high 模式下配合 response_format: json_object 会返回空内容，
+    // 导致饮食/运动沉淀全部失败。改为在 systemPrompt 中强制要求 JSON 输出，不传递 response_format。
     const response = await callWithPrompt(
       'precipitation_agent',
       [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: content }
       ],
-      { temperature: 0.1, max_tokens: 1200, response_format: { type: 'json_object' } }
+      { temperature: 0.1, max_tokens: 1200 }
     );
 
     const resultText = response.choices[0].message.content || '{}';
