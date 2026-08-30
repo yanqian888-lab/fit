@@ -213,7 +213,7 @@ ${exerciseList}
           },
           { role: 'user', content: enhancedQuestion }
         ],
-        { temperature: 0.5, max_tokens: 2000 }
+        { temperature: 0.5, max_tokens: 8000 }
       ),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('全能助手 Agent 调用超时')), 120000)

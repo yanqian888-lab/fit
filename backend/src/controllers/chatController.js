@@ -413,8 +413,19 @@ async function sendMessage(req, res) {
           }
 
           console.log('[AsyncHelper] 沉淀等待完成，开始调用 helperAgent');
-          const helperAnswer = await helperAgent.callHelperAgent(helperQuestion, user, partner);
-          const isUnhelpful = !helperAnswer || /没有思路|换个问法|我不太明白|不知道你在说什么/i.test(helperAnswer);
+          let helperAnswer = await helperAgent.callHelperAgent(helperQuestion, user, partner);
+          let isUnhelpful = !helperAnswer || /没有思路|换个问法|我不太明白|不知道你在说什么/i.test(helperAnswer);
+
+          // 兜底：helper 返回空/无用，但沉淀已成功提取数据时，用沉淀数据生成本地确认回复
+          if (isUnhelpful && precipitationResult && precipitationResult.extracted_data) {
+            const localAnswer = buildLocalHelperResponse(precipitationResult);
+            if (localAnswer) {
+              console.log('[AsyncHelper] helper 返回无用，使用沉淀兜底回复:', localAnswer);
+              helperAnswer = localAnswer;
+              isUnhelpful = false;
+            }
+          }
+
           if (helperAnswer && helperAnswer !== '这个问题有点复杂，我慢慢算一下，你先忙别的～' && !isUnhelpful) {
             // 一次性保存完整 helper 回答，避免分片丢失后续内容
             const insertHelperMsg = db.prepare(`
@@ -809,6 +820,55 @@ function isMethodContent(content) {
   ];
   const contentLower = content.toLowerCase();
   return methodKeywords.some(keyword => contentLower.includes(keyword));
+}
+
+/**
+ * 根据沉淀结果生成本地兜底回复
+ * 当 helperAgent 返回空/无用内容时，用沉淀数据直接告诉用户已记录什么
+ */
+function buildLocalHelperResponse(precipitationResult) {
+  if (!precipitationResult || !precipitationResult.extracted_data) return null;
+
+  const data = precipitationResult.extracted_data;
+  const type = precipitationResult.type;
+
+  if (type === 'diet_record') {
+    const foods = Array.isArray(data.foods) ? data.foods : [];
+    if (foods.length === 0) return null;
+    const mealMap = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' };
+    const mealName = mealMap[data.meal_time] || '饮食';
+    const foodLines = foods.map(f => `${f.name || '食物'}约${Math.round(f.calorie || 0)}千卡`).join('、');
+    return `已帮你记录${mealName}：${foodLines}。`;
+  }
+
+  if (type === 'exercise_record') {
+    const exercises = Array.isArray(data.exercises) ? data.exercises : [];
+    if (exercises.length === 0) return null;
+    const exLines = exercises.map(e => `${e.name || '运动'}${e.duration || 0}分钟约${Math.round(e.calorie || 0)}千卡`).join('、');
+    return `已帮你记录运动：${exLines}。`;
+  }
+
+  if (type === 'body_data') {
+    const items = Array.isArray(data.body_items) ? data.body_items : [];
+    if (items.length === 0 && data.value !== undefined && data.value !== null && data.value !== '') {
+      items.push({ sub_type: data.sub_type || '体重', value: data.value, unit: data.unit || 'kg' });
+    }
+    if (items.length === 0) return null;
+    const subMap = { weight: '体重', body_fat: '体脂率', waist: '腰围', hip: '臀围', chest: '胸围', arm: '手臂围', thigh: '大腿围', calf: '小腿围' };
+    const lines = items.map(i => `${subMap[i.sub_type] || i.sub_type}${i.value}${i.unit || ''}`).join('、');
+    return `已帮你记录身体数据：${lines}。`;
+  }
+
+  if (type === 'habit') {
+    const subType = data.sub_type || 'water';
+    const value = data.value;
+    const unit = data.unit || 'ml';
+    if (subType === 'water' || subType === '喝水') {
+      return `已帮你记录喝水${value}${unit}。`;
+    }
+  }
+
+  return null;
 }
 
 /**
