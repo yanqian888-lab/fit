@@ -93,24 +93,25 @@ module.exports = {
     secret: jwtSecret,
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
   },
-  // LLM 统一配置（腾讯云 TokenHub Hy3 混元大模型）
-  // 优先级：TENCENT_* 环境变量 > 默认值
+  // LLM 统一配置
+  // 兼容两种环境变量命名：DOUBAO_*（.env.test/.env.production 当前使用）优先，
+  // 回退到 TENCENT_LLM_*（历史配置及 .env.development 当前使用）。
   llm: {
-    apiKey: process.env.TENCENT_LLM_API_KEY,
-    baseURL: process.env.TENCENT_LLM_BASE_URL || 'https://tokenhub.tencentmaas.com/v1',
-    model: process.env.TENCENT_LLM_MODEL || 'hy3',
+    apiKey: process.env.DOUBAO_MAIN_AGENT_API_KEY || process.env.TENCENT_LLM_API_KEY,
+    baseURL: process.env.DOUBAO_BASE_URL || process.env.TENCENT_LLM_BASE_URL || 'https://tokenhub.tencentmaas.com/v1',
+    model: process.env.DOUBAO_MAIN_AGENT_ENDPOINT || process.env.TENCENT_LLM_MODEL || 'hy3',
     endpoints: {
       main: {
-        id: process.env.TENCENT_MAIN_AGENT_MODEL || 'hy3',
-        apiKey: process.env.TENCENT_MAIN_AGENT_API_KEY || process.env.TENCENT_LLM_API_KEY
+        id: process.env.DOUBAO_MAIN_AGENT_ENDPOINT || process.env.TENCENT_MAIN_AGENT_MODEL || 'hy3',
+        apiKey: process.env.DOUBAO_MAIN_AGENT_API_KEY || process.env.TENCENT_MAIN_AGENT_API_KEY || process.env.DOUBAO_MAIN_AGENT_API_KEY || process.env.TENCENT_LLM_API_KEY
       },
       precipitation: {
-        id: process.env.TENCENT_PRECIPITATION_MODEL || 'hy3',
-        apiKey: process.env.TENCENT_PRECIPITATION_API_KEY || process.env.TENCENT_LLM_API_KEY
+        id: process.env.DOUBAO_PRECIPITATION_ENDPOINT || process.env.TENCENT_PRECIPITATION_MODEL || 'hy3',
+        apiKey: process.env.DOUBAO_PRECIPITATION_API_KEY || process.env.TENCENT_PRECIPITATION_API_KEY || process.env.DOUBAO_MAIN_AGENT_API_KEY || process.env.TENCENT_LLM_API_KEY
       },
       helper: {
-        id: process.env.TENCENT_HELPER_MODEL || 'hy3',
-        apiKey: process.env.TENCENT_HELPER_API_KEY || process.env.TENCENT_LLM_API_KEY
+        id: process.env.DOUBAO_HELPER_ENDPOINT || process.env.TENCENT_HELPER_MODEL || 'hy3',
+        apiKey: process.env.DOUBAO_HELPER_API_KEY || process.env.TENCENT_HELPER_API_KEY || process.env.DOUBAO_MAIN_AGENT_API_KEY || process.env.TENCENT_LLM_API_KEY
       }
     }
   },
