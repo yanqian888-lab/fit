@@ -403,10 +403,10 @@ async function sendMessage(req, res) {
       setTimeout(async () => {
         try {
           // 等待沉淀Agent完成，确保当前消息的饮食/运动记录已写入后再回答
-          // 沉淀涉及 LLM 调用，通常 3-10 秒，最多等 20 秒；超时仍继续调用 helperAgent
+          // 沉淀 Agent LLM 调用 6 秒超时后即走规则兜底，无需等到 20 秒
           const precipitationResult = await Promise.race([
             precipitationPromise,
-            new Promise(r => setTimeout(r, 20000))
+            new Promise(r => setTimeout(r, 8000))
           ]);
           if (!precipitationResult || precipitationResult.extracted === false) {
             console.log('[AsyncHelper] 沉淀未在超时内完成或为空，继续调用 helperAgent');
