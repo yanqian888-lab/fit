@@ -1995,7 +1995,7 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
         { role: 'system', content: systemPrompt },
         { role: 'user', content: content }
       ],
-      { temperature: 0.1, max_tokens: 1200 }
+      { temperature: 0.1, max_tokens: 2500 }
     );
 
     const resultText = response.choices[0].message.content || '{}';
