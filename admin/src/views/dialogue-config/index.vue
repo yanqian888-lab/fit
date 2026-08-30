@@ -100,7 +100,9 @@ async function remove(row) {
     await cmsDialogueConfigApi.remove(row.id)
     ElMessage.success('删除成功')
     load()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 </script>
 

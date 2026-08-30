@@ -216,7 +216,7 @@ import { authApi } from '../../api';
 import { useUserStore } from '../../store';
 import { getDeviceId } from '../../utils/trial.js';
 import { handlePostAuthRedirect } from './utils/authRedirect';
-import { safeSwitchTab } from '../../utils/safeSwitchTab';
+import { safeSwitchTab } from './utils/safeSwitchTab';
 import { resolveStaticUrl } from '../../utils/environment.js';
 
 const userStore = useUserStore();

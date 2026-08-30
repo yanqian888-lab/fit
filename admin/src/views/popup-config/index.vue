@@ -541,7 +541,9 @@ async function loadPopups() {
     const res = await cmsPopupApi.list({ ...popupQuery })
     popupList.value = res.data.list || []
     popupTotal.value = res.data.pagination.total || 0
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
   popupLoading.value = false
 }
 
@@ -549,14 +551,18 @@ async function loadAllRoutes() {
   try {
     const res = await cmsPopupRouteApi.list({ page: 1, size: 1000, status: 'enabled' })
     routeListAll.value = res.data.list || []
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function loadAllPopups() {
   try {
     const res = await cmsPopupApi.list({ page: 1, size: 1000 })
     allPopups.value = res.data.list || []
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function openPopupDialog(row = null) {
@@ -565,7 +571,9 @@ async function openPopupDialog(row = null) {
     try {
       const res = await cmsPopupApi.detail(row.id)
       detail = res.data || row
-    } catch (e) {}
+    } catch (e) {
+      if (e !== 'cancel') console.error(e)
+    }
     Object.assign(popupForm, {
       ...detail,
       timeRange: [detail.start_time, detail.end_time],
@@ -611,7 +619,9 @@ async function submitPopup() {
       popupDialogVisible.value = false
       loadPopups()
       loadAllPopups()
-    } catch (e) {}
+    } catch (e) {
+      if (e !== 'cancel') console.error(e)
+    }
   })
 }
 
@@ -620,7 +630,9 @@ async function copyPopup(id) {
     await cmsPopupApi.copy(id)
     ElMessage.success('复制成功')
     loadPopups()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function removePopup(id) {
@@ -629,7 +641,9 @@ async function removePopup(id) {
     await cmsPopupApi.remove(id)
     ElMessage.success('删除成功')
     loadPopups()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 function handlePopupSelectionChange(selection) {
@@ -642,7 +656,9 @@ async function batchStatus(status) {
     await cmsPopupApi.batchStatus({ ids: selectedPopupIds.value, status })
     ElMessage.success('批量更新成功')
     loadPopups()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function batchDelete() {
@@ -652,7 +668,9 @@ async function batchDelete() {
     await cmsPopupApi.batchDelete({ ids: selectedPopupIds.value })
     ElMessage.success('批量删除成功')
     loadPopups()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function uploadImage({ file }) {
@@ -664,7 +682,9 @@ async function uploadImage({ file }) {
     })
     popupForm.image_url = res.data.url
     ElMessage.success('上传成功')
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 function beforeImageUpload(file) {
@@ -687,7 +707,9 @@ async function loadWhitelist() {
     const res = await cmsPopupWhitelistApi.list({ ...whitelistQuery })
     whitelistList.value = res.data.list || []
     whitelistTotal.value = res.data.pagination.total || 0
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
   whitelistLoading.value = false
 }
 
@@ -710,7 +732,9 @@ async function submitWhitelist() {
     ElMessage.success('保存成功')
     whitelistDialogVisible.value = false
     loadWhitelist()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function removeWhitelist(id) {
@@ -719,7 +743,9 @@ async function removeWhitelist(id) {
     await cmsPopupWhitelistApi.remove(id)
     ElMessage.success('删除成功')
     loadWhitelist()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 // ==================== 站内路由 ====================
@@ -736,7 +762,9 @@ async function loadRoutes() {
     const res = await cmsPopupRouteApi.list({ ...routeQuery })
     routeList.value = res.data.list || []
     routeTotal.value = res.data.pagination.total || 0
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
   routeLoading.value = false
 }
 
@@ -764,7 +792,9 @@ async function submitRoute() {
     routeDialogVisible.value = false
     loadRoutes()
     loadAllRoutes()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function removeRoute(id) {
@@ -774,7 +804,9 @@ async function removeRoute(id) {
     ElMessage.success('删除成功')
     loadRoutes()
     loadAllRoutes()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 // ==================== 统计 ====================
@@ -797,7 +829,9 @@ async function loadStats() {
     statsList.value = detail.data.list || []
     statsTotal.value = detail.data.pagination.total || 0
     Object.assign(closeChannels, detail.data.close_channels || {})
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
   statsLoading.value = false
 }
 
@@ -811,7 +845,9 @@ async function exportEvents() {
     link.href = URL.createObjectURL(blob)
     link.download = `popup-events-${new Date().toISOString().slice(0, 10)}.csv`
     link.click()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 // ==================== 全局设置 ====================
@@ -821,14 +857,18 @@ async function loadGlobalConfig() {
   try {
     const res = await cmsPopupGlobalApi.get()
     Object.assign(globalConfig, res.data)
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function saveGlobalConfig() {
   try {
     await cmsPopupGlobalApi.update(globalConfig)
     ElMessage.success('保存成功')
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 onMounted(() => {

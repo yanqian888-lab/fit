@@ -134,7 +134,9 @@ async function remove(row) {
     await cmsTemplateApi.remove(row.id)
     ElMessage.success('删除成功')
     load()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function seed() {
@@ -143,7 +145,9 @@ async function seed() {
     await cmsTemplateApi.seed()
     ElMessage.success('重置成功')
     load()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 </script>
 

@@ -57,7 +57,7 @@ import AppPage from '../../components/AppPage.vue';
 import AppInput from '../../components/AppInput.vue';
 import AppButton from '../../components/AppButton.vue';
 import { getToday } from '../../utils/date';
-import { safeSwitchTab } from '../../utils/safeSwitchTab';
+import { safeSwitchTab } from './utils/safeSwitchTab';
 
 const userStore = useUserStore();
 const loading = ref(false);

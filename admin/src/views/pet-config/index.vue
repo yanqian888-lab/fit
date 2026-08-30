@@ -790,7 +790,9 @@ async function removeState(row) {
     await cmsPetConfigApi.removeState(row.id)
     ElMessage.success('删除成功')
     loadStates()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 // 运动库
@@ -853,7 +855,9 @@ async function removeExercise(row) {
     await cmsPetConfigApi.removeExercise(row.id)
     ElMessage.success('删除成功')
     loadExercises()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 // 对话库
@@ -889,7 +893,9 @@ async function removeDialogue(row) {
     await cmsPetConfigApi.removeDialogue(row.id)
     ElMessage.success('删除成功')
     loadDialogues()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 </script>
 

@@ -224,7 +224,9 @@ async function removeCollection() {
     activeColl.value = ''
     await loadCollections()
     load()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 // ==================== 事件 ====================
@@ -368,7 +370,9 @@ async function remove(row) {
     await cmsEventConfigApi.remove(row.id)
     ElMessage.success('删除成功')
     load()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 </script>
 

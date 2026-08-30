@@ -45,7 +45,7 @@ import { useUserStore } from '../../store';
 import { partnerApi, systemApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';
 import AppButton from '../../components/AppButton.vue';
-import { safeSwitchTab } from '../../utils/safeSwitchTab';
+import { safeSwitchTab } from './utils/safeSwitchTab';
 import { resolveStaticUrl } from '../../utils/environment.js';
 
 const userStore = useUserStore();

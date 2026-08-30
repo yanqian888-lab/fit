@@ -238,7 +238,9 @@ async function save() {
     }
     dialogVisible.value = false
     loadData()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 // 撤回：用户端消息列表立即不再展示该公告
@@ -248,7 +250,9 @@ async function recall(row) {
     await cmsAnnouncementApi.update(row.id, { status: 'disabled' })
     ElMessage.success('已撤回')
     loadData()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function remove(id) {
@@ -257,7 +261,9 @@ async function remove(id) {
     await cmsAnnouncementApi.remove(id)
     ElMessage.success('删除成功')
     loadData()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function batchDelete() {
@@ -266,7 +272,9 @@ async function batchDelete() {
     await cmsAnnouncementApi.batchDelete({ ids: selectedIds.value })
     ElMessage.success('批量删除成功')
     loadData()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 onMounted(() => {

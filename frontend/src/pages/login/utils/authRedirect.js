@@ -1,5 +1,5 @@
 import { userApi } from '../../../api';
-import { safeSwitchTab } from '../../../utils/safeSwitchTab';
+import { safeSwitchTab } from './safeSwitchTab';
 
 /* ………… 中间 isProfileComplete / saveSetupDataIfExists / isStaleReturning 函数保持不变 ………… */
 

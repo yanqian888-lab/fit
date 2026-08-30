@@ -92,7 +92,9 @@ async function approve(row) {
     await cmsCustomFoodApi.approve(row.id)
     ElMessage.success('已通过')
     load()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 async function reject(row) {
@@ -101,7 +103,9 @@ async function reject(row) {
     await cmsCustomFoodApi.reject(row.id)
     ElMessage.success('已拒绝')
     load()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 </script>
 

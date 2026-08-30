@@ -94,7 +94,9 @@ async function save() {
     ElMessage.success('保存成功')
     dialogVisible.value = false
     loadData()
-  } catch (e) {}
+  } catch (e) {
+    if (e !== 'cancel') console.error(e)
+  }
 }
 
 onMounted(loadData)
