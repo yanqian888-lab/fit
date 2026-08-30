@@ -94,13 +94,30 @@ const ALIAS_MAP = {
   '红酒': ['红酒', '葡萄酒']
 };
 
-function extractFoodKeywords(foodName) {
-  let cleaned = foodName
-    .replace(/^(一份|一个|一只|一片|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一盘|一碟|一点|一些|少量|适量|多|少|大|小|中|新|旧|生|熟|干|湿)/g, '')
-    .replace(/(一份|一个|一只|一片|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一盘|一碟)$/g, '')
-    .replace(/(炒|煮|蒸|炸|烤|煎|炖|焖|烧|拌|腌|卤|熏|爆|熘|烩|涮|焗|煨|熬|煲|凉拌|红烧|清蒸|油炸|干煸|水煮|蒜蓉|麻辣|香辣|酸甜|糖醋|椒盐|孜然|咖喱|番茄|芝士|奶油|黄油|酱油|醋|盐|糖|油|料酒|姜|葱|蒜|辣椒|花椒|八角|桂皮|香叶|胡椒)/g, '');
+const QUANTIFIERS = /^(一份|一个|一只|一片|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一盘|一碟|一点|一些|少量|适量|多|少|大|小|中|新|旧|生|熟|干|湿)/g;
+const QUANTIFIERS_SUFFIX = /(一份|一个|一只|一片|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一盘|一碟)$/g;
+const COOKINGModifiers = /(炒|煮|蒸|炸|烤|煎|炖|焖|烧|拌|腌|卤|熏|爆|熘|烩|涮|焗|煨|熬|煲|凉拌|红烧|清蒸|油炸|干煸|水煮|蒜蓉|麻辣|香辣|酸甜|糖醋|椒盐|孜然|咖喱|番茄|芝士|奶油|黄油|酱油|醋|盐|糖|油|料酒|姜|葱|蒜|辣椒|花椒|八角|桂皮|香叶|胡椒)/g;
 
-  const parts = cleaned.split(/[,，、\s]+/).filter(p => p.length >= 2);
+function extractFoodKeywords(foodName) {
+  // 第一步：只去掉量词，保留烹饪/口味修饰词，优先做完整匹配
+  let withModifiers = foodName
+    .replace(QUANTIFIERS, '')
+    .replace(QUANTIFIERS_SUFFIX, '');
+  const partsWithModifiers = withModifiers.split(/[,，、\s]+/).filter(p => p.length >= 2);
+
+  // 第二步：再去掉烹饪/口味修饰词，作为兜底匹配
+  let withoutModifiers = withModifiers.replace(COOKINGModifiers, '');
+  const partsWithoutModifiers = withoutModifiers.split(/[,，、\s]+/).filter(p => p.length >= 2);
+
+  // 合并去重，完整形态优先，按长度降序
+  const seen = new Set();
+  const parts = [];
+  for (const p of [...partsWithModifiers, ...partsWithoutModifiers]) {
+    if (!seen.has(p)) {
+      seen.add(p);
+      parts.push(p);
+    }
+  }
   return parts.sort((a, b) => b.length - a.length);
 }
 
