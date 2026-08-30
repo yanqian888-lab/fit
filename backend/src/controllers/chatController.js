@@ -205,6 +205,22 @@ function containsAnyKeyword(content, keywords) {
   return keywords.some(kw => text.includes(kw));
 }
 
+/**
+ * 判断内容是否为陈述饮食行为（而非疑问/咨询）
+ * 用于触发 helperAgent 自动计算并返回热量总结
+ * @param {string} content 用户消息
+ * @returns {boolean}
+ */
+function isDeclarativeFoodStatement(content) {
+  if (!content) return false;
+  const text = String(content).trim();
+  // 以疑问词结尾、含明显疑问语气或征求建议，视为疑问句
+  if (/[吗嘛呢？?]\s*$/.test(text)) return false;
+  if (/^(多少|什么|怎么|为什么|建议|推荐|能|可以|能不能|可不可以|好吗|行吗)/.test(text)) return false;
+  // 否则视为陈述句
+  return true;
+}
+
 // ============================================================
 // Section 4: Core message handler (sendMessage)
 // 聊天主流程：参数校验 → 保存用户消息 → 调用主 Agent → 同步/异步 Helper → 沉淀 Agent
@@ -303,10 +319,17 @@ async function sendMessage(req, res) {
     // 检查是否需要调用 helperAgent（工具调用或兜底）
     const hasFood = containsAnyKeyword(content, FOOD_KEYWORDS);
     const hasExercise = containsAnyKeyword(content, EXERCISE_KEYWORDS);
-    const needsHelper = (agentResult.toolCalls && agentResult.toolCalls.some(t => 
-      t.name === 'call_allround_helper' || 
+    const needsHelper = (agentResult.toolCalls && agentResult.toolCalls.some(t =>
+      t.name === 'call_allround_helper' ||
       (t.parameters && (t.parameters.question || t.parameters.query))
-    )) || (isProfessionalQuestion(content) && !finalReply.includes('千卡') && !finalReply.includes('kcal') && !finalReply.includes('BMI')) || (hasFood && hasExercise && !finalReply.includes('千卡') && !finalReply.includes('kcal')) || (preliminaryTag && preliminaryTag.type === 'body_data' && !finalReply.includes('千卡') && !finalReply.includes('kcal') && !finalReply.includes('BMI'));
+    ))
+      || (isProfessionalQuestion(content) && !finalReply.includes('千卡') && !finalReply.includes('kcal') && !finalReply.includes('BMI'))
+      || (hasFood && hasExercise && !finalReply.includes('千卡') && !finalReply.includes('kcal'))
+      // 关键修复：用户发送纯饮食记录消息（如"早上吃了一个牛角包"）时，
+      // 主 Agent 往往只回复共情话术而不调用 helper，导致用户感知"helper不工作"。
+      // 此处增加兜底：陈述句饮食内容直接触发异步 helper，自动计算热量并返回结果。
+      || (hasFood && isDeclarativeFoodStatement(content) && !finalReply.includes('千卡') && !finalReply.includes('kcal'))
+      || (preliminaryTag && preliminaryTag.type === 'body_data' && !finalReply.includes('千卡') && !finalReply.includes('kcal') && !finalReply.includes('BMI'));
 
     // ========== 异步调用信息沉淀 Agent（聊天即记录，不阻塞回复） ==========
     // 无论同步还是异步模式，都触发沉淀；保留 Promise 供异步 helper 等待
