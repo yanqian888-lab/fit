@@ -1,20 +1,20 @@
 /**
  * AI 配置管理 & 基于 Prompt Key 的调用链
- * 支持腾讯云 TokenHub Hy3 思考模式映射
+ * 支持腾讯云 TokenHub Hy3/Hy4 reasoning_effort 映射
  */
 const OpenAI = require('openai');
 const { db } = require('../db');
 
 /**
- * PromptKey → Hy3 thinking_mode 映射表
- * 主Agent: no_think（极速响应聊天）
- * Helper: think_high（深度推理专业计算）
- * 沉淀: no_think（快速结构化提取）
+ * PromptKey → Hy3 reasoning_effort 映射表
+ * 主Agent: low（极速响应），content 偶发为空时自动 fallback 到 high 重试
+ * Helper: high（深度推理专业计算）
+ * 沉淀: low（快速结构化提取）
  */
-const PROMPT_THINKING_MODE_MAP = {
-  main_agent: 'no_think',
-  helper_agent: 'think_high',
-  precipitation_agent: 'no_think'
+const PROMPT_REASONING_EFFORT_MAP = {
+  main_agent: 'low',
+  helper_agent: 'high',
+  precipitation_agent: 'low'
 };
 
 function maskApiKey(key) {
@@ -203,18 +203,31 @@ async function callWithPrompt(promptKey, messages, options = {}) {
       requestOptions.response_format = options.response_format;
     }
 
-    // 腾讯云 Hy3：根据 promptKey 自动注入 thinking_mode
-    // 调用方也可以通过 options.thinking_mode 显式覆盖
+    // 腾讯云 Hy3/Hy4：根据 promptKey 自动注入 reasoning_effort
+    // 调用方也可以通过 options.reasoning_effort 显式覆盖
     if (isHy3Config(cfg)) {
-      const thinkingMode = options.thinking_mode || PROMPT_THINKING_MODE_MAP[promptKey];
-      if (thinkingMode) {
-        requestOptions.thinking_mode = thinkingMode;
-        console.log(`[callWithPrompt:${promptKey}] Hy3 使用思考模式: ${thinkingMode}`);
+      const reasoningEffort = options.reasoning_effort || PROMPT_REASONING_EFFORT_MAP[promptKey];
+      if (reasoningEffort) {
+        requestOptions.reasoning_effort = reasoningEffort;
+        console.log(`[callWithPrompt:${promptKey}] Hy3 使用推理深度: ${reasoningEffort}`);
       }
     }
 
     try {
-      const response = await client.chat.completions.create(requestOptions);
+      let response = await client.chat.completions.create(requestOptions);
+
+      // 混元 Hy3 low 推理深度偶发返回空 content（只输出 reasoning_content）。
+      // 此时用 high 重试一次，确保拿到干净的最终回复。
+      const firstContent = response.choices[0].message.content || '';
+      if (!firstContent.trim() && isHy3Config(cfg) && requestOptions.reasoning_effort === 'low') {
+        console.warn(`[callWithPrompt:${promptKey}] low 推理深度返回空 content，尝试 high 重试`);
+        const retryOptions = { ...requestOptions, reasoning_effort: 'high' };
+        response = await client.chat.completions.create(retryOptions);
+      }
+
+      // 最终兜底：如果 content 仍然为空但 reasoning_content 非空，尝试提取最终回复。
+      normalizeHy3Content(response);
+
       console.log(`[callWithPrompt:${promptKey}] 使用配置 ${cfg.name} 调用成功`);
       return response;
     } catch (err) {
@@ -224,6 +237,23 @@ async function callWithPrompt(promptKey, messages, options = {}) {
   }
 
   throw new Error(`所有 AI 配置均调用失败: ${errors.join('; ')}`);
+}
+
+/**
+ * 混元 Hy3 兼容：防止把 reasoning_content（思考过程）直接暴露给用户。
+ * 当 content 为空但 reasoning_content 非空时，只记录警告，不把思考内容回填到 content。
+ * 业务层应当在 content 为空时返回安全的兜底回复。
+ */
+function normalizeHy3Content(response) {
+  const choice = response?.choices?.[0];
+  const message = choice?.message;
+  if (!message) return;
+
+  const content = message.content || '';
+  const reasoning = message.reasoning_content || '';
+  if (content.trim() || !reasoning.trim()) return;
+
+  console.warn('[callWithPrompt] 模型返回空 content，reasoning_content 非空；不直接提取思考过程，由业务层兜底');
 }
 
 module.exports = {

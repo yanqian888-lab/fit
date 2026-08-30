@@ -201,7 +201,7 @@ ${exerciseList}
   });
 
   try {
-    console.log(`[callHelperAgent] 开始调用，问题: ${question.substring(0, 50)}...`);
+    
     const response = await Promise.race([
       callWithPrompt(
         'helper_agent',
@@ -219,7 +219,7 @@ ${exerciseList}
         setTimeout(() => reject(new Error('全能助手 Agent 调用超时')), 120000)
       )
     ]);
-    console.log('[callHelperAgent] 调用成功');
+    
     let reply = stripThinkingTags(response.choices[0].message.content || '这个问题我暂时没有思路，你换个问法试试？');
     
     // 修正回复中的热量数值，确保与数据库记录一致（修正前再刷新一次最新数据）

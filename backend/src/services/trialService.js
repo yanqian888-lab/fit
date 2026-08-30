@@ -48,7 +48,7 @@ function getConfig() {
     
     configLRUCache.set('trial_config', config);
     
-    console.log('[Config] 配置已加载，缓存统计:', configLRUCache.getStats());
+    
     
     return config;
   } catch (e) {
@@ -67,7 +67,7 @@ function invalidateConfigCache() {
   const stats = configLRUCache.getStats();
   configLRUCache.clear();
   
-  console.log(`[Config] 缓存已失效，旧缓存命中率: ${stats.hitRate}`);
+  
 }
 
 /**
@@ -107,8 +107,7 @@ function setConfigs(configs) {
   transaction(configs);
   
   if (changes.length > 0) {
-    console.log(`[Config] 配置已更新，共 ${changes.length} 项变更:`, 
-      changes.map(c => `${c.key}: ${c.oldValue} -> ${c.newValue}`).join(', '));
+    
   }
   
   invalidateConfigCache();

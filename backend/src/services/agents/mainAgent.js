@@ -56,12 +56,16 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
     { role: 'user', content: userMessage }
   ];
 
+  // 简单陈述句（如饮食/运动打卡）用 low 快速响应；疑问句、专业问题用 high 保证质量
+  const reasoningEffort = isSimpleStatement(userMessage) ? 'low' : 'high';
+  console.log(`[callMainAgent] 消息类型: ${reasoningEffort === 'low' ? '简单陈述句' : '疑问/专业'}, reasoning_effort: ${reasoningEffort}`);
+
   try {
     const response = await Promise.race([
       callWithPrompt(
         'main_agent',
         messages,
-        { temperature: 0.7, max_tokens: 1000 }
+        { temperature: 0.7, max_tokens: 1000, reasoning_effort: reasoningEffort }
       ),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('主协调 Agent 调用超时')), 55000)
@@ -79,7 +83,15 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
     
     // 解析工具调用
     const toolCalls = parseToolCalls(content);
-    const reply = cleanToolCallMarkers(content);
+    let reply = cleanToolCallMarkers(content).trim();
+
+    // 混元 low 推理深度偶发返回空 content（只输出 reasoning_content）。
+    // 此时不能把思考过程暴露给用户，改用自然兜底回复。
+    if (!reply) {
+      reply = getNaturalFallbackReply(userMessage);
+      console.log('[callMainAgent] 模型返回空回复，使用兜底回复:', reply);
+    }
+
     console.log('[callMainAgent] toolCalls count:', toolCalls.length, 'reply length:', reply.length);
     if (toolCalls.length > 0) {
       console.log('[callMainAgent] 解析到工具调用:', JSON.stringify(toolCalls));
@@ -214,6 +226,54 @@ async function executeToolCalls(toolCalls, userId, userMessage, userInfo, partne
     }
   }
   return results;
+}
+
+/**
+ * 判断用户消息是否为简单陈述句（如饮食/运动打卡、日常分享）
+ * 简单陈述句用 low 推理深度快速响应；疑问句/专业问题用 high。
+ */
+function isSimpleStatement(content) {
+  if (!content) return false;
+  const text = String(content).trim();
+  if (text.length === 0) return false;
+
+  // 以疑问词/问号结尾，视为疑问句
+  if (/[吗嘛呢吧？?]\s*$/.test(text)) return false;
+
+  // 包含疑问词或明显咨询/请求建议，不是简单陈述
+  if (/多少|什么|怎么|为什么|如何|怎样|哪里|谁|什么时候|建议|推荐|能不能|可不可以|有没有|是否/.test(text)) {
+    return false;
+  }
+
+  // 以请求/咨询词开头，不是简单陈述
+  if (/^(能|可以|好吗|行吗|帮|请|想|要)/.test(text)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * 当模型返回空回复时，返回一个自然、安全的兜底回复，避免把思考过程暴露给用户。
+ */
+function getNaturalFallbackReply(content) {
+  if (!content) return '嗯嗯，我在听～';
+  const text = String(content);
+
+  // 饮食相关
+  if (/吃|喝|饭|菜|肉|蛋|奶|面|米|粥|包|饺|饼|糕|零食|奶茶|咖啡|水果|蔬菜/.test(text)) {
+    return '收到啦，我记着呢，慢慢来我陪你～';
+  }
+  // 运动相关
+  if (/运动|跑|走|跳|练|健身|瑜伽|游泳|骑车|骑行|哑铃|杠铃|深蹲|俯卧撑|平板支撑|HIIT|Tabata|帕梅拉|拉伸|出汗|公里|千卡|卡|步/.test(text)) {
+    return '已经很棒了，动起来就是进步，我陪你慢慢来～';
+  }
+  // 身体数据相关
+  if (/体重|体脂|腰围|腿围|臀围|胸围|身高|BMI|掉秤|涨秤|平台期/.test(text)) {
+    return '我记下来啦，身体变化慢慢来，我陪你一起观察～';
+  }
+
+  return '嗯嗯，我在听～';
 }
 
 module.exports = {

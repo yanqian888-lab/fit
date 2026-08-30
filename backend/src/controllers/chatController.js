@@ -83,7 +83,7 @@ async function savePartnerRecipes(userId, content, chatMessageId = null) {
         }
       });
 
-      console.log('[搭子食谱] 已提取待确认:', subType);
+      
     }
 
     return recipes;
@@ -110,7 +110,7 @@ function savePartnerMethod(userId, method, chatMessageId = null) {
       method.content,
       JSON.stringify({ title: method.title, content: method.content })
     );
-    console.log('[搭子方法] 已提取待确认:', method.title);
+    
     return method;
   } catch (err) {
     console.error('[搭子方法] 提取失败:', err.message);
@@ -284,7 +284,7 @@ async function sendMessage(req, res) {
       if (preliminaryTag) {
         db.prepare('UPDATE chat_messages SET precipitation_status = ?, precipitation_type = ? WHERE id = ?')
           .run(preliminaryTag.status, preliminaryTag.type, messageId);
-        console.log('[TagMatcher] 消息已打标签:', messageId, preliminaryTag.type, preliminaryTag.status);
+        
       }
 
       // 更新用户聊天统计（模板消息系统）
@@ -335,7 +335,7 @@ async function sendMessage(req, res) {
     // 无论同步还是异步模式，都触发沉淀；保留 Promise 供异步 helper 等待
     const precipitationPromise = precipitationAgent.callPrecipitationAgent(content, userId, userMessageId, today)
       .then(result => {
-        console.log('沉淀结果:', JSON.stringify(result));
+        
         if (result && result.precipitation_id && result.status !== 2) {
           const status = result.status === 1 ? 1 : 2;
           try {
@@ -349,7 +349,7 @@ async function sendMessage(req, res) {
                   precipitation_type = ?
               WHERE id = ?
             `).run(status, result.precipitation_id, result.type || null, userMessageId);
-            console.log('沉淀状态已更新:', userMessageId, status, result.precipitation_id, result.type);
+            
           } catch (dbErr) {
             console.error('沉淀状态更新失败:', dbErr.message);
           }
@@ -357,7 +357,7 @@ async function sendMessage(req, res) {
           // 低置信度沉淀已按设计自动忽略（precipitation_records.status=2）：
           // 不把该记录关联到消息，避免用户点击「待确认」卡片时确认到一条已忽略的记录（无法写入业务表）；
           // 同时保留同步标签给出的待确认状态，用户仍可走手动确认路径
-          console.log('沉淀置信度不足自动忽略，不更新消息状态:', result.precipitation_id);
+          
         } else {
           // 沉淀 Agent 未提取到有效内容时：
           // - 如果同步标签已命中食物/运动库，保留「待确认」状态，让用户可手动确认，避免漏记
@@ -366,12 +366,12 @@ async function sendMessage(req, res) {
             try {
               const cleared = db.prepare('UPDATE chat_messages SET precipitation_status = 0 WHERE id = ? AND precipitation_status = 2')
                 .run(userMessageId);
-              console.log('沉淀未提取且同步标签未命中，清空待确认状态:', userMessageId, cleared.changes);
+              
             } catch (dbErr) {
               console.error('清空待确认状态失败:', dbErr.message);
             }
           } else {
-            console.log('沉淀未提取，保留同步标签状态:', userMessageId, preliminaryTag?.type || '无');
+            
           }
         }
         return result;
@@ -409,10 +409,10 @@ async function sendMessage(req, res) {
             new Promise(r => setTimeout(r, 20000))
           ]);
           if (!precipitationResult || precipitationResult.extracted === false) {
-            console.log('[AsyncHelper] 沉淀未在超时内完成或为空，继续调用 helperAgent');
+            
           }
 
-          console.log('[AsyncHelper] 沉淀等待完成，开始调用 helperAgent');
+          
           let helperAnswer = await helperAgent.callHelperAgent(helperQuestion, user, partner);
           let isUnhelpful = !helperAnswer || /没有思路|换个问法|我不太明白|不知道你在说什么/i.test(helperAnswer);
 
@@ -420,7 +420,7 @@ async function sendMessage(req, res) {
           if (isUnhelpful && precipitationResult && precipitationResult.extracted_data) {
             const localAnswer = buildLocalHelperResponse(precipitationResult);
             if (localAnswer) {
-              console.log('[AsyncHelper] helper 返回无用，使用沉淀兜底回复:', localAnswer);
+              
               helperAnswer = localAnswer;
               isUnhelpful = false;
             }
@@ -449,7 +449,7 @@ async function sendMessage(req, res) {
               chatState.setHelperPending(userId, false);
             }
           } else {
-            console.log('[AsyncHelper] helper 返回空或超时');
+            
             chatState.setHelperPending(userId, false);
           }
         } catch (e) {

@@ -112,7 +112,7 @@ function convertBeverageHabitToDiet(item, content, userId = null, recordDate = n
     meal_time: inferMealTimeByContent(content) || normalizeMealTime(null, content, [], existingMeals)
   };
   item.reason = (item.reason || '') + '（饮品校正为饮食记录）';
-  console.log(`[饮品校正] habit→diet: ${cleanedName} ${food.weight}g ${food.calorie}千卡`);
+  
   return item;
 }
 
@@ -163,7 +163,7 @@ function recoverExplicitCalorieFoods(content, data) {
       carb: 0,
       fat: 0
     });
-    console.log(`[显式热量兜底] 补充食物: ${foodName} ${calorie}千卡`);
+    
   }
   data.foods = foods;
   return data;
@@ -182,7 +182,7 @@ function sanitizeFoodNames(content, data) {
     }
     const name = cleanFoodName(food.name);
     if (isInvalidFoodName(name)) {
-      console.log(`[食物名过滤] 移除非食物名称: ${food.name}`);
+      
       continue;
     }
     food.name = name;
@@ -202,7 +202,7 @@ function normalizeHalfQuantities(content, data) {
     if (!food.unit || food.quantity !== 1) continue;
     if (halfUnits.includes(food.unit) && content.includes(`半${food.unit}`)) {
       food.quantity = 0.5;
-      console.log(`[分数修正] ${food.name}: 1${food.unit} → 0.5${food.unit}`);
+      
     }
   }
   return data;
@@ -285,7 +285,7 @@ function sanitizeFoodWeights(content, data) {
       food.protein = 0;
       food.carb = 0;
       food.fat = 0;
-      console.log(`[重量校验] ${name}: ${currentWeight}g → ${expectedWeight}g (${expectedQty}${expectedUnit})`);
+      
     }
   }
   return data;
@@ -355,7 +355,7 @@ function recoverMissedExercises(content, rawItems) {
             tags: ['运动']
           });
           seenNames.add(rawName);
-          console.log(`[运动兜底] 补充运动: ${rawName} ${duration}分钟`);
+          
         }
       }
       idx = content.indexOf(kw, idx + 1);
@@ -471,13 +471,13 @@ function isValidPrecipitationItem(item) {
     case 'diet_record': {
       const foods = data.foods || [];
       if (!Array.isArray(foods) || foods.length === 0) {
-        console.log(`[沉淀过滤] diet_record 被过滤: foods为空`);
+        
         return false;
       }
       // 检查每个食物是否有名称
       const validFoods = foods.filter(f => f && f.name && f.name.trim());
       if (validFoods.length === 0) {
-        console.log(`[沉淀过滤] diet_record 被过滤: 无有效食物名称`);
+        
         return false;
       }
       return true;
@@ -485,7 +485,7 @@ function isValidPrecipitationItem(item) {
     case 'exercise_record': {
       const exercises = data.exercises || [];
       if (!Array.isArray(exercises) || exercises.length === 0) {
-        console.log(`[沉淀过滤] exercise_record 被过滤: exercises为空`);
+        
         return false;
       }
       // 过滤无实质数据的运动项：步数/时长/消耗/距离全为 0 或空（如"走路0步"）直接舍弃，不进确认弹窗
@@ -503,7 +503,7 @@ function isValidPrecipitationItem(item) {
         if (hasValue) meaningful.push(e);
       }
       if (meaningful.length === 0) {
-        console.log(`[沉淀过滤] exercise_record 被过滤: 运动数据全为0（如走路0步）`);
+        
         return false;
       }
       data.exercises = meaningful;
@@ -511,18 +511,18 @@ function isValidPrecipitationItem(item) {
     }
     case 'body_data': {
       if (data.value === undefined || data.value === null || data.value === '') {
-        console.log(`[沉淀过滤] body_data 被过滤: value为空`);
+        
         return false;
       }
       return true;
     }
     case 'habit': {
       if (data.value === undefined || data.value === null) {
-        console.log(`[沉淀过滤] habit 被过滤: value为空`);
+        
         return false;
       }
       if (!data.sub_type) {
-        console.log(`[沉淀过滤] habit 被过滤: sub_type为空`);
+        
         return false;
       }
       return true;
@@ -530,7 +530,7 @@ function isValidPrecipitationItem(item) {
     default: {
       if (ASSET_TYPES.includes(item.type)) {
         if (!hasAssetContent(data)) {
-          console.log(`[沉淀过滤] ${item.type} 被过滤: 无实质内容`);
+          
           return false;
         }
       }
@@ -646,7 +646,7 @@ function processSinglePrecipitation(userId, chatId, content, item, recordDate) {
   // 食谱已由 partnerAssetAgent 专属处理（savePartnerRecipes），通用沉淀 Agent 不再创建 recipe 记录
   // 避免两条链路竞争导致格式不一致（precipitation_recipe 格式 vs 结构化 recipe 格式）
   if (item.type === 'recipe') {
-    console.log('[沉淀] 跳过 recipe 类型，由 partnerAssetAgent 专属处理');
+    
     return null;
   }
 
@@ -1135,7 +1135,7 @@ function normalizeMealTime(mealTime, content, foods = [], existingMeals = [], is
     const mt = String(mealTime).trim();
     const mapped = VALID_MEAL_TIMES.includes(mt) ? mt : MEAL_TIME_MAP[mt];
     if (mapped) {
-      console.log(`[normalizeMealTime] 用户手动选择餐别：${mapped}`);
+      
       return mapped;
     }
   }
@@ -1148,7 +1148,7 @@ function normalizeMealTime(mealTime, content, foods = [], existingMeals = [], is
 
   // 午饭时段（10:30-14:30）且用户今天已有午餐记录，则本次归为加餐
   if (timeMeal === 'lunch' && existingMeals.includes('lunch')) {
-    console.log(`[normalizeMealTime] 当前为午饭时段但用户已记录午餐，归为加餐`);
+    
     return 'snack';
   }
 
@@ -1159,7 +1159,7 @@ function normalizeMealTime(mealTime, content, foods = [], existingMeals = [], is
     const mapped = VALID_MEAL_TIMES.includes(mt) ? mt : MEAL_TIME_MAP[mt];
     if (mapped) {
       if (mapped === timeMeal) return mapped;
-      console.log(`[normalizeMealTime] LLM 返回 ${mapped} 与当前时间推断 ${timeMeal} 不一致，采用时间推断`);
+      
     }
   }
 
@@ -1291,7 +1291,7 @@ function syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime)
       WHERE id = ? AND user_id = ?
     `).run(JSON.stringify(newExtractedData), precipitationId, userId);
     
-    console.log(`[syncDietExtractedData] 同步 precipitation_id=${precipitationId} 的 extracted_data: total_calorie=${totalCalorie}, foods=${allFoods.length}`);
+    
   } catch (e) {
     console.error('[syncDietExtractedData] 同步失败:', e.message);
   }
@@ -1336,7 +1336,7 @@ function finalReconcilePrecipitations(userId, chatId, processed, recordDate) {
     `).all(userId, ...precipitationIds, today);
 
     if (dietRows.length === 0) {
-      console.log(`[最终对账] 无关联 diet_records，跳过（可能全被合并到其他餐次）`);
+      
       return;
     }
 
@@ -1362,7 +1362,7 @@ function finalReconcilePrecipitations(userId, chatId, processed, recordDate) {
     }
 
     if (allFoods.length === 0) {
-      console.log(`[最终对账] 本批次 precipitation_id 无关联 diet_records 数据`);
+      
       return;
     }
 
@@ -1404,7 +1404,7 @@ function finalReconcilePrecipitations(userId, chatId, processed, recordDate) {
         WHERE id = ? AND user_id = ?
       `).run(JSON.stringify(newExtractedData), precipId, userId);
 
-      console.log(`[最终对账] precipitation_id=${precipId} 已同步 ${mergedFoods.length} 种食物, 总热量=${totalCalorie}千卡`);
+      
     }
 
     // 6. 确保 chat_message.precipitation_id 指向数据最完整的那条
@@ -1427,10 +1427,10 @@ function finalReconcilePrecipitations(userId, chatId, processed, recordDate) {
         SET precipitation_id = ?, precipitation_status = 1
         WHERE id = ? AND user_id = ?
       `).run(bestId, chatId, userId);
-      console.log(`[最终对账] chat_message ${chatId} 关联 precipitation_id=${bestId}`);
+      
     }
 
-    console.log(`[最终对账] 完成：${precipitationIds.length} 条沉淀记录 → ${mergedFoods.length} 种食物, 总热量=${totalCalorie}千卡`);
+    
   } catch (e) {
     console.error('[最终对账] 失败（不影响主流程）:', e.message);
   }
@@ -1449,7 +1449,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
     : hasDuplicateRecord(userId, type, data, recordDate);
   
   if (duplicateCheck.isDuplicate) {
-    console.log(`[去重] 用户${userId}今天已有相同${type}记录，更新而非插入`);
+    
     
     // 对于习惯记录（喝水），累加数值
     // 对于饮食记录，如果有需要累加或更新的食物，执行相应操作
@@ -1482,7 +1482,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
           WHERE id = ?
         `).run(JSON.stringify([updatedFood]), updatedCalorie, updatedProtein, updatedCarb, updatedFat, precipitationId, recordId);
         
-        console.log(`[累加] ${existingFood.name}: ${existingFood.quantity}${existingFood.unit} + ${newFood.quantity}${newFood.unit} = ${updatedQuantity}${existingFood.unit}`);
+        
       }
       
       // 处理全新的食物（如果有）
@@ -1523,7 +1523,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
           WHERE id = ?
         `).run(JSON.stringify([correctedFood]), correctedFood.calorie, correctedFood.protein, correctedFood.carb, correctedFood.fat, precipitationId, recordId);
         
-        console.log(`[热量修正] ${existingFood.name}: ${existingFood.calorie}千卡 → ${correctedFood.calorie}千卡`);
+        
       }
       
       // 处理全新的食物（如果有）
@@ -1547,7 +1547,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
     // 身体数据有 precipitation_id 时，允许删除旧记录后重新插入（支持修改全部围度）
     if (type === 'body_data' && precipitationId) {
       db.prepare('DELETE FROM body_records WHERE user_id = ? AND precipitation_id = ?').run(userId, precipitationId);
-      console.log(`[身体数据] 有 precipitation_id=${precipitationId}，删除旧记录后重新插入`);
+      
     } else if (type === 'habit') {
       // 习惯记录（喝水）累加，其他子类型更新
       const habitData = data || {};
@@ -1588,7 +1588,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
 
       const mealTime = normalizeMealTime(dietData.meal_time || subType, content, rawFoods, existingMeals, isUserEdit);
       if (rawFoods.length === 0) {
-        console.log(`[饮食同步] 无食物，跳过: precipitation_id=${precipitationId}`);
+        
         return { skipped: true, reason: 'no foods' };
       }
 
@@ -1611,7 +1611,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
             db.prepare('DELETE FROM diet_records WHERE id = ? AND user_id = ?').run(existingRows[i].id, userId);
           }
 
-          console.log(`[饮食同步] 更新记录 id=${keepId}, meal_time=${mealTime}, foods=${foods.length}, precipitation_id=${precipitationId}`);
+          
           // 同步更新 precipitation_records.extracted_data，确保所有显示路径一致
           syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
           return { skipped: false, updated: true, recordId: keepId };
@@ -1639,7 +1639,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
                 SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND user_id = ?
               `).run(JSON.stringify(existingFoods), totals.calorie, totals.protein, totals.carb, totals.fat, row.id, userId);
-              console.log(`[饮食同步] 合并到同一餐现有记录 id=${row.id}: ${match.name} 数量 ${match.quantity}`);
+              
               merged = true;
               break;
             }
@@ -1648,7 +1648,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
         }
 
         if (unmergedFoods.length === 0) {
-          console.log(`[饮食同步] 所有食物已合并到同一餐现有记录，未新增沉淀记录`);
+          
           // 同步更新 precipitation_records.extracted_data
           syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
           return { skipped: false, updated: true, recordId: existingMealRows[0]?.id };
@@ -1670,7 +1670,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
             updated_at = CURRENT_TIMESTAMP
         `);
         const result = upsertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(unmergedFoods), totals.calorie, totals.protein, totals.carb, totals.fat);
-        console.log(`[饮食同步] upsert记录, meal_time=${mealTime}, foods=${unmergedFoods.length}, precipitation_id=${precipitationId}`);
+        
         // 同步更新 precipitation_records.extracted_data
         syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
         return { skipped: false, updated: result.changes === 1, recordId: null };
@@ -1697,7 +1697,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
               SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, updated_at = CURRENT_TIMESTAMP
               WHERE id = ? AND user_id = ?
             `).run(JSON.stringify(existingFoods), totals.calorie, totals.protein, totals.carb, totals.fat, row.id, userId);
-            console.log(`[饮食同步] 合并到现有记录 id=${row.id}: ${match.name} 数量 ${match.quantity}`);
+            
             merged = true;
             break;
           }
@@ -1706,7 +1706,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
       }
 
       if (unmergedFoods.length === 0) {
-        console.log(`[饮食同步] 所有食物已合并到现有记录，未新增`);
+        
         // 同步更新 precipitation_records.extracted_data
         syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
         return { skipped: false, updated: true, recordId: existingMealRows[0]?.id };
@@ -1718,7 +1718,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
       `);
       const result = insertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(unmergedFoods), totals.calorie, totals.protein, totals.carb, totals.fat);
-      console.log(`[饮食同步] 新增记录 id=${result.lastInsertRowid}, meal_time=${mealTime}, foods=${unmergedFoods.length}, precipitation_id=${precipitationId}`);
+      
       // 同步更新 precipitation_records.extracted_data
       syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
       return { skipped: false, recordId: result.lastInsertRowid };
@@ -1782,7 +1782,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
           }
 
           syncExerciseExtractedData();
-          console.log(`[运动同步] 更新记录 id=${keepId}, exercises=${exercises.length}, precipitation_id=${precipitationId}`);
+          
           return { skipped: false, updated: true, recordId: keepId };
         }
 
@@ -1801,14 +1801,14 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
         `);
         const exResult = upsertEx.run(userId, precipitationId, today, exerciseType, JSON.stringify(exercises), totalDur, totalCal);
         syncExerciseExtractedData();
-        console.log(`[运动同步] upsert记录, exercises=${exercises.length}, precipitation_id=${precipitationId}`);
+        
         return { skipped: false, updated: exResult.changes === 1, recordId: null };
       }
 
       // 无 precipitation_id：同日同名运动合并（时长/消耗累加），否则新增一行
       const mergeResult = exerciseMergeService.mergeOrInsertExercise(userId, today, exerciseType, exercises);
       syncExerciseExtractedData();
-      console.log(`[运动同步] ${mergeResult.merged ? '合并到记录' : '新增记录'} id=${mergeResult.recordId}, exercises=${exercises.length}, precipitation_id=${precipitationId}`);
+      
       return { skipped: false, recordId: mergeResult.recordId, merged: mergeResult.merged };
     }
     case 'body_data': {
@@ -1928,7 +1928,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
             SET title = ?, sub_type = ?, content = ?, extracted_data = ?, status = 1, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
           `).run(recipeTitle, recipeSubType, content, data ? JSON.stringify(data) : null, existing.id);
-          console.log(`[食谱同步] 更新已有食谱 id=${existing.id}, chat_message_id=${chatMessageId}`);
+          
           break;
         }
       }
@@ -2075,7 +2075,7 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
     const fallbackItem = fallbackExtractDietRecord(content, userId, recordDate);
     if (fallbackItem) {
       items.push(fallbackItem);
-      console.log(`[沉淀兜底] 生成饮食记录: ${fallbackItem.extracted_data.foods.map(f => f.name).join(',')}, 热量: ${fallbackItem.extracted_data.total_calorie}千卡`);
+      
     }
   }
 
@@ -2090,11 +2090,11 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
       if (!ASSET_TYPES.includes(item.type)) return true;
       const confidence = parseFloat(item.confidence) || 0;
       if (confidence < 0.85) {
-        console.log(`[沉淀过滤] 疑问句中 ${item.type} 置信度不足: ${confidence}`);
+        
         return false;
       }
       if (!hasAssetContent(item.extracted_data)) {
-        console.log(`[沉淀过滤] 疑问句中 ${item.type} 无实质内容`);
+        
         return false;
       }
       return true;
@@ -2123,9 +2123,9 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
         if (r.status === 1) {
           const syncResult = syncToBusinessTable(userId, r.type, content, r.extracted_data, recordDate, r.sub_type, r.precipitation_id, chatId);
           if (syncResult && syncResult.skipped) {
-            console.log(`[去重] 沉淀ID ${r.precipitation_id} 被跳过，原因: ${syncResult.reason}`);
+            
           } else if (syncResult && syncResult.updated) {
-            console.log(`[更新] 沉淀ID ${r.precipitation_id} 更新了现有记录 ${syncResult.recordId}`);
+            
           }
 
           if (syncResult && !syncResult.skipped) {

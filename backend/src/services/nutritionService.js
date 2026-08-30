@@ -104,7 +104,12 @@ function extractFoodKeywords(foodName) {
   return parts.sort((a, b) => b.length - a.length);
 }
 
-const MISLEADING_SUFFIXES = ['粉', '酱', '油', '干', '片', '糕', '饼', '糖', '饮料', '冲调', '调料', '香精', '精', '奶茶', '脆'];
+const MISLEADING_SUFFIXES = [
+  '粉', '酱', '油', '干', '片', '糕', '饼', '糖', '饮料', '冲调', '调料', '香精', '精', '奶茶', '脆',
+  // 复合/套餐类食品标记：简单食材不应命中这些加工/组合食品
+  '堡', '汉堡', '饭', '盒饭', '便当', '套餐', '三明治', '卷', '披萨', '比萨', '意面',
+  '沙拉', '塔可', '肉夹馍', '火烧', '灌饼', '蛋挞', '薯条', '鸡块'
+];
 
 // 前端分类 key -> 数据库 category 名称
 const CATEGORY_MAP = {
