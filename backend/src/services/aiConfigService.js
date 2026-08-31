@@ -7,12 +7,12 @@ const { db } = require('../db');
 
 /**
  * PromptKey → Hy3 reasoning_effort 映射表
- * 主Agent: low（极速响应），content 偶发为空时自动 fallback 到 high 重试
+ * 主Agent: high（基于语境语义和性格生成回复），不强制 low 避免固定兜底
  * Helper: high（深度推理专业计算）
  * 沉淀: low（快速结构化提取）
  */
 const PROMPT_REASONING_EFFORT_MAP = {
-  main_agent: 'low',
+  main_agent: 'high',
   helper_agent: 'high',
   precipitation_agent: 'low'
 };
