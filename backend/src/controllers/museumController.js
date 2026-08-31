@@ -47,7 +47,7 @@ function getOverview(req, res) {
   if (profile && profile.initial_weight && profile.target_weight && profile.current_weight) {
     const total = profile.initial_weight - profile.target_weight;
     const done = profile.initial_weight - profile.current_weight;
-    completionRate = total > 0 ? Math.min(100, parseFloat(((done / total) * 100).toFixed(2))) : 0;
+    completionRate = total > 0 ? Math.max(0, Math.min(100, parseFloat(((done / total) * 100).toFixed(2)))) : 0;
 
     if (profile.target_date) {
       remainingDays = Math.max(0, Math.ceil((new Date(profile.target_date).getTime() - Date.now()) / 86400000));
