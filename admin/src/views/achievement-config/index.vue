@@ -30,7 +30,7 @@
         <el-table-column prop="reward_flowers" label="花朵奖励" width="90" />
         <el-table-column label="徽章图标" width="80">
           <template #default="{ row }">
-            <img :src="getFullUrl(row.badge_icon) || getFullUrl(DEFAULT_BADGE_ICON)" class="badge-thumb" />
+            <img :src="getFullUrl(row.badge_icon) || getFullUrl(DEFAULT_BADGE_ICON)" class="badge-thumb" @error="onBadgeError" />
           </template>
         </el-table-column>
         <el-table-column prop="sort_order" label="排序" width="80" />
@@ -129,6 +129,7 @@
         <el-form-item label="花朵奖励"><el-input-number v-model="form.reward_flowers" :min="0" /></el-form-item>
         <el-form-item label="徽章图标">
           <ImageUpload v-model="form.badge_icon" width="80px" height="80px" tip="建议 120×120px" />
+          <img v-if="form.badge_icon" :src="getFullUrl(form.badge_icon)" class="badge-thumb" style="margin-left:12px;" @error="onBadgeError" />
           <div v-if="!form.badge_icon" class="default-badge-tip">未上传时使用默认图标</div>
         </el-form-item>
         <el-form-item label="排序"><el-input-number v-model="form.sort_order" :min="0" /></el-form-item>
@@ -311,6 +312,15 @@ function conditionSummary(row) {
 
 function resetCond() {
   cond.value = { threshold: null, habit_type: '', streak_days: null, goal: 2000, metric: '', direction: 'decrease', value: null, key: '' }
+}
+
+// 徽章图标加载失败时回退到默认图标，避免裂图
+function onBadgeError(e) {
+  const target = e.target
+  const fallback = getFullUrl(DEFAULT_BADGE_ICON)
+  if (target.src !== fallback) {
+    target.src = fallback
+  }
 }
 
 function onCategoryChange() {
