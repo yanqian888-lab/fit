@@ -73,7 +73,7 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
     // 混元 Hy3 偶发在 high 下只输出 reasoning_content、content 为空。
     // 此时尝试从 reasoning_content 提取最终结论作为回复，避免业务层落入固定兜底。
     if (!content.trim() && response.choices[0].message.reasoning_content) {
-      const extracted = extractReplyFromReasoning(response.choices[0].message.reasoning_content);
+      const extracted = extractReplyFromReasoning(response.choices[0].message.reasoning_content, userMessage);
       if (extracted) {
         console.log('[callMainAgent] 从 reasoning_content 提取到回复');
         content = extracted;
@@ -192,14 +192,27 @@ function stripThinkingTags(content) {
  * 策略：取最后一段语义完整的句子，过滤掉明显的思考前缀和工具调用内部提示。
  * 如果提取结果仍像内部指令，返回空字符串，让业务层走安全兜底。
  */
-function extractReplyFromReasoning(reasoning) {
+function extractReplyFromReasoning(reasoning, userMessage = '') {
   if (!reasoning || typeof reasoning !== 'string') return '';
   const text = reasoning.trim();
   if (!text) return '';
 
+  const userMsg = String(userMessage || '').trim();
+
   // 去掉模型常用的 meta 标签（如 "字数：就这意志力？" → "就这意志力？"）
   function cleanMeta(s) {
     return s.replace(/(字数|回复|答案|输出|最终回复)[：:]\s*/g, '').trim();
+  }
+
+  // 判断提取的内容是不是在重复用户原话
+  function isEchoingUser(s) {
+    if (!userMsg || userMsg.length < 2) return false;
+    const t = s.trim();
+    // 完全重复或包含整句用户消息
+    if (t === userMsg || t.includes(userMsg)) return true;
+    // 用户消息包含提取内容（模型只截取了前半句）
+    if (userMsg.includes(t) && t.length >= userMsg.length * 0.8) return true;
+    return false;
   }
 
   const thinkPrefixes = /^(思考|分析|首先|其次|然后|因此|所以|综上|结论|那么|这里|现在|接下来|我需|我应|我打算|让我|我需要|我应该|我认为|我觉得|看起来|从上面|基于|根据|由于|因为|虽然|但是|不过|而且|用户问|当前角色|要求|结合|选一个|或者|例如)/;
@@ -207,7 +220,7 @@ function extractReplyFromReasoning(reasoning) {
 
   function isSafeReply(s) {
     const t = s.trim();
-    return t.length >= 4 && t.length <= 200 && /[。！？.!?]$/.test(t) && !thinkPrefixes.test(t) && !internalHints.test(t);
+    return t.length >= 4 && t.length <= 200 && /[。！？.!?]$/.test(t) && !thinkPrefixes.test(t) && !internalHints.test(t) && !isEchoingUser(t);
   }
 
   // 策略1：模型常把最终选定的回复放在最后一段完整的引号里，优先提取
