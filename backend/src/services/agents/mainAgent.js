@@ -68,7 +68,17 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
       )
     ]);
 
-    const content = stripThinkingTags(response.choices[0].message.content || '');
+    let content = stripThinkingTags(response.choices[0].message.content || '');
+
+    // 混元 Hy3 偶发在 high 下也只输出 reasoning_content、content 为空。
+    // 此时尝试从 reasoning_content 提取最终结论作为回复，避免业务层落入固定兜底。
+    if (!content.trim() && response.choices[0].message.reasoning_content) {
+      const extracted = extractReplyFromReasoning(response.choices[0].message.reasoning_content);
+      if (extracted) {
+        console.log('[callMainAgent] 从 reasoning_content 提取到回复');
+        content = extracted;
+      }
+    }
 
     // 检查是否有工具调用标记
     const hasToolCall = content.includes('<<<FunctionCall>>>') || content.includes('<|FunctionCallBegin|>');
@@ -175,6 +185,32 @@ function stripThinkingTags(content) {
   }
 
   return result.trim();
+}
+
+/**
+ * 当模型只返回 reasoning_content、content 为空时，尝试从中提取最终回复。
+ * 策略：取最后一段语义完整的句子，过滤掉明显的思考前缀。
+ */
+function extractReplyFromReasoning(reasoning) {
+  if (!reasoning || typeof reasoning !== 'string') return '';
+  const text = reasoning.trim();
+  if (!text) return '';
+
+  // 按句子结束符拆分，取最后一段有效句子
+  const sentences = text.split(/(?<=[。！？.!?])\s*/).filter(s => s.trim().length >= 4);
+  if (sentences.length === 0) return '';
+
+  // 过滤以思考词开头的句子，取更可能是最终回复的句子
+  const thinkPrefixes = /^(思考|分析|首先|其次|然后|因此|所以|综上|结论|那么|这里|我需|我应|我打算|让我|我需要|我应该|我认为|我觉得|看起来|从上面|基于|根据|由于|因为|虽然|但是|不过|而且)/;
+  for (let i = sentences.length - 1; i >= 0; i--) {
+    const s = sentences[i].trim();
+    if (!thinkPrefixes.test(s) && s.length >= 4) {
+      return s;
+    }
+  }
+
+  // 兜底：返回最后一句
+  return sentences[sentences.length - 1].trim();
 }
 
 /**
