@@ -194,13 +194,16 @@ function stripThinkingTags(content) {
  */
 function extractReplyFromReasoning(reasoning) {
   if (!reasoning || typeof reasoning !== 'string') return '';
-  const text = reasoning.trim();
+  let text = reasoning.trim();
   if (!text) return '';
 
+  // 先去掉模型常用的 meta 标签（如 "字数：就这意志力？" → "就这意志力？"）
+  text = text.replace(/\b(字数|回复|答案|输出|最终回复)[：:]\s*/g, '');
+
   // 按句子结束符拆分，取最后一段有效句子（必须有结束标点，避免返回被截断的半截话）
-  const sentences = text
+  let sentences = text
     .split(/(?<=[。！？.!?])\s*/)
-    .map(s => s.trim())
+    .map(s => s.trim().replace(/^["“'']+|["”'']+$/g, ''))
     .filter(s => s.length >= 4 && /[。！？.!?]$/.test(s));
   if (sentences.length === 0) return '';
 
