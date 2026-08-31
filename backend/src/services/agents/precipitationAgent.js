@@ -2072,7 +2072,7 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
   // 疑问句/咨询句（"奶茶热量高吗"）不兜底，避免把提问误记为饮食
   if (items.length === 0 && !isQuestionContent(content) && shouldPrecipitate(content)) {
     console.log(`[沉淀兜底] LLM 未提取到有效内容，尝试规则化兜底提取`);
-    const fallbackItem = fallbackExtractDietRecord(content, userId, recordDate);
+    const fallbackItem = await fallbackExtractDietRecord(content, userId, recordDate);
     if (fallbackItem) {
       items.push(fallbackItem);
       
@@ -2246,10 +2246,63 @@ function parseStepsFromContent(content) {
 }
 
 /**
+ * 当食品库中找不到对应食物时，调用 LLM 进行真实营养估算。
+ * 返回 { calorie_per_100g, protein_per_100g, carb_per_100g, fat_per_100g } 或 null。
+ */
+async function estimateNutritionWithLLM(foodName, weight = 100) {
+  const prompt = `你是一名专业的营养师，请根据给出的食物名称估算每100克的热量（千卡）和主要营养素（克）。
+请只返回一个 JSON 对象，不要返回任何解释、markdown 或多余文字。JSON 结构如下：
+{
+  "calorie_per_100g": 数字,
+  "protein_per_100g": 数字,
+  "carb_per_100g": 数字,
+  "fat_per_100g": 数字
+}
+注意：
+- 黑咖啡、美式咖啡等不加糖奶的纯咖啡，热量应接近0。
+- 油炸、高糖、高脂食物热量应明显高于蒸煮类。
+- 如果食物名称明显不是食物或无法判断，返回 {"calorie_per_100g":0,"protein_per_100g":0,"carb_per_100g":0,"fat_per_100g":0}。
+食物名称：${foodName}
+重量：${weight}克`;
+
+  try {
+    const response = await Promise.race([
+      callWithPrompt(
+        'precipitation_agent',
+        [
+          { role: 'system', content: 'You are a nutrition estimation assistant. Return only JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        { temperature: 0.2, max_tokens: 256 }
+      ),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('NUTRITION_ESTIMATE_TIMEOUT')), 3500))
+    ]);
+
+    const text = (response.choices?.[0]?.message?.content || '').trim();
+    const objects = extractJsonObjects(text);
+    for (const objText of objects) {
+      const parsed = safeJsonParse(objText, null);
+      if (parsed && typeof parsed.calorie_per_100g === 'number') {
+        return {
+          calorie_per_100g: parsed.calorie_per_100g,
+          protein_per_100g: Number(parsed.protein_per_100g) || 0,
+          carb_per_100g: Number(parsed.carb_per_100g) || 0,
+          fat_per_100g: Number(parsed.fat_per_100g) || 0
+        };
+      }
+    }
+    console.warn(`[estimateNutritionWithLLM] 无法解析模型返回: ${text}`);
+  } catch (err) {
+    console.warn(`[estimateNutritionWithLLM] 调用失败: ${err.message}`);
+  }
+  return null;
+}
+
+/**
  * 规则化兜底提取一条饮食记录
  * 用于 LLM 未提取成功，但消息明显是饮食陈述句时
  */
-function fallbackExtractDietRecord(content, userId, recordDate) {
+async function fallbackExtractDietRecord(content, userId, recordDate) {
   const text = String(content || '').trim();
   if (!text) return null;
 
@@ -2269,7 +2322,7 @@ function fallbackExtractDietRecord(content, userId, recordDate) {
   let fatPer100g = 0;
   let displayName = foodName;
 
-  const nutrition = getFoodNutrition(foodName);
+  let nutrition = getFoodNutrition(foodName);
   if (nutrition) {
     caloriePer100g = Number(nutrition.calorie_per_100g) || 0;
     proteinPer100g = Number(nutrition.protein_per_100g) || 0;
@@ -2277,29 +2330,42 @@ function fallbackExtractDietRecord(content, userId, recordDate) {
     fatPer100g = Number(nutrition.fat_per_100g) || 0;
     displayName = nutrition.food_name || foodName;
   } else {
-    // 通用估算：兜底时不再改名，保持用户原始输入
-    if (/面|粉|米线|拉面|板面|刀削面|炸酱面|拌面|炒面|热干面|螺蛳粉|酸辣粉|米粉|河粉|凉皮|面皮/.test(foodName)) {
-      caloriePer100g = 140;
-    } else if (/饭|炒饭|盖饭|拌饭|焖饭|焗饭|烩饭|煲仔饭|粥|稀饭|燕麦粥|小米粥/.test(foodName)) {
-      caloriePer100g = /粥|稀饭/.test(foodName) ? 50 : 130;
-    } else if (/包|馒头|花卷|饺子|馄饨|抄手|小笼包|生煎|锅贴|馅饼|包子|烧麦|春卷|油条|煎饼|烧饼|烙饼|面包|蛋糕|饼干|甜点|甜品/.test(foodName)) {
-      caloriePer100g = /面包|蛋糕|饼干|甜点|甜品/.test(foodName) ? 300 : 200;
-    } else if (/肉|鸡|牛|猪|羊|鱼|虾|蛋|豆腐|豆干|豆皮|腐竹|千张|素鸡/.test(foodName)) {
-      caloriePer100g = 150;
-    } else if (/水果|苹果|香蕉|橙子|葡萄|西瓜|草莓|蓝莓|猕猴桃|梨|桃|李子|樱桃|芒果|菠萝|柚子|橘子|柠檬|火龙果|哈密瓜|木瓜|百香果|杨梅|荔枝|龙眼|榴莲|山竹|椰子|甘蔗|柿子|枣|山楂|桑葚|无花果|牛油果|圣女果|黄瓜|西红柿|胡萝卜|生菜|菠菜|芹菜|西兰花|花菜|卷心菜|白菜|洋葱|大蒜|葱|姜|辣椒|茄子|豆角|豌豆|玉米|土豆|红薯|紫薯|南瓜|冬瓜|丝瓜|苦瓜|芦笋|竹笋|香菇|蘑菇|木耳|海带|紫菜/.test(foodName)) {
-      caloriePer100g = 60;
-    } else if (/奶|酸奶|牛奶|豆浆|奶茶|果汁|可乐|雪碧|饮料/.test(foodName)) {
-      caloriePer100g = 50;
-    } else if (/黑咖啡|美式咖啡|冰美式|热美式|清咖啡|纯咖啡/.test(foodName)) {
-      // 纯黑咖啡/美式几乎无热量；避免 fallback 到 50 导致 250g 杯子变成 125 千卡
-      caloriePer100g = 2;
-    } else if (/拿铁|卡布奇诺|摩卡|玛奇朵|燕麦拿铁|生椰拿铁|澳白|flat white|咖啡/.test(foodName)) {
-      // 含奶/含糖咖啡按 50 估算；黑咖啡/美式已在上一条处理
-      caloriePer100g = 50;
-    } else if (/茶|水/.test(foodName)) {
-      caloriePer100g = 1;
+    // 食品库未命中时，让 LLM 做真实估算，不再使用固定默认值
+    console.log(`[沉淀兜底] 食品库未命中「${foodName}」，请求 LLM 估算营养`);
+    const estimated = await estimateNutritionWithLLM(foodName);
+    if (estimated && estimated.calorie_per_100g > 0) {
+      caloriePer100g = estimated.calorie_per_100g;
+      proteinPer100g = estimated.protein_per_100g;
+      carbPer100g = estimated.carb_per_100g;
+      fatPer100g = estimated.fat_per_100g;
     } else {
-      caloriePer100g = 100;
+      // LLM 估算失败时的保守规则兜底：避免「油炸豆泡」被估成 100 kcal/100g 这种离谱值
+      if (/面|粉|米线|拉面|板面|刀削面|炸酱面|拌面|炒面|热干面|螺蛳粉|酸辣粉|米粉|河粉|凉皮|面皮/.test(foodName)) {
+        caloriePer100g = 140;
+      } else if (/饭|炒饭|盖饭|拌饭|焖饭|焗饭|烩饭|煲仔饭|粥|稀饭|燕麦粥|小米粥/.test(foodName)) {
+        caloriePer100g = /粥|稀饭/.test(foodName) ? 50 : 130;
+      } else if (/包|馒头|花卷|饺子|馄饨|抄手|小笼包|生煎|锅贴|馅饼|包子|烧麦|春卷|油条|煎饼|烧饼|烙饼|面包|蛋糕|饼干|甜点|甜品/.test(foodName)) {
+        caloriePer100g = /面包|蛋糕|饼干|甜点|甜品/.test(foodName) ? 300 : 200;
+      } else if (/肉|鸡|牛|猪|羊|鱼|虾|蛋|豆腐|豆干|豆皮|腐竹|千张|素鸡/.test(foodName)) {
+        caloriePer100g = 150;
+      } else if (/水果|苹果|香蕉|橙子|葡萄|西瓜|草莓|蓝莓|猕猴桃|梨|桃|李子|樱桃|芒果|菠萝|柚子|橘子|柠檬|火龙果|哈密瓜|木瓜|百香果|杨梅|荔枝|龙眼|榴莲|山竹|椰子|甘蔗|柿子|枣|山楂|桑葚|无花果|牛油果|圣女果|黄瓜|西红柿|胡萝卜|生菜|菠菜|芹菜|西兰花|花菜|卷心菜|白菜|洋葱|大蒜|葱|姜|辣椒|茄子|豆角|豌豆|玉米|土豆|红薯|紫薯|南瓜|冬瓜|丝瓜|苦瓜|芦笋|竹笋|香菇|蘑菇|木耳|海带|紫菜/.test(foodName)) {
+        caloriePer100g = 60;
+      } else if (/奶|酸奶|牛奶|豆浆|奶茶|果汁|可乐|雪碧|饮料/.test(foodName)) {
+        caloriePer100g = 50;
+      } else if (/黑咖啡|美式咖啡|冰美式|热美式|清咖啡|纯咖啡/.test(foodName)) {
+        // 纯黑咖啡/美式几乎无热量；避免 fallback 到 50 导致 250g 杯子变成 125 千卡
+        caloriePer100g = 0;
+      } else if (/拿铁|卡布奇诺|摩卡|玛奇朵|燕麦拿铁|生椰拿铁|澳白|flat white|咖啡/.test(foodName)) {
+        // 含奶/含糖咖啡按 50 估算；黑咖啡/美式已在上一条处理
+        caloriePer100g = 50;
+      } else if (/茶|水/.test(foodName)) {
+        caloriePer100g = 1;
+      } else if (/油豆泡|油豆腐|炸豆腐|炸豆皮|油炸|炸鸡|炸猪|炸鱼|炸虾|薯条|油条|麻花|春卷|煎/.test(foodName)) {
+        // 油炸类食物能量密度高，单独给一个更合理的兜底
+        caloriePer100g = 280;
+      } else {
+        caloriePer100g = 100;
+      }
     }
   }
 
