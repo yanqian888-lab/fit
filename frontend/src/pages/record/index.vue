@@ -716,6 +716,15 @@ async function loadFastingFromServer() {
       const e = new Date(`${today}T${f.eating_window_end}`);
       if (!isNaN(s.getTime())) eatingStart.value = s.getTime();
       if (!isNaN(e.getTime())) eatingEnd.value = e.getTime();
+
+      // 把服务器上的历史用餐时间沉淀为本地设置，避免大按钮重复弹出设置面板
+      const parseTimeValue = (t) => {
+        const [h, m] = String(t).split(':').map(Number);
+        return [h || 0, 0, Math.floor((m || 0) / 5), 0];
+      };
+      startTimeValue.value = parseTimeValue(f.eating_window_start);
+      hasFastingSettings.value = true;
+      saveSettings();
     }
     if (f.status === 'completed' || f.status === 'failed') {
       eatingEnd.value = Date.now();
