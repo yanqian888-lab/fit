@@ -1281,7 +1281,7 @@ onShow(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24rpx 32rpx;
+  padding: calc(24rpx + env(safe-area-inset-top)) 32rpx 24rpx;
   flex-shrink: 0;
 }
 
@@ -1306,10 +1306,8 @@ onShow(() => {
 }
 
 .fullscreen-trend-svg {
-  flex: 1;
   width: 100%;
-  height: 100%;
-  min-height: 0;
+  aspect-ratio: 2 / 1;
   position: relative;
 }
 
