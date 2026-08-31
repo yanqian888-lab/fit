@@ -403,15 +403,8 @@ function getFoodNutrition(foodName, preferredCategory = null) {
       if (kwFood) return kwFood;
     }
 
-    // 6. 泛化别名匹配
-    for (const [alias, patterns] of Object.entries(ALIAS_MAP)) {
-      if (name.includes(alias)) {
-        for (const pattern of patterns) {
-          const aliasFood = findBestFoodMatch(pattern);
-          if (aliasFood) return aliasFood;
-        }
-      }
-    }
+    // 6. 不再做泛化别名匹配：避免"卤鸡蛋"被改成"水煮鸡蛋"、"炸鸡腿"被改成其他鸡腿食品。
+    // 用户输入的完整食物名若库中无精确匹配，应返回 null，由上层/LLM 处理，而不是擅自改名。
 
     return null;
   } catch (e) {
