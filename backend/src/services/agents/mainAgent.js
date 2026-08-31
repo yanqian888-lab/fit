@@ -194,34 +194,45 @@ function stripThinkingTags(content) {
  */
 function extractReplyFromReasoning(reasoning) {
   if (!reasoning || typeof reasoning !== 'string') return '';
-  let text = reasoning.trim();
+  const text = reasoning.trim();
   if (!text) return '';
 
-  // 先去掉模型常用的 meta 标签（如 "字数：就这意志力？" → "就这意志力？"）
-  text = text.replace(/\b(字数|回复|答案|输出|最终回复)[：:]\s*/g, '');
-
-  // 按句子结束符拆分，取最后一段有效句子（必须有结束标点，避免返回被截断的半截话）
-  let sentences = text
-    .split(/(?<=[。！？.!?])\s*/)
-    .map(s => s.trim().replace(/^["“'']+|["”'']+$/g, ''))
-    .filter(s => s.length >= 4 && /[。！？.!?]$/.test(s));
-  if (sentences.length === 0) return '';
-
-  // 过滤以思考词开头的句子，取更可能是最终回复的句子
-  const thinkPrefixes = /^(思考|分析|首先|其次|然后|因此|所以|综上|结论|那么|这里|现在|接下来|我需|我应|我打算|让我|我需要|我应该|我认为|我觉得|看起来|从上面|基于|根据|由于|因为|虽然|但是|不过|而且)/;
-  // 明显是模型内部指令/工具调用提示/人设约束，不能暴露给用户
-  const internalHints = /工具调用|FunctionCall|回复中需要|嵌入工具|调用工具|函数调用|我需要调用|我应该调用|这里应该|请调用|可以调用|毒舌模式|温柔鼓励型|严格监督型|1-3句话|最多50字|50字|字数限制|严格按照|按照.*回复|模式.*回复|回复.*模式|生成.*回复|输出.*回复|系统提示|用户消息|角色设定|人设约束/;
-  for (let i = sentences.length - 1; i >= 0; i--) {
-    const s = sentences[i].trim();
-    if (!thinkPrefixes.test(s) && !internalHints.test(s) && s.length >= 4) {
-      return s;
-    }
+  // 去掉模型常用的 meta 标签（如 "字数：就这意志力？" → "就这意志力？"）
+  function cleanMeta(s) {
+    return s.replace(/(字数|回复|答案|输出|最终回复)[：:]\s*/g, '').trim();
   }
 
-  // 兜底：如果最后一句也包含内部提示，直接返回空，避免暴露
-  const last = sentences[sentences.length - 1].trim();
-  if (internalHints.test(last)) return '';
-  return last;
+  const thinkPrefixes = /^(思考|分析|首先|其次|然后|因此|所以|综上|结论|那么|这里|现在|接下来|我需|我应|我打算|让我|我需要|我应该|我认为|我觉得|看起来|从上面|基于|根据|由于|因为|虽然|但是|不过|而且|用户问|当前角色|要求|结合|选一个|或者|例如)/;
+  const internalHints = /工具调用|FunctionCall|回复中需要|嵌入工具|调用工具|函数调用|我需要调用|我应该调用|这里应该|请调用|可以调用|毒舌模式|温柔鼓励型|严格监督型|1-3句话|最多50字|50字|字数限制|严格按照|按照.*回复|模式.*回复|回复.*模式|生成.*回复|输出.*回复|系统提示|用户消息|角色设定|人设约束|为了安全|如果不调用|基于记忆|专业人士|直接基于|直接给/;
+
+  function isSafeReply(s) {
+    const t = s.trim();
+    return t.length >= 4 && t.length <= 200 && /[。！？.!?]$/.test(t) && !thinkPrefixes.test(t) && !internalHints.test(t);
+  }
+
+  // 策略1：模型常把最终选定的回复放在最后一段完整的引号里，优先提取
+  const quotes = [];
+  const quoteRegex = /[“"]([\s\S]*?)[”"]/g;
+  let m;
+  while ((m = quoteRegex.exec(text)) !== null) {
+    const q = cleanMeta(m[1]).replace(/^["“'']+|["”'']+$/g, '');
+    if (isSafeReply(q)) quotes.push(q);
+  }
+  if (quotes.length > 0) {
+    return quotes[quotes.length - 1];
+  }
+
+  // 策略2：没有可用引号时，按句子拆分兜底
+  const sentences = text
+    .split(/(?<=[。！？.!?])\s*/)
+    .map(s => cleanMeta(s).replace(/^["“'']+|["”'']+$/g, ''))
+    .filter(s => s.length >= 4 && /[。！？.!?]$/.test(s));
+  for (let i = sentences.length - 1; i >= 0; i--) {
+    const s = sentences[i].trim();
+    if (isSafeReply(s)) return s;
+  }
+
+  return '';
 }
 
 /**
