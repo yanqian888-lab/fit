@@ -1,7 +1,7 @@
 /**
  * 清理食物名称中的常见前缀/后缀填充词，并判断是否为有效食物名
  */
-const FOOD_NAME_PREFIX_FILLERS = /^(?:早上|上午|中午|下午|晚上|今天|今早|今晚|昨天|明天|刚才|刚刚|之前|后来|现在|早餐|午餐|晚餐|加餐|吃|吃了|喝了|还吃|又吃|刚吃|又吃了|还吃了|刚吃了|吃了个|吃了一个|那个|这个|刚才的|的|是|为|有|还有|我又|我又要|我又没|就|只是|不过|但是|而且|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中)+/;
+const FOOD_NAME_PREFIX_FILLERS = /^(?:早上|上午|中午|下午|晚上|今天|今早|今晚|昨天|明天|刚才|刚刚|之前|后来|现在|早餐|午餐|晚餐|加餐|吃|吃了|喝了|还吃|又吃|刚吃|又吃了|还吃了|刚吃了|吃了个|吃了一个|那个|这个|刚才的|的|是|为|有|还有|我又|我又要|我又没|就|只是|不过|但是|而且|了|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中)+/;
 const FOOD_NAME_SUFFIX_FILLERS = /(?:一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中|的|了|吃|喝|还有|不过|但是|而且)$/;
 const FOOD_NAME_STOP_ONLY = /^(?:早上|上午|中午|下午|晚上|今天|今早|今晚|昨天|明天|刚才|刚刚|之前|后来|现在|早餐|午餐|晚餐|加餐|吃|吃了|喝了|还吃|又吃|刚吃|又吃了|还吃了|刚吃了|吃了个|吃了一个|那个|这个|刚才的|的|是|为|有|还有|我又|我又要|我又没|就|只是|不过|但是|而且|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中)+$/;
 
@@ -2253,65 +2253,31 @@ function fallbackExtractDietRecord(content, userId, recordDate) {
   const text = String(content || '').trim();
   if (!text) return null;
 
-  // 提取食物名称：去掉时间/餐别/动词/量词/语气词等
-  let foodName = text
-    .replace(/早上|上午|中午|下午|晚上|夜宵|早餐|午餐|晚餐|加餐|今天|昨天|刚才|刚刚|现在|待会|等下|一会儿|马上|已经|就|只|又|还|想|要|准备|打算|计划/g, '')
-    .replace(/吃了|吃过|吃|喝了|喝|啦|呢|啊|哦|嗯|吧|嘛/g, '')
-    .replace(/一份|一碗|一杯|一盘|一个|一些|一点|大约|大概|约|差不多|可能|应该/g, '')
-    .replace(/\d+(?:\.\d+)?\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/gi, '')
-    .replace(/[，。！？；、,.!?;]/g, '')
-    .trim();
-  if (!foodName) foodName = text;
-
-  // 优先从 food_db / custom_foods / favorite_foods 查找
-  let matchedFood = db.prepare(`
-    SELECT food_name, calories_per_100g, protein_per_100g, carb_per_100g, fat_per_100g
-    FROM food_db WHERE food_name = ? LIMIT 1
-  `).get(foodName);
-
-  if (!matchedFood && userId) {
-    matchedFood = db.prepare(`
-      SELECT name as food_name, calorie_per_100g as calories_per_100g, protein_per_100g, carb_per_100g, fat_per_100g
-      FROM custom_foods WHERE user_id = ? AND name = ? LIMIT 1
-    `).get(userId, foodName);
-  }
-  if (!matchedFood && userId) {
-    matchedFood = db.prepare(`
-      SELECT fd.food_name, fd.calories_per_100g, fd.protein_per_100g, fd.carb_per_100g, fd.fat_per_100g
-      FROM favorite_foods ff
-      JOIN food_db fd ON fd.food_id = ff.food_id
-      WHERE ff.user_id = ? AND fd.food_name = ? LIMIT 1
-    `).get(userId, foodName);
-  }
-  // 模糊匹配
-  if (!matchedFood) {
-    matchedFood = db.prepare(`
-      SELECT food_name, calories_per_100g, protein_per_100g, carb_per_100g, fat_per_100g
-      FROM food_db WHERE food_name LIKE ? ORDER BY LENGTH(food_name) ASC LIMIT 1
-    `).get(`%${foodName}%`);
-  }
-  if (!matchedFood && foodName.length >= 2) {
-    matchedFood = db.prepare(`
-      SELECT food_name, calories_per_100g, protein_per_100g, carb_per_100g, fat_per_100g
-      FROM food_db WHERE ? LIKE '%' || food_name || '%' ORDER BY LENGTH(food_name) DESC LIMIT 1
-    `).get(foodName);
+  // 用统一的食物名清洗逻辑提取食物名，避免"我又吃了一个卤鸡蛋"变成"我卤鸡蛋"
+  let foodName = cleanFoodName(text);
+  if (!foodName || isInvalidFoodName(foodName)) {
+    // 若清洗后为空，尝试更宽松地去掉数字+单位后的剩余部分
+    const withoutQty = text.replace(/\d+(?:\.\d+)?\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/gi, '');
+    foodName = cleanFoodName(withoutQty);
+    if (!foodName || isInvalidFoodName(foodName)) return null;
   }
 
+  // 优先用 nutritionService 查食品库，获取准确营养和标准化名称
   let caloriePer100g = 0;
   let proteinPer100g = 0;
   let carbPer100g = 0;
   let fatPer100g = 0;
   let displayName = foodName;
 
-  if (matchedFood) {
-    caloriePer100g = Number(matchedFood.calories_per_100g) || 0;
-    proteinPer100g = Number(matchedFood.protein_per_100g) || 0;
-    carbPer100g = Number(matchedFood.carb_per_100g) || 0;
-    fatPer100g = Number(matchedFood.fat_per_100g) || 0;
-    displayName = matchedFood.food_name;
+  const nutrition = getFoodNutrition(foodName);
+  if (nutrition) {
+    caloriePer100g = Number(nutrition.calorie_per_100g) || 0;
+    proteinPer100g = Number(nutrition.protein_per_100g) || 0;
+    carbPer100g = Number(nutrition.carb_per_100g) || 0;
+    fatPer100g = Number(nutrition.fat_per_100g) || 0;
+    displayName = nutrition.food_name || foodName;
   } else {
-    // 通用估算
-    displayName = foodName;
+    // 通用估算：兜底时不再改名，保持用户原始输入
     if (/面|粉|米线|拉面|板面|刀削面|炸酱面|拌面|炒面|热干面|螺蛳粉|酸辣粉|米粉|河粉|凉皮|面皮/.test(foodName)) {
       caloriePer100g = 140;
     } else if (/饭|炒饭|盖饭|拌饭|焖饭|焗饭|烩饭|煲仔饭|粥|稀饭|燕麦粥|小米粥/.test(foodName)) {
@@ -2329,25 +2295,34 @@ function fallbackExtractDietRecord(content, userId, recordDate) {
     }
   }
 
-  // 估算重量
-  let weight = 200;
-  const qtyMatch = text.match(/(\d+(?:\.\d+)?)\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/i);
+  // 估算重量：优先用 nutritionService 的典型重量，避免鸭蛋/鹅蛋都被估算成80g或200g
+  let weight = 100;
+  let quantity = 1;
+  let unit = 'g';
+  // 支持阿拉伯数字和中文数字（一~十、两、几、半）
+  const qtyMatch = text.match(/(\d+(?:\.\d+)?|一|二|三|四|五|六|七|八|九|十|两|几|半)\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/i);
   if (qtyMatch) {
-    const qty = parseFloat(qtyMatch[1]);
-    const unit = qtyMatch[2].toLowerCase();
-    if (['克', 'g', '毫升', 'ml'].includes(unit)) weight = qty;
-    else if (['杯'].includes(unit)) weight = qty * 250;
-    else if (['瓶'].includes(unit)) weight = qty * 500;
-    else if (['盒'].includes(unit)) weight = qty * 200;
-    else if (['罐'].includes(unit)) weight = qty * 330;
-    else if (['碗'].includes(unit)) weight = qty * 400;
-    else if (['个'].includes(unit)) weight = qty * 80;
-    else if (['份'].includes(unit)) weight = qty * 300;
-    else if (['片'].includes(unit)) weight = qty * 30;
-    else if (['根'].includes(unit)) weight = qty * 100;
-    else if (['只'].includes(unit)) weight = qty * 50;
-    else if (['块'].includes(unit)) weight = qty * 50;
-    else if (['勺'].includes(unit)) weight = qty * 15;
+    const rawQty = qtyMatch[1];
+    const chineseNums = { '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10, '几': 2, '半': 0.5 };
+    quantity = chineseNums[rawQty] || parseFloat(rawQty) || 1;
+    unit = qtyMatch[2].toLowerCase();
+    if (['克', 'g'].includes(unit)) {
+      weight = quantity;
+    } else if (['毫升', 'ml'].includes(unit)) {
+      weight = quantity;
+    } else {
+      const typical = getTypicalWeight(displayName, unit) || getTypicalWeight(foodName, unit);
+      if (typical) {
+        weight = quantity * typical;
+      } else {
+        // 无典型重量时，使用更保守的默认值
+        const unitWeights = {
+          '杯': 250, '瓶': 500, '盒': 200, '罐': 330, '碗': 400,
+          '个': 80, '份': 300, '片': 30, '根': 100, '只': 50, '块': 50, '勺': 15
+        };
+        weight = quantity * (unitWeights[unit] || 100);
+      }
+    }
   } else if (/一碗|一大碗|一份|一大盘|一杯/.test(text)) {
     if (/一碗|一大碗/.test(text)) weight = 400;
     else if (/一大盘/.test(text)) weight = 350;
@@ -2363,8 +2338,8 @@ function fallbackExtractDietRecord(content, userId, recordDate) {
   const food = {
     name: displayName,
     weight: Math.round(weight),
-    quantity: 1,
-    unit: 'g',
+    quantity,
+    unit,
     calorie: Math.round(caloriePer100g * ratio),
     protein: Math.round(proteinPer100g * ratio * 10) / 10,
     carb: Math.round(carbPer100g * ratio * 10) / 10,
