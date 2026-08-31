@@ -16,8 +16,9 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" native-type="button" :loading="saving" @click="save" v-perm="'app_config:write'">保存</el-button>
+          <el-button type="primary" native-type="button" :loading="saving" @click="save">保存</el-button>
           <el-button native-type="button" @click="load">刷新</el-button>
+          <span v-if="saveStatus" :class="['save-status', saveStatus.type]">{{ saveStatus.text }}</span>
         </el-form-item>
       </el-form>
     </div>
@@ -32,6 +33,7 @@ import ImageUpload from '@/components/ImageUpload.vue'
 
 const mpQrcodeUrl = ref('')
 const saving = ref(false)
+const saveStatus = ref(null)
 
 async function load() {
   try {
@@ -44,11 +46,15 @@ async function load() {
 
 async function save() {
   saving.value = true
+  saveStatus.value = null
   try {
     await cmsConfigApi.update({ mp_qrcode_url: mpQrcodeUrl.value })
+    saveStatus.value = { type: 'success', text: '保存成功' }
     ElMessage.success('保存成功')
   } catch (e) {
-    console.error(e)
+    console.error('[qr-code-config] save error', e)
+    saveStatus.value = { type: 'error', text: e?.message || '保存失败' }
+    ElMessage.error(e?.message || '保存失败')
   } finally {
     saving.value = false
   }
@@ -67,5 +73,15 @@ onMounted(load)
   background: #fff;
   border-radius: 8px;
   padding: 20px;
+}
+.save-status {
+  margin-left: 12px;
+  font-size: 14px;
+}
+.save-status.success {
+  color: #67c23a;
+}
+.save-status.error {
+  color: #f56c6c;
 }
 </style>
