@@ -1109,7 +1109,7 @@ const SHARE_CANVAS_W = 1080;
 const SHARE_CANVAS_H = 1920;
 const SHARE_QR_PLACEHOLDER = '/static/image/icon/qr_placeholder.png'; // 占位二维码，后续替换为正式 App 二维码
 const mpQrcodeUrl = ref('');
-const shareQrUrl = computed(() => mpQrcodeUrl.value || SHARE_QR_PLACEHOLDER);
+const shareQrUrl = computed(() => mpQrcodeUrl.value ? resolveStaticUrl(mpQrcodeUrl.value) : SHARE_QR_PLACEHOLDER);
 
 // 加载图片为 canvas 可绘制的路径；H5 先 fetch 成 blob，避免跨域污染画布导致无法导出
 function loadDrawableImage(src) {
@@ -1342,9 +1342,10 @@ function downloadEventPhoto() {
   uni.showLoading({ title: '生成分享图...' });
   buildEventShareImage(newEvent.value, url)
     .then(saveShareImage)
-    .catch(() => {
+    .catch((err) => {
       uni.hideLoading();
-      uni.showToast({ title: '分享图生成失败，请重试', icon: 'none' });
+      console.error('[pet] 分享图生成失败:', err);
+      uni.showToast({ title: `分享图生成失败: ${err?.message || '请重试'}`, icon: 'none' });
     });
 }
 
