@@ -1800,7 +1800,7 @@ function migrateTables() {
     db.exec(`
       CREATE TABLE IF NOT EXISTS trial_whitelist (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        type VARCHAR(16) NOT NULL CHECK(type IN ('user', 'version', 'ip')),
+        type VARCHAR(16) NOT NULL CHECK(type IN ('user', 'device', 'version', 'ip')),
         value VARCHAR(255) NOT NULL,
         expire_at DATETIME DEFAULT NULL,
         remark VARCHAR(255) DEFAULT NULL,
@@ -2028,6 +2028,32 @@ function migrateTables() {
     }
   } catch (err) {
     console.error('老用户陪伴数据迁移失败:', err.message);
+  }
+
+  // 扩展 trial_whitelist 表的 type CHECK 约束，支持 device 类型
+  try {
+    const tableSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='trial_whitelist'").get();
+    if (tableSql && tableSql.sql && !tableSql.sql.includes("'device'")) {
+      db.exec(`
+        ALTER TABLE trial_whitelist RENAME TO trial_whitelist_old;
+        CREATE TABLE trial_whitelist (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          type VARCHAR(16) NOT NULL CHECK(type IN ('user', 'device', 'version', 'ip')),
+          value VARCHAR(255) NOT NULL,
+          expire_at DATETIME DEFAULT NULL,
+          remark VARCHAR(255) DEFAULT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO trial_whitelist (id, type, value, expire_at, remark, created_at, updated_at)
+          SELECT id, type, value, expire_at, remark, created_at, updated_at FROM trial_whitelist_old;
+        DROP TABLE trial_whitelist_old;
+        CREATE INDEX IF NOT EXISTS idx_trial_whitelist_type_value ON trial_whitelist(type, value);
+      `);
+      console.log('[migrate] trial_whitelist 已扩展 device 类型支持');
+    }
+  } catch (err) {
+    console.error('trial_whitelist device 类型迁移失败:', err.message);
   }
 }
 

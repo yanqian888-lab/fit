@@ -133,9 +133,9 @@ function getPopupConfig(featureType, globalConfig) {
 
 /**
  * 校验白名单
- * type: user 时 value 支持 user_id 字符串或 username；version/ip 直接匹配
+ * type: user 时 value 支持 user_id 字符串或 username；device/version/ip 直接匹配
  */
-function checkWhitelist({ userId, username, appVersion, ip }) {
+function checkWhitelist({ userId, deviceId, username, appVersion, ip }) {
   const rows = db.prepare('SELECT type, value, expire_at FROM trial_whitelist').all();
   for (const row of rows) {
     if (isExpired(row.expire_at)) continue;
@@ -144,6 +144,8 @@ function checkWhitelist({ userId, username, appVersion, ip }) {
       const val = String(row.value);
       if (userId && val === String(userId)) hit = true;
       if (username && val === username) hit = true;
+    } else if (row.type === 'device') {
+      if (deviceId && String(row.value) === String(deviceId)) hit = true;
     } else if (row.type === 'version') {
       if (appVersion && String(row.value) === String(appVersion)) hit = true;
     } else if (row.type === 'ip') {
@@ -245,7 +247,7 @@ function checkPermission({ userId, deviceId, featureType, appVersion, ip, userna
   const config = getConfig();
 
   // 1. 白名单校验（最高优先级，永久豁免）
-  const wl = checkWhitelist({ userId, username, appVersion, ip });
+  const wl = checkWhitelist({ userId, deviceId, username, appVersion, ip });
   if (wl.hit) {
     addLog({ userId, deviceId, featureType, action: 'whitelist', reason: `命中${wl.type}白名单:${wl.value}`, ip });
     return { allow_use: true, show_popup: false, remain_times: -1, popup_config: null, reason: '白名单放行' };
