@@ -205,9 +205,9 @@ function extractReplyFromReasoning(reasoning) {
   if (sentences.length === 0) return '';
 
   // 过滤以思考词开头的句子，取更可能是最终回复的句子
-  const thinkPrefixes = /^(思考|分析|首先|其次|然后|因此|所以|综上|结论|那么|这里|我需|我应|我打算|让我|我需要|我应该|我认为|我觉得|看起来|从上面|基于|根据|由于|因为|虽然|但是|不过|而且)/;
-  // 明显是模型内部指令/工具调用提示，不能暴露给用户
-  const internalHints = /工具调用|FunctionCall|回复中需要|嵌入工具|调用工具|函数调用|我需要调用|我应该调用|这里应该|请调用|可以调用/;
+  const thinkPrefixes = /^(思考|分析|首先|其次|然后|因此|所以|综上|结论|那么|这里|现在|接下来|我需|我应|我打算|让我|我需要|我应该|我认为|我觉得|看起来|从上面|基于|根据|由于|因为|虽然|但是|不过|而且)/;
+  // 明显是模型内部指令/工具调用提示/人设约束，不能暴露给用户
+  const internalHints = /工具调用|FunctionCall|回复中需要|嵌入工具|调用工具|函数调用|我需要调用|我应该调用|这里应该|请调用|可以调用|毒舌模式|温柔鼓励型|严格监督型|1-3句话|最多50字|50字|字数限制|严格按照|按照.*回复|模式.*回复|回复.*模式|生成.*回复|输出.*回复|系统提示|用户消息|角色设定|人设约束/;
   for (let i = sentences.length - 1; i >= 0; i--) {
     const s = sentences[i].trim();
     if (!thinkPrefixes.test(s) && !internalHints.test(s) && s.length >= 4) {
