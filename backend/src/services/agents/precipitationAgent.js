@@ -5,6 +5,28 @@ const FOOD_NAME_PREFIX_FILLERS = /^(?:早上|上午|中午|下午|晚上|今天|
 const FOOD_NAME_SUFFIX_FILLERS = /(?:一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中|的|了|吃|喝|还有|不过|但是|而且)$/;
 const FOOD_NAME_STOP_ONLY = /^(?:早上|上午|中午|下午|晚上|今天|今早|今晚|昨天|明天|刚才|刚刚|之前|后来|现在|早餐|午餐|晚餐|加餐|吃|吃了|喝了|还吃|又吃|刚吃|又吃了|还吃了|刚吃了|吃了个|吃了一个|那个|这个|刚才的|的|是|为|有|还有|我又|我又要|我又没|就|只是|不过|但是|而且|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中)+$/;
 
+/**
+ * 进一步去掉数字+单位、动词+数量等残留前缀
+ * 例如 "15克油面筋" → "油面筋"、"还喝了一杯黑咖啡" → "黑咖啡"
+ */
+function stripLeadingQuantity(name) {
+  if (!name) return '';
+  const qtyUnitPattern = /^\d+(?:\.\d+)?\s*(?:毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺|包|袋)\s*/i;
+  const halfWholePattern = /^(?:半|大半|小半|整)(?:包|袋|碗|杯|盒|瓶|根|片|块|个|只|口|勺|份)\s*/;
+  const actionQtyPattern = /^(?:又|还|刚|先|然后|接着|再|也就|只|顺便)?(?:吃|喝)(?:了|过)?(?:一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|半包|半袋|半碗|半杯|大半|小半|整包|整袋|整碗|整杯|盘|碟)?\s*/;
+  let cleaned = name.trim();
+  while (true) {
+    const next = cleaned
+      .replace(qtyUnitPattern, '')
+      .replace(halfWholePattern, '')
+      .replace(actionQtyPattern, '')
+      .trim();
+    if (next === cleaned) break;
+    cleaned = next;
+  }
+  return cleaned;
+}
+
 function cleanFoodName(name) {
   if (!name) return '';
   let cleaned = name.trim();
@@ -15,6 +37,8 @@ function cleanFoodName(name) {
     cleaned = next;
   }
   cleaned = cleaned.replace(FOOD_NAME_SUFFIX_FILLERS, '').trim();
+  // 额外去掉数字+单位、动词+数量等残留前缀
+  cleaned = stripLeadingQuantity(cleaned);
   return cleaned;
 }
 
