@@ -68,10 +68,17 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
       )
     ]);
 
-    const content = stripThinkingTags(response.choices[0].message.content || '');
+    let content = stripThinkingTags(response.choices[0].message.content || '');
 
-    // 注意：此前尝试从 reasoning_content 提取回复，但会暴露内部指令或截断句子，
-    // 已禁用。content 为空时由业务层（chatController）走安全兜底。
+    // 混元 Hy3 偶发在 high 下只输出 reasoning_content、content 为空。
+    // 此时尝试从 reasoning_content 提取最终结论作为回复，避免业务层落入固定兜底。
+    if (!content.trim() && response.choices[0].message.reasoning_content) {
+      const extracted = extractReplyFromReasoning(response.choices[0].message.reasoning_content);
+      if (extracted) {
+        console.log('[callMainAgent] 从 reasoning_content 提取到回复');
+        content = extracted;
+      }
+    }
 
     // 检查是否有工具调用标记
     const hasToolCall = content.includes('<<<FunctionCall>>>') || content.includes('<|FunctionCallBegin|>');
@@ -190,8 +197,11 @@ function extractReplyFromReasoning(reasoning) {
   const text = reasoning.trim();
   if (!text) return '';
 
-  // 按句子结束符拆分，取最后一段有效句子
-  const sentences = text.split(/(?<=[。！？.!?])\s*/).filter(s => s.trim().length >= 4);
+  // 按句子结束符拆分，取最后一段有效句子（必须有结束标点，避免返回被截断的半截话）
+  const sentences = text
+    .split(/(?<=[。！？.!?])\s*/)
+    .map(s => s.trim())
+    .filter(s => s.length >= 4 && /[。！？.!?]$/.test(s));
   if (sentences.length === 0) return '';
 
   // 过滤以思考词开头的句子，取更可能是最终回复的句子
