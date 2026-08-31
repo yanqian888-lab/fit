@@ -97,7 +97,8 @@ const actionLabels = {
   checkin: '每日签到', record_diet: '记录饮食', record_exercise: '记录运动',
   record_body: '记录体重', record_water: '记录饮水', chat: '聊天',
   feed: '喂食搭搭',
-  explore_complete: '外出归来', generate_analysis: '生成分析', complete_profile: '完善资料'
+  explore_complete: '外出归来', generate_analysis: '生成分析', complete_profile: '完善资料',
+  save_event_image: '保存事件图'
 }
 
 onMounted(load)

@@ -206,6 +206,7 @@ export const petApi = {
   getEquipmentWorkouts: (itemId) => get('/inventory/equipment-workouts', { item_id: itemId }),
   getTasks: () => get('/tasks'),
   claimTaskReward: (id) => post(`/tasks/${id}/claim`),
+  reportTaskProgress: (action, count = 1) => post('/tasks/progress', { action, count }),
   getCheckinStatus: () => get('/checkin/status'),
   checkin: () => post('/checkin'),
   getAchievements: () => get('/achievements')

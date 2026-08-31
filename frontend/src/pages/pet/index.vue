@@ -1297,16 +1297,23 @@ async function buildEventShareImage(ev, photoUrl) {
  * 保存分享图到相册：合成事件海报（事件图 + 事件集合名 + 标题 + 说明 + 二维码 + 小程序名和副标题）
  */
 function saveShareImage(filePath) {
-  uni.saveImageToPhotosAlbum({
-    filePath,
-    success: () => {
-      uni.hideLoading();
-      uni.showToast({ title: '已保存到相册', icon: 'success' });
-    },
-    fail: (err) => {
-      uni.hideLoading();
-      onAlbumSaveFail(err);
-    }
+  return new Promise((resolve, reject) => {
+    uni.saveImageToPhotosAlbum({
+      filePath,
+      success: () => {
+        uni.hideLoading();
+        uni.showToast({ title: '已保存到相册', icon: 'success' });
+        resolve();
+      },
+      fail: (err) => {
+        uni.hideLoading();
+        onAlbumSaveFail(err);
+        reject(err);
+      }
+    });
+  }).then(() => {
+    // 保存成功后上报任务进度（失败静默，不打扰用户）
+    petApi.reportTaskProgress('save_event_image', 1).catch(() => {});
   });
 }
 

@@ -161,6 +161,7 @@ router.get('/inventory/equipment-workouts', authMiddleware, companionController.
 
 router.get('/tasks', authMiddleware, companionController.getTasks);
 router.post('/tasks/:id/claim', authMiddleware, companionController.claimTaskReward);
+router.post('/tasks/progress', authMiddleware, companionController.reportTaskProgress);
 router.get('/checkin/status', authMiddleware, companionController.getCheckinStatus);
 router.post('/checkin', authMiddleware, companionController.checkin);
 

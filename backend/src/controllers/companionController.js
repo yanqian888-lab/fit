@@ -258,6 +258,16 @@ function claimTaskReward(req, res) {
   return res.json(success(result));
 }
 
+function reportTaskProgress(req, res) {
+  const userId = req.userId;
+  const { action, count = 1 } = req.body || {};
+  if (!action || typeof action !== 'string') {
+    return res.status(400).json(error('缺少 action 参数'));
+  }
+  const results = taskService.updateTaskProgress(userId, action, Number(count) || 1);
+  return res.json(success({ results }));
+}
+
 function getCheckinStatus(req, res) {
   const userId = req.userId;
   const status = taskService.getCheckinStatus(userId);
@@ -298,6 +308,7 @@ module.exports = {
   getEquipmentWorkouts,
   getTasks,
   claimTaskReward,
+  reportTaskProgress,
   getCheckinStatus,
   checkin,
   getAchievements
