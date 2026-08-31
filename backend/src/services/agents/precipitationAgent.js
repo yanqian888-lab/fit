@@ -2275,7 +2275,7 @@ async function estimateNutritionWithLLM(foodName, weight = 100) {
         ],
         { temperature: 0.2, max_tokens: 256 }
       ),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('NUTRITION_ESTIMATE_TIMEOUT')), 3500))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('NUTRITION_ESTIMATE_TIMEOUT')), 8000))
     ]);
 
     const text = (response.choices?.[0]?.message?.content || '').trim();
@@ -2313,6 +2313,13 @@ async function fallbackExtractDietRecord(content, userId, recordDate) {
     const withoutQty = text.replace(/\d+(?:\.\d+)?\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/gi, '');
     foodName = cleanFoodName(withoutQty);
     if (!foodName || isInvalidFoodName(foodName)) return null;
+  }
+
+  // 进一步去掉开头残留的数量+单位（如"15克油面筋"→"油面筋"），避免把数量词带入食物名
+  const leadingQtyPattern = /^\d+(?:\.\d+)?\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/i;
+  const strippedName = foodName.replace(leadingQtyPattern, '').trim();
+  if (strippedName && !isInvalidFoodName(strippedName)) {
+    foodName = cleanFoodName(strippedName);
   }
 
   // 优先用 nutritionService 查食品库，获取准确营养和标准化名称
