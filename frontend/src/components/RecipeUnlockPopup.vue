@@ -149,7 +149,7 @@ defineEmits(['close']);
 
 .food-content-scroll {
   margin-top: 32rpx;
-  max-height: 420rpx;
+  max-height: 210rpx;
   width: 100%;
 }
 
