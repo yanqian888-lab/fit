@@ -729,6 +729,8 @@ async function loadFastingFromServer() {
     if (f.status === 'completed' || f.status === 'failed') {
       eatingEnd.value = Date.now();
     }
+    // 把服务器状态同步到本地，避免本地缓存与服务器不一致导致按钮状态乱跳
+    saveDailyState();
   } catch (e) { console.error(e); }
 }
 
@@ -1060,6 +1062,7 @@ onShow(() => {
           loadDailyState(),
           Promise.resolve(checkDateRollover()),
           Promise.resolve(ensureTodayWindow()),
+          loadFastingFromServer(),
           activeTab.value === 'workout' ? loadWorkouts() : Promise.resolve()
         ]).then(() => {
           if (eatingStart.value && eatingEnd.value) startCountdown();
