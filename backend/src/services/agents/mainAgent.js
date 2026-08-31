@@ -189,7 +189,8 @@ function stripThinkingTags(content) {
 
 /**
  * 当模型只返回 reasoning_content、content 为空时，尝试从中提取最终回复。
- * 策略：取最后一段语义完整的句子，过滤掉明显的思考前缀。
+ * 策略：取最后一段语义完整的句子，过滤掉明显的思考前缀和工具调用内部提示。
+ * 如果提取结果仍像内部指令，返回空字符串，让业务层走安全兜底。
  */
 function extractReplyFromReasoning(reasoning) {
   if (!reasoning || typeof reasoning !== 'string') return '';
@@ -202,15 +203,19 @@ function extractReplyFromReasoning(reasoning) {
 
   // 过滤以思考词开头的句子，取更可能是最终回复的句子
   const thinkPrefixes = /^(思考|分析|首先|其次|然后|因此|所以|综上|结论|那么|这里|我需|我应|我打算|让我|我需要|我应该|我认为|我觉得|看起来|从上面|基于|根据|由于|因为|虽然|但是|不过|而且)/;
+  // 明显是模型内部指令/工具调用提示，不能暴露给用户
+  const internalHints = /工具调用|FunctionCall|回复中需要|嵌入工具|调用工具|函数调用|我需要调用|我应该调用|这里应该|请调用|可以调用/;
   for (let i = sentences.length - 1; i >= 0; i--) {
     const s = sentences[i].trim();
-    if (!thinkPrefixes.test(s) && s.length >= 4) {
+    if (!thinkPrefixes.test(s) && !internalHints.test(s) && s.length >= 4) {
       return s;
     }
   }
 
-  // 兜底：返回最后一句
-  return sentences[sentences.length - 1].trim();
+  // 兜底：如果最后一句也包含内部提示，直接返回空，避免暴露
+  const last = sentences[sentences.length - 1].trim();
+  if (internalHints.test(last)) return '';
+  return last;
 }
 
 /**
