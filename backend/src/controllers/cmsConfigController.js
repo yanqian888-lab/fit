@@ -14,7 +14,8 @@ const CONFIG_KEYS = [
   'privacy_version',
   'force_privacy_update',
   'about_us_content',
-  'delete_account_agreement'
+  'delete_account_agreement',
+  'mp_qrcode_url'
 ];
 
 /**

@@ -9,7 +9,8 @@ export const routes = [
     children: [
       { path: '/operation/announcements', title: '公告管理', icon: 'Notification', perm: 'announcement:read' },
       { path: '/operation/notification-channels', title: '通知渠道', icon: 'Connection', perm: 'notification_channel:read' },
-      { path: '/operation/popup', title: '弹窗广告管理', icon: 'Picture', perm: 'popup_config:read' }
+      { path: '/operation/popup', title: '弹窗广告管理', icon: 'Picture', perm: 'popup_config:read' },
+      { path: '/operation/qr-code', title: '二维码管理', icon: 'FullScreen', perm: 'app_config:read' }
     ]
   },
   {

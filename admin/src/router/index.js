@@ -20,6 +20,7 @@ const routes = [
       { path: 'operation/announcements', component: () => import('@/views/announcement-config/index.vue'), meta: { title: '公告管理', icon: 'Notification', perm: 'announcement:read' } },
       { path: 'operation/notification-channels', component: () => import('@/views/notification-channel-config/index.vue'), meta: { title: '通知渠道', icon: 'Connection', perm: 'notification_channel:read' } },
       { path: 'operation/popup', component: () => import('@/views/popup-config/index.vue'), meta: { title: '弹窗广告管理', icon: 'Picture', perm: 'popup_config:read' } },
+      { path: 'operation/qr-code', component: () => import('@/views/qr-code-config/index.vue'), meta: { title: '二维码管理', icon: 'FullScreen', perm: 'app_config:read' } },
       { path: 'operation-stats', component: () => import('@/views/operation-stats/index.vue'), meta: { title: '运营数据', icon: 'DataLine', perm: 'operation_stats:read' } },
       { path: 'milestone-config', component: () => import('@/views/milestone-config/index.vue'), meta: { title: '里程碑文案', icon: 'Trophy', perm: 'milestone:read' } },
       { path: 'museum-config', component: () => import('@/views/museum-config/index.vue'), meta: { title: '博物馆入口', icon: 'Grid', perm: 'museum_config:read' } },

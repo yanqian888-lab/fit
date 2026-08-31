@@ -445,7 +445,7 @@ function updateSettings(req, res) {
  * 公开接口，无需登录，供启动页/协议页调用
  */
 function getAppConfig(req, res) {
-  const keys = ['user_agreement', 'user_agreement_url', 'privacy_policy', 'privacy_policy_url', 'privacy_version', 'force_privacy_update', 'about_us_content', 'delete_account_agreement'];
+  const keys = ['user_agreement', 'user_agreement_url', 'privacy_policy', 'privacy_policy_url', 'privacy_version', 'force_privacy_update', 'about_us_content', 'delete_account_agreement', 'mp_qrcode_url'];
   const rows = db.prepare(`SELECT config_key, config_value FROM app_configs WHERE config_key IN (${keys.map(() => '?').join(',')})`).all(...keys);
   const config = {};
   for (const row of rows) {
@@ -462,7 +462,8 @@ function getAppConfig(req, res) {
     privacy_version: config.privacy_version || '1.0.0',
     force_privacy_update: config.force_privacy_update === '1' || config.force_privacy_update === 'true',
     about_us_content: config.about_us_content || '',
-    delete_account_agreement: config.delete_account_agreement || ''
+    delete_account_agreement: config.delete_account_agreement || '',
+    mp_qrcode_url: config.mp_qrcode_url || ''
   }));
 }
 
@@ -470,7 +471,7 @@ function getAppConfig(req, res) {
  * 更新应用全局配置（管理员）
  */
 function updateAppConfig(req, res) {
-  const allowed = ['user_agreement', 'user_agreement_url', 'privacy_policy', 'privacy_policy_url', 'privacy_version', 'force_privacy_update', 'about_us_content'];
+  const allowed = ['user_agreement', 'user_agreement_url', 'privacy_policy', 'privacy_policy_url', 'privacy_version', 'force_privacy_update', 'about_us_content', 'mp_qrcode_url'];
   const updates = req.body || {};
 
   const update = db.prepare('INSERT INTO app_configs (config_key, config_value) VALUES (?, ?) ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = CURRENT_TIMESTAMP');

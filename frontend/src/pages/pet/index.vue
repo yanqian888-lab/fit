@@ -249,7 +249,7 @@ import ShopPanel from './panels/ShopPanel.vue';
 import EventsPanel from './panels/EventsPanel.vue';
 import RecipeUnlockPopup from '../../components/RecipeUnlockPopup.vue';
 import AppModal from '../../components/AppModal.vue';
-import { petApi } from '../../api';
+import { petApi, configApi } from '../../api';
 import { fallbackScenes, defaultSceneKey } from './sceneConfig.js';
 import { getSystemInfoSafe } from '../../utils/systemInfo';
 import { useUserStore } from '../../store';
@@ -786,6 +786,18 @@ async function loadPetConfig() {
 }
 
 /**
+ * 加载全局应用配置（二维码等）
+ */
+async function loadAppConfig() {
+  try {
+    const res = await configApi.getAppConfig();
+    mpQrcodeUrl.value = res.data?.mp_qrcode_url || '';
+  } catch (err) {
+    console.error('[pet] 加载应用配置失败:', err?.message || err);
+  }
+}
+
+/**
  * 加载宠物完整数据（需登录）
  * 包含状态、互动、事件等用户专属数据
  */
@@ -1096,6 +1108,8 @@ const SHARE_APP_SLOGAN = '你的AI掉秤搭子，陪你一起健康瘦下去～'
 const SHARE_CANVAS_W = 1080;
 const SHARE_CANVAS_H = 1920;
 const SHARE_QR_PLACEHOLDER = '/static/image/icon/qr_placeholder.png'; // 占位二维码，后续替换为正式 App 二维码
+const mpQrcodeUrl = ref('');
+const shareQrUrl = computed(() => mpQrcodeUrl.value || SHARE_QR_PLACEHOLDER);
 
 // 加载图片为 canvas 可绘制的路径；H5 先 fetch 成 blob，避免跨域污染画布导致无法导出
 function loadDrawableImage(src) {
@@ -1179,7 +1193,7 @@ function wrapShareText(ctx, text, maxWidth, maxLines) {
 async function buildEventShareImage(ev, photoUrl) {
   const [photo, qr] = await Promise.all([
     loadDrawableImage(photoUrl),
-    loadDrawableImage(SHARE_QR_PLACEHOLDER)
+    loadDrawableImage(shareQrUrl.value)
   ]);
   const ctx = uni.createCanvasContext('eventShareCanvas');
   const W = SHARE_CANVAS_W;
@@ -1441,6 +1455,9 @@ onShow(() => {
   // 无论登录与否，都加载公共展示配置（让未登录游客也能看到搭搭形象）
   loadPetConfig();
 
+  // 加载 CMS 配置的二维码（分享海报使用）
+  loadAppConfig();
+
   // 已登录用户：始终后台异步刷新最新数据（保证后台配置变更即时生效，最慢不超过 5 分钟）
   // - 有缓存时静默刷新（不显示 loading，用户无感）
   // - 无缓存时显示 loading（首次进入场景）
@@ -1481,8 +1498,11 @@ onMounted(() => {
   
   // 2. 无论登录与否，都加载公共展示配置（让未登录游客也能看到搭搭形象）
   loadPetConfig();
-  
-  // 3. 已登录用户额外加载完整数据
+
+  // 3. 加载 CMS 配置的二维码（分享海报使用）
+  loadAppConfig();
+
+  // 4. 已登录用户额外加载完整数据
   if (userStore.isLoggedIn) {
     if (!hasCache) {
       loading.value = true;
