@@ -2288,8 +2288,16 @@ function fallbackExtractDietRecord(content, userId, recordDate) {
       caloriePer100g = 150;
     } else if (/水果|苹果|香蕉|橙子|葡萄|西瓜|草莓|蓝莓|猕猴桃|梨|桃|李子|樱桃|芒果|菠萝|柚子|橘子|柠檬|火龙果|哈密瓜|木瓜|百香果|杨梅|荔枝|龙眼|榴莲|山竹|椰子|甘蔗|柿子|枣|山楂|桑葚|无花果|牛油果|圣女果|黄瓜|西红柿|胡萝卜|生菜|菠菜|芹菜|西兰花|花菜|卷心菜|白菜|洋葱|大蒜|葱|姜|辣椒|茄子|豆角|豌豆|玉米|土豆|红薯|紫薯|南瓜|冬瓜|丝瓜|苦瓜|芦笋|竹笋|香菇|蘑菇|木耳|海带|紫菜/.test(foodName)) {
       caloriePer100g = 60;
-    } else if (/奶|酸奶|牛奶|豆浆|咖啡|奶茶|果汁|可乐|雪碧|饮料|茶|水/.test(foodName)) {
+    } else if (/奶|酸奶|牛奶|豆浆|奶茶|果汁|可乐|雪碧|饮料/.test(foodName)) {
       caloriePer100g = 50;
+    } else if (/黑咖啡|美式咖啡|冰美式|热美式|清咖啡|纯咖啡/.test(foodName)) {
+      // 纯黑咖啡/美式几乎无热量；避免 fallback 到 50 导致 250g 杯子变成 125 千卡
+      caloriePer100g = 2;
+    } else if (/拿铁|卡布奇诺|摩卡|玛奇朵|燕麦拿铁|生椰拿铁|澳白|flat white|咖啡/.test(foodName)) {
+      // 含奶/含糖咖啡按 50 估算；黑咖啡/美式已在上一条处理
+      caloriePer100g = 50;
+    } else if (/茶|水/.test(foodName)) {
+      caloriePer100g = 1;
     } else {
       caloriePer100g = 100;
     }
