@@ -584,10 +584,6 @@ function saveHabit(req, res) {
     // 同步推进任务与奖励（如饮水达标）
     const action = getHabitAction(type);
     const rewardResult = rewardService.rewardForRecord(userId, action, id, value);
-    if (type === 'water') {
-      db.prepare('UPDATE user_profiles SET total_water = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
-        .run(value, userId);
-    }
     newbieTaskService.checkAction(userId, action);
     taskService.updateTaskProgress(userId, 'record_habit', 1);
     achievementService.checkAll(userId);
@@ -613,10 +609,6 @@ function saveHabit(req, res) {
         // 同步推进任务与奖励（如饮水达标），避免同一天多次更新时任务漏记
         const action = getHabitAction(type);
         const rewardResult = rewardService.rewardForRecord(userId, action, existing.id, value);
-        if (type === 'water') {
-          db.prepare('UPDATE user_profiles SET total_water = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
-            .run(value, userId);
-        }
         newbieTaskService.checkAction(userId, action);
         taskService.updateTaskProgress(userId, 'record_habit', 1);
         achievementService.checkAll(userId);
