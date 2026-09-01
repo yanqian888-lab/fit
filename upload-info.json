@@ -1,0 +1,75 @@
+{
+  "size": {
+    "total": 965479,
+    "packages": [
+      {
+        "name": "TOTAL",
+        "size": 965479
+      },
+      {
+        "name": "main",
+        "size": 753164
+      },
+      {
+        "name": "/pages/admin/",
+        "size": 17496
+      },
+      {
+        "name": "/pages/blank/",
+        "size": 627
+      },
+      {
+        "name": "/pages/chat/",
+        "size": 2982
+      },
+      {
+        "name": "/pages/guide/",
+        "size": 3139
+      },
+      {
+        "name": "/pages/inventory/",
+        "size": 10285
+      },
+      {
+        "name": "/pages/login/",
+        "size": 22135
+      },
+      {
+        "name": "/pages/onboarding/",
+        "size": 11716
+      },
+      {
+        "name": "/pages/partner/",
+        "size": 12368
+      },
+      {
+        "name": "/pages/profile/",
+        "size": 9489
+      },
+      {
+        "name": "/pages/register/",
+        "size": 6964
+      },
+      {
+        "name": "/pages/shop/",
+        "size": 11590
+      },
+      {
+        "name": "/pages/tasks/",
+        "size": 11657
+      },
+      {
+        "name": "/pages/user/",
+        "size": 79480
+      },
+      {
+        "name": "/pages/webview/",
+        "size": 854
+      },
+      {
+        "name": "/pages/workout/",
+        "size": 11533
+      }
+    ]
+  }
+}

@@ -27,7 +27,7 @@ import GlobalLoading from './components/GlobalLoading.vue';
 import AppPopup from './components/AppPopup.vue';
 // #endif
 import popupManager from './utils/popupManager';
-import { getSystemInfoSafe } from './utils/systemInfo';
+import { getWindowInfoSafe } from './utils/systemInfo';
 
 const userStore = useUserStore();
 const noticeStore = useNoticeStore();
@@ -39,7 +39,7 @@ onLaunch(async () => {
   // uni.hideTabBar({ animation: false });
   // #endif
   try {
-    const sysInfo = getSystemInfoSafe();
+    const sysInfo = getWindowInfoSafe();
     const statusBarHeight = sysInfo.statusBarHeight || 0;
     // #ifdef H5
     document.documentElement.style.setProperty('--status-bar-height', statusBarHeight + 'px');
@@ -51,17 +51,18 @@ onLaunch(async () => {
 
   userStore.init();
   
-  // 【优化】popupManager.init() 改为后台异步初始化，不阻塞主流程
-  // 原因：popupApi.getConfigList() 依赖后端可达性，开发环境后端不可达时会触发渲染层 addListener 错误
-  // 解决方案：使用 setTimeout 延迟执行，让页面先渲染完成，再进行后台初始化
-  setTimeout(async () => {
-    try {
-      await popupManager.init();
-    } catch (e) {
-      // 静默捕获，不影响主流程
-      console.warn('[popupManager] 初始化失败，将使用本地缓存配置', e?.message || e);
-    }
-  }, 500);
+  // 【优化】popupManager.init() 改为登录后才初始化，避免在未登录态请求登录态接口
+  // 原因：popupApi.getConfigList() 已改为需要登录态，未登录时无需拉取弹窗配置
+  if (userStore.isLoggedIn) {
+    setTimeout(async () => {
+      try {
+        await popupManager.init();
+      } catch (e) {
+        // 静默捕获，不影响主流程
+        console.warn('[popupManager] 初始化失败，将使用本地缓存配置', e?.message || e);
+      }
+    }, 500);
+  }
   
   // 登录后拉取未读消息与首页公告
   if (userStore.isLoggedIn) {

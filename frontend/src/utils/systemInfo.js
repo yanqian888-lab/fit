@@ -75,4 +75,44 @@ export function getSystemInfoSafe() {
   }
 }
 
-export default { getSystemInfoSafe };
+/**
+ * 仅获取窗口信息（避免采集设备品牌/型号/系统等敏感信息）
+ * 用于布局适配：statusBarHeight / windowWidth / windowHeight / safeArea 等
+ */
+export function getWindowInfoSafe() {
+  try {
+    const uniW = (typeof uni !== 'undefined') ? uni : (typeof wx !== 'undefined' ? wx : globalThis);
+    if (typeof uniW.getWindowInfo === 'function') {
+      const win = uniW.getWindowInfo();
+      return {
+        windowWidth: win.windowWidth,
+        windowHeight: win.windowHeight,
+        statusBarHeight: win.statusBarHeight,
+        safeArea: win.safeArea,
+        safeAreaInsets: win.safeAreaInsets,
+        pixelRatio: win.pixelRatio,
+        screenWidth: win.screenWidth,
+        screenHeight: win.screenHeight
+      };
+    }
+    // 兼容旧基础库
+    if (typeof uniW.getSystemInfoSync === 'function') {
+      const info = uniW.getSystemInfoSync();
+      return {
+        windowWidth: info.windowWidth,
+        windowHeight: info.windowHeight,
+        statusBarHeight: info.statusBarHeight,
+        safeArea: info.safeArea,
+        safeAreaInsets: info.safeAreaInsets,
+        pixelRatio: info.pixelRatio,
+        screenWidth: info.screenWidth,
+        screenHeight: info.screenHeight
+      };
+    }
+  } catch (e) {
+    console.error('[systemInfo] 获取窗口信息失败', e);
+  }
+  return {};
+}
+
+export default { getSystemInfoSafe, getWindowInfoSafe };

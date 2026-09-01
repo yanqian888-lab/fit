@@ -168,10 +168,6 @@ function getConfigList(req, res) {
   const userId = req.userId || null;
   const { app_version, os_type, device_id } = req.query;
 
-  if (!device_id) {
-    return res.status(400).json(error('缺少设备标识 device_id', 400));
-  }
-
   // 获取当前登录用户的对外 user_id（6 位字母+数字）
   const userRow = userId ? db.prepare('SELECT user_id FROM users WHERE id = ?').get(userId) : null;
   const userCode = userRow ? userRow.user_id : '';
@@ -302,10 +298,6 @@ function reportEvents(req, res) {
   const userId = req.userId || null;
   const { device_id, app_version, os_type, events } = req.body || {};
 
-  if (!device_id) {
-    return res.status(400).json(error('缺少设备标识 device_id', 400));
-  }
-
   if (!Array.isArray(events) || events.length === 0) {
     return res.status(400).json(error('上报事件不能为空', 400));
   }
@@ -339,7 +331,7 @@ function reportEvents(req, res) {
       insertEvent.run(
         popupId,
         userId,
-        device_id,
+        device_id || null,
         ev.page || '',
         type,
         ev.trigger || '',

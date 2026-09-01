@@ -251,7 +251,7 @@ import RecipeUnlockPopup from '../../components/RecipeUnlockPopup.vue';
 import AppModal from '../../components/AppModal.vue';
 import { petApi, configApi } from '../../api';
 import { fallbackScenes, defaultSceneKey } from './sceneConfig.js';
-import { getSystemInfoSafe } from '../../utils/systemInfo';
+import { getWindowInfoSafe } from '../../utils/systemInfo';
 import { useUserStore } from '../../store';
 import { usePageCacheStore, CACHE_KEYS } from '../../store/page-cache';
 
@@ -316,7 +316,7 @@ const stageHeightRpx = ref(DESIGN_HEIGHT_RPX);
 
 function measureStage() {
   try {
-    const info = getSystemInfoSafe();
+    const info = getWindowInfoSafe();
     const windowWidth = info.windowWidth || 375;
     const windowHeight = info.windowHeight || 667;
     const safeBottom = (info.safeAreaInsets && info.safeAreaInsets.bottom) || 0;
@@ -698,7 +698,7 @@ function onTouchStart(e) {
 
 function applyDrag(clientX) {
   // clientX 单位是 px，需要按 rpx 换算：1px = 750 / 屏幕宽度 px rpx
-  const screenWidthPx = getSystemInfoSafe().windowWidth;
+  const screenWidthPx = getWindowInfoSafe().windowWidth;
   const deltaPx = clientX - dragStartX;
   const deltaRpx = (deltaPx / screenWidthPx) * 750;
   if (Math.abs(deltaRpx) > 4) hasDragged.value = true;
@@ -730,7 +730,7 @@ function onMouseDown(e) {
 
 function onMouseMove(e) {
   if (!isDragging.value) return;
-  const screenWidthPx = getSystemInfoSafe().windowWidth;
+  const screenWidthPx = getWindowInfoSafe().windowWidth;
   const deltaRpx = ((e.clientX - dragStartX) / screenWidthPx) * 750;
   if (Math.abs(deltaRpx) > 4) hasDragged.value = true;
   translateX.value = clampTranslateX(dragStartTranslateX + deltaRpx);

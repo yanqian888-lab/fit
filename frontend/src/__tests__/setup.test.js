@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { getSystemInfoSafe } from '../utils/systemInfo';
 import { goBack } from '../utils/navigate';
-import { getDeviceId } from '../utils/trial';
+import { getAppVersion } from '../utils/trial';
 import { request } from '../utils/request';
 import { useUserStore } from '../store';
 import { authApi, userApi, chatApi, recordApi, museumApi } from '../api';
@@ -114,22 +114,14 @@ describe('Utils: navigate.js', () => {
 describe('Utils: trial.js', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('无设备 ID 时应生成 UUID 并写入 storage', () => {
-    uni.getSystemInfoSync.mockReturnValue({});
-    uni.getStorageSync.mockReturnValue(undefined);
-    const id = getDeviceId();
-    expect(id).toBeTruthy();
-    expect(typeof id).toBe('string');
-    expect(uni.setStorageSync).toHaveBeenCalledWith('trial_device_id', id);
+  it('应能从小程序 accountInfo 读取版本号', () => {
+    uni.getAccountInfoSync = vi.fn(() => ({ miniProgram: { version: '1.2.3' } }));
+    expect(getAppVersion()).toBe('1.2.3');
   });
 
-  it('storage 已有设备 ID 时应直接返回且不重新生成', () => {
-    uni.getSystemInfoSync.mockReturnValue({});
-    uni.getStorageSync.mockImplementation((key) =>
-      key === 'trial_device_id' ? 'stored_id' : undefined
-    );
-    const id = getDeviceId();
-    expect(id).toBe('stored_id');
+  it('读取版本号失败时应返回默认版本', () => {
+    uni.getAccountInfoSync = vi.fn(() => { throw new Error('not support'); });
+    expect(getAppVersion()).toBe('1.0.0');
   });
 });
 

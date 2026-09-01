@@ -4,7 +4,6 @@
  */
 import { post, get } from './request.js';
 
-const DEVICE_ID_KEY = 'trial_device_id';
 const CONFIG_CACHE_KEY = 'trial_config_cache';
 const CONFIG_CACHE_AT_KEY = 'trial_config_cache_at';
 const CONFIG_CACHE_TTL_MS = 60 * 1000; // 修复：统一为1分钟，与后端一致
@@ -13,50 +12,20 @@ const CONFIG_MAX_AGE_MS = 5 * 60 * 1000; // 最大缓存时间5分钟
 const VALID_FEATURES = ['ai_chat', 'diary'];
 
 /**
- * 生成 UUID（简易版）
- */
-import { getSystemInfoSafe } from './systemInfo';
-
-function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-/**
- * 获取稳定的设备标识
- */
-export function getDeviceId() {
-  let deviceId = '';
-  try {
-    const info = getSystemInfoSafe();
-    deviceId = info.deviceId || info.device_id || '';
-  } catch (e) {
-    console.error('[trial] 获取设备信息失败', e);
-  }
-
-  if (!deviceId) {
-    deviceId = uni.getStorageSync(DEVICE_ID_KEY);
-  }
-  if (!deviceId) {
-    deviceId = generateUUID();
-    uni.setStorageSync(DEVICE_ID_KEY, deviceId);
-  }
-  return deviceId;
-}
-
-/**
  * 获取 App 版本号
+ * 优先使用微信小程序的 accountInfo，避免调用 getAppBaseInfo / getSystemInfo
  */
 export function getAppVersion() {
   try {
-    const info = getSystemInfoSafe();
-    return info.appVersion || info.appVersionCode || '1.0.0';
+    if (typeof uni !== 'undefined' && uni.getAccountInfoSync) {
+      const info = uni.getAccountInfoSync();
+      const version = info?.miniProgram?.version || info?.plugin?.version || info?.version;
+      if (version) return version;
+    }
   } catch (e) {
-    return '1.0.0';
+    console.warn('[trial] 获取版本号失败', e);
   }
+  return '1.0.0';
 }
 
 /**
@@ -200,7 +169,6 @@ export async function checkPermission(featureType) {
   }
   try {
     const res = await post('/trial/check-permission', {
-      device_id: getDeviceId(),
       feature_type: featureType,
       app_version: getAppVersion()
     });
@@ -220,7 +188,6 @@ export async function reportCount(featureType) {
   if (!VALID_FEATURES.includes(featureType)) return;
   try {
     await post('/trial/report-count', {
-      device_id: getDeviceId(),
       feature_type: featureType
     });
   } catch (e) {

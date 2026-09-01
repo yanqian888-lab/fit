@@ -70,7 +70,8 @@
 import { ref, onMounted } from 'vue';
 import { authApi, userApi } from '../../api';
 import { useUserStore } from '../../store';
-import { getDeviceId } from '../../utils/trial.js';
+import popupManager from '../../utils/popupManager';
+
 import { handlePostAuthRedirect } from '../login/utils/authRedirect';
 
 const userStore = useUserStore();
@@ -133,8 +134,9 @@ async function register() {
   }
 
   try {
-    const res = await authApi.register({ username, password, phone, device_id: getDeviceId() });
+    const res = await authApi.register({ username, password, phone });
     userStore.login(res.data.token, res.data.user);
+    popupManager.init().catch(() => {});
 
     uni.showToast({ title: '注册成功', icon: 'success' });
     setTimeout(() => {

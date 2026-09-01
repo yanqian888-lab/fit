@@ -333,9 +333,9 @@ router.delete('/cms/trial/whitelist/:id', cmsAuthMiddleware, cmsPermissionMiddle
 router.get('/cms/trial/logs', cmsAuthMiddleware, cmsPermissionMiddleware('trial_log:read'), cmsTrialController.listLogs);
 
 // C 端弹窗广告
-// 弹窗配置对未登录用户也可下发（如开屏运营活动），上报支持未登录用户通过 device_id 埋点
-router.get('/app/popup/config/list', popupController.getConfigList);
-router.post('/app/popup/report', popupController.reportEvents);
+// 小程序必须登录后才能使用，弹窗配置与上报均依赖登录态，使用 userId 作为用户标识
+router.get('/app/popup/config/list', authMiddleware, popupController.getConfigList);
+router.post('/app/popup/report', authMiddleware, popupController.reportEvents);
 
 // C 端公告/消息中心
 router.get('/app/announcements', authMiddleware, announcementController.listAnnouncements);

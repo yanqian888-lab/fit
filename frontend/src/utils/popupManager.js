@@ -3,7 +3,7 @@
  * 负责配置拉取、缓存、规则校验、展示调度、埋点上报
  */
 import { popupApi } from '@/api/index';
-import { getDeviceId, getAppVersion } from './trial.js';
+import { getAppVersion } from './trial.js';
 import { resolveStaticUrl } from './environment';
 import { normalizeToInternalRoute, isWebViewAllowed } from './h5ToInternalRoute';
 
@@ -25,24 +25,8 @@ let hideCallback = null;
 let nativePopupEl = null;
 let nativeTouchY = 0;
 
-import { getSystemInfoSafe } from './systemInfo';
-
 function getNow() {
   return new Date().toISOString();
-}
-
-function getOsType() {
-  try {
-    const info = getSystemInfoSafe();
-    const platform = (info.platform || info.uniPlatform || '').toLowerCase();
-    if (platform === 'ios') return 'ios';
-    if (platform === 'android') return 'android';
-    if (platform === 'web' || platform.includes('h5')) return 'h5';
-    if (platform.includes('mp-weixin') || platform.includes('weixin')) return 'mp-weixin';
-    return 'h5';
-  } catch (e) {
-    return 'h5';
-  }
 }
 
 function safeJsonParse(str, fallback) {
@@ -151,9 +135,7 @@ async function flushEvents() {
   const events = eventQueue.splice(0);
   try {
     await popupApi.report({
-      device_id: getDeviceId(),
       app_version: getAppVersion(),
-      os_type: getOsType(),
       events
     });
   } catch (e) {
@@ -581,9 +563,7 @@ async function doInit() {
   try {
     // 【优化】添加超时保护，防止网络请求长时间挂起导致 UI 无响应
     const fetchPromise = popupApi.getConfigList({
-      app_version: getAppVersion(),
-      os_type: getOsType(),
-      device_id: getDeviceId()
+      app_version: getAppVersion()
     });
     
     // 设置 5 秒超时，避免后端不可达时一直等待

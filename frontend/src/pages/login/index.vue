@@ -214,7 +214,8 @@ import { ref } from 'vue';
 import { onReady, onShow } from '@dcloudio/uni-app';
 import { authApi } from '../../api';
 import { useUserStore } from '../../store';
-import { getDeviceId } from '../../utils/trial.js';
+import popupManager from '../../utils/popupManager';
+
 import { handlePostAuthRedirect } from './utils/authRedirect';
 import { safeSwitchTab } from './utils/safeSwitchTab';
 import { resolveStaticUrl } from '../../utils/environment.js';
@@ -447,8 +448,10 @@ async function accountLogin() {
   }
 
   try {
-    const res = await authApi.login({ username, password, device_id: getDeviceId() });
+    const res = await authApi.login({ username, password });
     userStore.login(res.data.token, res.data.user);
+    // 登录成功后初始化弹窗管理器（App.vue 中未登录时跳过了初始化）
+    popupManager.init().catch(() => {});
     // 沉睡标记随本次登录落盘（fetchUserInfo 会覆盖 userInfo，last_login_at 登录后已刷新，无法用其判断沉睡）
     uni.setStorageSync('stale_returning', res.data.stale_returning ? 1 : '');
 
@@ -508,7 +511,7 @@ async function onWechatLoginClick() {
 
     console.log('[登录] 调用后端 /auth/wechat-login');
     const res = await withTimeout(
-      authApi.wechatLogin({ code: loginRes.code, device_id: getDeviceId() }),
+      authApi.wechatLogin({ code: loginRes.code }),
       10000,
       '登录请求'
     );
@@ -518,11 +521,13 @@ async function onWechatLoginClick() {
     if (res.data.need_bind_phone) {
       console.log('[登录] 需要绑定手机号');
       userStore.login(res.data.token, res.data.user);
+      popupManager.init().catch(() => {});
       uni.setStorageSync('stale_returning', res.data.stale_returning ? 1 : '');
       showBindPhone.value = true;
     } else {
       console.log('[登录] 登录成功，跳转主页');
       userStore.login(res.data.token, res.data.user);
+      popupManager.init().catch(() => {});
       uni.setStorageSync('stale_returning', res.data.stale_returning ? 1 : '');
       uni.showToast({ title: '登录成功', icon: 'success' });
       setTimeout(() => {
@@ -554,7 +559,7 @@ async function onGetPhoneNumber(e) {
   const phoneCode = e.detail.code;
   try {
     uni.showLoading({ title: '绑定中...', mask: true });
-    const res = await authApi.wechatBindPhone({ phone_code: phoneCode, device_id: getDeviceId() });
+    const res = await authApi.wechatBindPhone({ phone_code: phoneCode });
     uni.hideLoading();
 
     // 若发生账号合并，后端会返回新 token，需要更新本地存储
@@ -569,6 +574,7 @@ async function onGetPhoneNumber(e) {
       userStore.userInfo.id = res.data.user.id;
     }
     closeBindPhone();
+    popupManager.init().catch(() => {});
 
     uni.showToast({ title: res.data.merged ? '账号已合并，登录成功' : '登录成功', icon: 'success' });
     setTimeout(() => {
