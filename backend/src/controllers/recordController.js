@@ -580,7 +580,19 @@ function saveHabit(req, res) {
       SET record_date = ?, type = ?, value = ?, unit = ?, remark = ?, water_ml = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).run(record_date, type, value, unit, remark, waterMl, id, userId);
-    return res.json(success(null, '更新成功'));
+
+    // 同步推进任务与奖励（如饮水达标）
+    const action = getHabitAction(type);
+    const rewardResult = rewardService.rewardForRecord(userId, action, id, value);
+    if (type === 'water') {
+      db.prepare('UPDATE user_profiles SET total_water = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
+        .run(value, userId);
+    }
+    newbieTaskService.checkAction(userId, action);
+    taskService.updateTaskProgress(userId, 'record_habit', 1);
+    achievementService.checkAll(userId);
+
+    return res.json(success({ reward_messages: rewardResult.reward_messages || [] }, '更新成功'));
   } else {
     const result = withTransaction(() => {
       // 同一天同类型去重：若已存在则更新而非插入，避免唯一约束冲突
@@ -598,12 +610,17 @@ function saveHabit(req, res) {
           WHERE id = ?
         `).run(value, unit || null, remark || null, waterMl, existing.id);
 
+        // 同步推进任务与奖励（如饮水达标），避免同一天多次更新时任务漏记
+        const action = getHabitAction(type);
+        const rewardResult = rewardService.rewardForRecord(userId, action, existing.id, value);
         if (type === 'water') {
           db.prepare('UPDATE user_profiles SET total_water = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
             .run(value, userId);
         }
+        newbieTaskService.checkAction(userId, action);
+        taskService.updateTaskProgress(userId, 'record_habit', 1);
         achievementService.checkAll(userId);
-        return { id: existing.id, updated: true };
+        return { id: existing.id, updated: true, reward_messages: rewardResult.reward_messages || [] };
       }
 
       const waterMl = type === 'water' ? (parseInt(value) || 0) : 0;
