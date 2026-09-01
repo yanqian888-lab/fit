@@ -388,22 +388,18 @@ async function executeToolCalls(toolCalls, userId, userMessage, userInfo, partne
  * 当模型无法返回可用 content 时，基于用户当前语境和搭子模式生成多样化兜底回复。
  * 避免一直重复固定句子。
  */
+// 兜底回复防重：记录上一次返回的兜底文案，避免连续两句一模一样
+let lastFallbackReply = '';
+
 function generateContextualFallbackReply(userMessage, history = [], partnerMode = 'gentle') {
   const mode = partnerMode || 'gentle';
   const text = String(userMessage || '').trim();
 
-  // 合并最近几条用户消息，用于判断当前话题
-  const recentUserTexts = (history || [])
-    .filter(msg => msg.role === 'user')
-    .slice(-3)
-    .map(msg => msg.content)
-    .concat(text)
-    .join(' ');
-
   const isShortCasual = /^[？?！!，,。\.\s哈呵嘿哼嗯哦啊呀…~～]{1,6}$/.test(text);
-  const hasFood = /吃|喝|饭|菜|肉|蛋|奶|面|米|粥|包|饺|饼|糕|零食|奶茶|咖啡|水果|蔬菜|蛋糕|巧克力|冰淇淋|薯片|坚果|酸奶|牛奶|豆浆|饮料|白开水|茶/.test(recentUserTexts);
-  const hasExercise = /运动|跑|走|跳|练|健身|瑜伽|游泳|骑车|骑行|哑铃|杠铃|深蹲|俯卧撑|平板支撑|HIIT|Tabata|帕梅拉|拉伸|公里|千卡|卡|步|爬楼|爬山|动感单车|椭圆机|划船机/.test(recentUserTexts);
-  const hasBody = /体重|体脂|腰围|腿围|臀围|胸围|身高|BMI|掉秤|涨秤|平台期|瘦了|胖了/.test(recentUserTexts);
+  // 只按当前消息内容分类，避免"上一句在说食物，这一句说运动"被错分到食物池
+  const hasFood = /吃|喝|饭|菜|肉|蛋|奶|面|米|粥|包|饺|饼|糕|零食|奶茶|咖啡|水果|蔬菜|蛋糕|巧克力|冰淇淋|薯片|坚果|酸奶|牛奶|豆浆|饮料|白开水|茶/.test(text);
+  const hasExercise = /运动|跑|走|跳|练|健身|瑜伽|游泳|骑车|骑行|自行车|哑铃|杠铃|深蹲|俯卧撑|平板支撑|HIIT|Tabata|帕梅拉|拉伸|公里|千卡|卡|步|爬楼|爬山|登山|动感单车|椭圆机|划船机/.test(text);
+  const hasBody = /体重|体脂|腰围|腿围|臀围|胸围|身高|BMI|掉秤|涨秤|平台期|瘦了|胖了/.test(text);
 
   const templates = {
     gentle: {
@@ -436,14 +432,18 @@ function generateContextualFallbackReply(userMessage, history = [], partnerMode 
   else if (hasExercise) pool = modeTemplates.exercise;
   else if (hasBody) pool = modeTemplates.body;
 
-  // 用用户消息做简单散列，保证同一条消息多次进来时也有固定但多样的选择
+  // 用当前消息做简单散列，若结果与上一条兜底文案相同则顺移一位，避免连续重复
   let hash = 0;
   for (let i = 0; i < text.length; i++) {
     hash = ((hash << 5) - hash) + text.charCodeAt(i);
     hash |= 0;
   }
-  const idx = Math.abs(hash) % pool.length;
-  return pool[idx];
+  let idx = Math.abs(hash) % pool.length;
+  if (pool[idx] === lastFallbackReply && pool.length > 1) {
+    idx = (idx + 1) % pool.length;
+  }
+  lastFallbackReply = pool[idx];
+  return lastFallbackReply;
 }
 
 module.exports = {
