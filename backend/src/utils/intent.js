@@ -60,8 +60,26 @@ function hasSelfReportMarker(content) {
   return markers.some(re => re.test(content));
 }
 
+/**
+ * 判断是否为未来计划、愿望或假设，不宜沉淀为已发生行为
+ * 例如：那我明天液断、想喝个奶茶呢、如果明天吃这个
+ */
+function hasFutureOrIntentionIntent(content) {
+  if (!content) return false;
+  const text = String(content).trim();
+  // 明确未来时间词
+  if (/明天|后天|下周|下个月|改天|等会儿|稍后|下次|以后|将要/.test(text)) return true;
+  // 表达计划/打算/愿望，且以语气词结尾
+  if (/[准备打算计划要].*[呢吧啊~～]/.test(text) && !/[了过][呢吧啊~～]?$/.test(text)) return true;
+  if (/^(我想|想[吃喝]|想个|想试试|想问问)/.test(text) && /[呢吧啊~～]$/.test(text)) return true;
+  // 条件/假设
+  if (/如果|假如|要是|的话/.test(text)) return true;
+  return false;
+}
+
 module.exports = {
   isQuestionContent,
   hasNegativeRecordIntent,
-  hasSelfReportMarker
+  hasSelfReportMarker,
+  hasFutureOrIntentionIntent
 };

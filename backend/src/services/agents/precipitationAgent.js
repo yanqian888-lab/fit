@@ -400,7 +400,7 @@ const promptService = require('../promptService');
 const tagMatcher = require('../tagMatcher');
 const rewardService = require('../rewardService');
 const exerciseMergeService = require('../exerciseMergeService');
-const { isQuestionContent, hasNegativeRecordIntent, hasSelfReportMarker } = require('../../utils/intent');
+const { isQuestionContent, hasNegativeRecordIntent, hasSelfReportMarker, hasFutureOrIntentionIntent } = require('../../utils/intent');
 const { safeJsonParse } = require('../../utils/safeJson');
 const { getChinaDateStr, getChinaHour, getChinaDateTimeStr } = require('../../utils/chinaTime');
 
@@ -2003,6 +2003,11 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
   // 否定/犹豫/未发生意图：如"不想吃了/不吃了/没吃/不要吃/吃不下/懒得动"，不沉淀行为记录
   if (hasNegativeRecordIntent(content) && !hasSelfReportMarker(content)) {
     return { extracted: false, reason: '否定或犹豫意图不沉淀' };
+  }
+
+  // 未来计划、愿望、假设：如"那我明天液断"、"想喝个奶茶呢"，不沉淀为已发生行为
+  if (hasFutureOrIntentionIntent(content) && !hasSelfReportMarker(content)) {
+    return { extracted: false, reason: '未来计划或意向不沉淀' };
   }
 
   const today = recordDate || getChinaDateStr();
