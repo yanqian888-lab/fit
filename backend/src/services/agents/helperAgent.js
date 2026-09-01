@@ -220,8 +220,21 @@ ${exerciseList}
       )
     ]);
     
-    let reply = stripThinkingTags(response.choices[0].message.content || '这个问题我暂时没有思路，你换个问法试试？');
-    
+    let reply = stripThinkingTags(response.choices[0].message.content || '');
+
+    // 混元 Hy3 偶发只输出 reasoning_content、content 为空；尝试从推理内容提取最终结论
+    if (!reply.trim() && response.choices[0].message.reasoning_content) {
+      const extracted = extractReplyFromReasoning(response.choices[0].message.reasoning_content, [enhancedQuestion]);
+      if (extracted) {
+        console.log('[callHelperAgent] 从 reasoning_content 提取到回复');
+        reply = extracted;
+      }
+    }
+
+    if (!reply.trim()) {
+      reply = '这个问题我暂时没有思路，你换个问法试试？';
+    }
+
     // 修正回复中的热量数值，确保与数据库记录一致（修正前再刷新一次最新数据）
     if (userId) {
       try {
@@ -263,6 +276,69 @@ function stripThinkingTags(content) {
   }
 
   return result.trim();
+}
+
+/**
+ * 从 reasoning_content 中提取可作为最终回复的句子
+ * 用于混元 Hy3 只返回 reasoning_content、content 为空时的兜底恢复
+ */
+function extractReplyFromReasoning(reasoning, userMessages = []) {
+  if (!reasoning || typeof reasoning !== 'string') return '';
+  const text = reasoning.trim();
+  if (!text) return '';
+
+  const userMsgs = (Array.isArray(userMessages) ? userMessages : [userMessages])
+    .map(m => String(m || '').trim())
+    .filter(m => m.length >= 2);
+
+  function cleanMeta(s) {
+    return s.replace(/(字数|回复|答案|输出|最终回复)[：:]\s*/g, '').trim();
+  }
+
+  function isEchoingUser(s) {
+    const t = s.trim();
+    return userMsgs.some(userMsg => {
+      if (t === userMsg || t.includes(userMsg)) return true;
+      if (userMsg.includes(t) && t.length >= userMsg.length * 0.8) return true;
+      return false;
+    });
+  }
+
+  const thinkPrefixes = /^(思考|分析|首先|其次|然后|因此|所以|综上|结论|那么|这里|现在|接下来|我需|我应|我打算|让我|我需要|我应该|我认为|我觉得|看起来|从上面|基于|根据|由于|因为|虽然|但是|不过|而且|用户问|当前角色|要求|结合|选一个|或者|例如)/;
+  const internalHints = /工具调用|FunctionCall|回复中需要|嵌入工具|调用工具|函数调用|我需要调用|我应该调用|这里应该|请调用|可以调用|毒舌模式|温柔鼓励型|严格监督型|1-3句话|最多50字|50字|字数限制|严格按照|按照.*回复|模式.*回复|回复.*模式|生成.*回复|输出.*回复|系统提示|用户消息|角色设定|人设约束|为了安全|如果不调用|基于记忆|专业人士|直接基于|直接给|我今天|我中午|我早上|我晚上|我吃了|我喝了|我运动|我体重|示例/;
+
+  function isSafeReply(s) {
+    const t = s.trim();
+    if (t.length < 4 || t.length > 200) return false;
+    if (!/[。！？.!?]$/.test(t) || /\.{3,}|…{1,}|——$/.test(t)) return false;
+    if (/^我(今天|中午|早上|晚上|刚|现在|刚才|又|还|只|先|然后|接着)?(吃|喝|运动|练|跑|走|跳|健身|做|上|称|测|量)/.test(t)) return false;
+    if (thinkPrefixes.test(t) || internalHints.test(t) || isEchoingUser(t)) return false;
+    return true;
+  }
+
+  // 策略1：优先提取最后一段完整引号里的内容
+  const quotes = [];
+  const quoteRegex = /["“]([\s\S]*?)["”]/g;
+  let m;
+  while ((m = quoteRegex.exec(text)) !== null) {
+    const q = cleanMeta(m[1]).replace(/^["“'']+|["”'']+$/g, '');
+    if (isSafeReply(q)) quotes.push(q);
+  }
+  if (quotes.length > 0) {
+    return quotes[quotes.length - 1];
+  }
+
+  // 策略2：按句子拆分，从后往前找第一个安全回复
+  const sentences = text
+    .split(/(?<=[。！？.!?])\s*/)
+    .map(s => cleanMeta(s).replace(/^["“'']+|["”'']+$/g, ''))
+    .filter(s => s.length >= 4 && /[。！？.!?]$/.test(s));
+  for (let i = sentences.length - 1; i >= 0; i--) {
+    const s = sentences[i].trim();
+    if (isSafeReply(s)) return s;
+  }
+
+  return '';
 }
 
 /**
