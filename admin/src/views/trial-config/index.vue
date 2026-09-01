@@ -411,6 +411,12 @@ async function saveConfig() {
 }
 
 async function saveConfigQuick() {
+  // 总开关开启时自动把灰度比例拉到 100%，关闭时置为 0%，避免用户只开开关却忘记调灰度
+  if (config.global_enabled === '1') {
+    config.grayscale_percent = 100
+  } else if (config.global_enabled === '0') {
+    config.grayscale_percent = 0
+  }
   await saveConfig()
 }
 
