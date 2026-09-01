@@ -12,7 +12,7 @@ const { db } = require('../db');
  * 沉淀: low（快速结构化提取）
  */
 const PROMPT_REASONING_EFFORT_MAP = {
-  main_agent: 'low',
+  main_agent: 'medium',
   helper_agent: 'high',
   precipitation_agent: 'low'
 };
