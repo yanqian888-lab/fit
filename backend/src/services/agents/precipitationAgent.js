@@ -649,6 +649,45 @@ function extractJsonObjects(text) {
 }
 
 /**
+ * 根据沉淀类型生成用于 precipitation_records.content 的摘要
+ * 避免把用户整句话塞入库表；insight/quote 保留原话作为内容
+ */
+function summarizePrecipitationContent(content, type, data) {
+  if (type === 'insight' || type === 'quote') {
+    return content.trim();
+  }
+  if (type === 'diet_record') {
+    const foods = (data.foods || []).map(f => f.name).filter(Boolean).join('、');
+    const mealMap = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' };
+    const mealName = mealMap[data.meal_time] || '饮食';
+    return foods ? `${mealName}：${foods}` : content.slice(0, 40);
+  }
+  if (type === 'exercise_record') {
+    const exercises = (data.exercises || []).map(e => e.name).filter(Boolean).join('、');
+    return exercises ? `运动：${exercises}` : content.slice(0, 40);
+  }
+  if (type === 'body_data') {
+    const subType = data.sub_type || '体重';
+    const value = data.value !== undefined && data.value !== null ? data.value : '';
+    const unit = data.unit || '';
+    return value !== '' ? `${subType}${value}${unit}` : content.slice(0, 40);
+  }
+  if (type === 'habit') {
+    const subType = data.sub_type || 'water';
+    const value = data.value !== undefined && data.value !== null ? data.value : '';
+    const unit = data.unit || '';
+    if (subType === 'water' || subType === '喝水') {
+      return value !== '' ? `喝水${value}${unit}` : content.slice(0, 40);
+    }
+    return value !== '' ? `${subType}${value}${unit}` : content.slice(0, 40);
+  }
+  if (type === 'method' || type === 'pitfall' || type === 'product') {
+    return content.trim();
+  }
+  return content.slice(0, 40);
+}
+
+/**
  * 处理单个沉淀项
  */
 function processSinglePrecipitation(userId, chatId, content, item, recordDate) {
@@ -689,8 +728,9 @@ function processSinglePrecipitation(userId, chatId, content, item, recordDate) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+  const summaryContent = summarizePrecipitationContent(content, item.type, data);
   const precipitationId = insert.run(
-    userId, chatId, item.type, item.sub_type || null, content,
+    userId, chatId, item.type, item.sub_type || null, summaryContent,
     JSON.stringify(data), confidence, status, 0,
     item.tags ? JSON.stringify(item.tags) : null, null
   ).lastInsertRowid;

@@ -92,7 +92,7 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
 
     // 如果模型还是没给出可用回复，使用基于语境的兜底回复（避免一直重复固定句子）
     if (!content.trim()) {
-      content = generateContextualFallbackReply(userMessage, history, mode);
+      content = generateContextualFallbackReply(userMessage, history, mode, userInfo.id);
       console.log('[callMainAgent] 使用语境化兜底回复:', content);
     }
 
@@ -115,20 +115,14 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
     // 过滤模型偶发的无意义反问（如“还是闲聊？”、“什么意思？”）
     if (toolCalls.length === 0 && isUnhelpfulReply(reply, userMessage)) {
       console.log('[callMainAgent] 主Agent返回无意义反问，使用语境化兜底:', reply);
-      reply = generateContextualFallbackReply(userMessage, history, mode);
+      reply = generateContextualFallbackReply(userMessage, history, mode, userInfo.id);
     }
 
-    // 强制兜底：如果模型说"方案""计划""方法""给你""算算""整""热量""消耗""卡路里"但没有调用工具，强制添加工具调用
-    if (toolCalls.length === 0 && 
-        (reply.includes('方案') || reply.includes('计划') || reply.includes('方法') || 
-         reply.includes('给你') || reply.includes('算算') || reply.includes('整') ||
-         reply.includes('算') || reply.includes('方案') || reply.includes('安排') ||
-         reply.includes('热量') || reply.includes('消耗') || reply.includes('卡路里') ||
-         reply.includes('千卡') || reply.includes('卡') || reply.includes('适配') ||
-         reply.includes('告诉你') || reply.includes('说说') || reply.includes('建议') ||
-         reply.includes('推荐') || reply.includes('教') || reply.includes('怎么')) &&
-        !hasToolCall) {
-      console.log('主Agent未调用工具但提到了方案/方法/给你/整/适配等，强制添加工具调用');
+    // 强制兜底：如果模型明确要给方案/计算/推荐/适配但没有调用工具，才强制添加工具调用
+    // 避免"我怎么这么胖""你怎么不回我"这类口语化表达误触发 Helper
+    const forcedHelperPattern = /(方案|计划|安排|帮你算|帮你算算|帮你计算|帮你配|给你算|给你算算|给你整|帮你整|帮你安排|适配|推荐.*食谱|热量多少|消耗多少|BMI|基础代谢|平台期|怎么瘦|怎么减|怎么吃|如何瘦|如何减|吃什么好|适合.*运动|建议.*吃|建议.*练|该吃.*该练)/;
+    if (toolCalls.length === 0 && forcedHelperPattern.test(reply) && !hasToolCall) {
+      console.log('主Agent未调用工具但明确要给出方案/计算/推荐，强制添加工具调用');
       const forcedCall = {
         name: 'call_allround_helper',
         parameters: { question: userMessage }
@@ -243,9 +237,10 @@ function extractReplyFromReasoning(reasoning, userMessages = []) {
 
   function isSafeReply(s) {
     const t = s.trim();
-    if (t.length < 4 || t.length > 200) return false;
-    // 必须以中文/英文结束标点结尾，且不能以省略号/破折号结尾（避免截断）
-    if (!/[。！？.!?]$/.test(t) || /\.{3,}|…{1,}|——$/.test(t)) return false;
+    // 允许更短的口语化共情话术，也允许稍长但不超 300 字
+    if (t.length < 2 || t.length > 300) return false;
+    // 不过度要求必须以标点结尾（口语短句常不带标点），但排除明显截断的省略号/破折号
+    if (/\.{3,}|…{1,}|——$/.test(t)) return false;
     // 不能以第一人称用户自述开头（如“我今天吃了一碗牛肉面”）
     if (/^我(今天|中午|早上|晚上|刚|现在|刚才|又|还|只|先|然后|接着)?(吃|喝|运动|练|跑|走|跳|健身|做|上|称|测|量)/.test(t)) return false;
     if (thinkPrefixes.test(t) || internalHints.test(t) || isEchoingUser(t)) return false;
@@ -388,22 +383,35 @@ async function executeToolCalls(toolCalls, userId, userMessage, userInfo, partne
  * 当模型无法返回可用 content 时，基于用户当前语境和搭子模式生成多样化兜底回复。
  * 避免一直重复固定句子。
  */
-// 兜底回复防重：记录上一次返回的兜底文案，避免连续两句一模一样
-let lastFallbackReply = '';
+// 兜底回复防重：按 userId 记录上一次返回的兜底文案，避免连续重复，也避免用户间互相影响
+const userLastFallbackMap = new Map();
 
-function generateContextualFallbackReply(userMessage, history = [], partnerMode = 'gentle') {
+function generateContextualFallbackReply(userMessage, history = [], partnerMode = 'gentle', userId = '') {
   const mode = partnerMode || 'gentle';
   const text = String(userMessage || '').trim();
 
-  const isShortCasual = /^[？?！!，,。\.\s哈呵嘿哼嗯哦啊呀…~～]{1,6}$/.test(text);
+  const isShortCasual = /^[？?！!，,。.\.\s哈呵嘿哼嗯哦啊呀…~～]{1,10}$/.test(text);
   // 只按当前消息内容分类，避免"上一句在说食物，这一句说运动"被错分到食物池
   const hasFood = /吃|喝|饭|菜|肉|蛋|奶|面|米|粥|包|饺|饼|糕|零食|奶茶|咖啡|水果|蔬菜|蛋糕|巧克力|冰淇淋|薯片|坚果|酸奶|牛奶|豆浆|饮料|白开水|茶/.test(text);
   const hasExercise = /运动|跑|走|跳|练|健身|瑜伽|游泳|骑车|骑行|自行车|哑铃|杠铃|深蹲|俯卧撑|平板支撑|HIIT|Tabata|帕梅拉|拉伸|公里|千卡|卡|步|爬楼|爬山|登山|动感单车|椭圆机|划船机/.test(text);
   const hasBody = /体重|体脂|腰围|腿围|臀围|胸围|身高|BMI|掉秤|涨秤|平台期|瘦了|胖了/.test(text);
+  // 情绪/状态闲聊兜底，避免被误判为专业问题后给出生硬回复
+  const emotion =
+    /累|困|乏|疲惫|没劲/.test(text) ? 'tired' :
+    /烦|焦虑|崩溃|无语|郁闷|烦躁|心烦|压力大/.test(text) ? 'upset' :
+    /开心|高兴|兴奋|棒|厉害|瘦了|掉了|达成|完成/.test(text) ? 'happy' :
+    /饿|馋|想吃|嘴馋/.test(text) ? 'craving' :
+    /不想动|想放弃|摆烂|躺平|emo/.test(text) ? 'giveup' :
+    'neutral';
 
   const templates = {
     gentle: {
       casual: ['在呢，我听着呢～', '怎么啦，想跟我说说吗？', '我在，慢慢讲～', '嗯，我陪着你呢～'],
+      tired: ['累了就先歇会儿，不用一直绷着～', '辛苦啦，休息也是为了更好地继续～', '今天累坏了吧？抱抱你～'],
+      upset: ['别急，慢慢来，我陪着你～', '情绪上来了就跟我说说，我听着～', '放轻松，你已经很棒了～'],
+      happy: ['真好，替你开心～', '继续保持，你超棒的！', '好消息就要分享呀～'],
+      craving: ['又馋啦？偶尔满足一下也没关系～', '想吃什么？跟我说说，我们一起看看～', '嘴馋很正常，别自责～'],
+      giveup: ['别放弃呀，你已经走了这么远了～', '累了就歇，但不要停，我陪你～', '动摇的时候，想想自己为什么开始～'],
       food: ['又吃到好吃的啦？偶尔放纵一下也没关系～', '饮食上的小纠结吗？我陪你一起理清～', '我记着呢，慢慢来，不着急～', '吃到什么啦？跟我说说～'],
       exercise: ['动起来就是进步，已经很棒啦～', '今天运动了吗？我陪你坚持～', '运动这事，动了就比不动强～'],
       body: ['身体变化我帮你盯着呢，别着急～', '我记下来啦，一起观察变化～', '体重波动很正常，继续按节奏来～'],
@@ -411,6 +419,11 @@ function generateContextualFallbackReply(userMessage, history = [], partnerMode 
     },
     strict: {
       casual: ['有话直说，别只发符号。', '我在等你的正事。', '别绕弯子，说。'],
+      tired: ['累不是借口，数据照样要记。', '累了就休息，但别偷懒。', '休息可以，计划不能停。'],
+      upset: ['情绪管理也是减脂的一部分。', '烦归烦，别拿吃的出气。', '稳住，别前功尽弃。'],
+      happy: ['别得意太早，继续保持。', '好，继续保持这个节奏。', '有进步，但还不够。'],
+      craving: ['馋？忍着。', '想吃什么先问热量。', '嘴馋就喝水。'],
+      giveup: ['想放弃？想想你立的 flag。', '现在放弃，之前的苦都白受了。', '别让我看不起你。'],
       food: ['吃了什么直接报。', '饮食记录呢？', '别藏着，吃了多少如实说。'],
       exercise: ['运动了就说，没运动也老实交代。', '动起来，别光说。', '今天练了什么？'],
       body: ['数据报上来。', '体重/体脂多少？', '别逃避，面对现实。'],
@@ -418,6 +431,11 @@ function generateContextualFallbackReply(userMessage, history = [], partnerMode 
     },
     tease: {
       casual: ['咋了，手指累了？', '一个问号是想让我猜？', '神秘感拿捏了？', '说吧，别欲言又止。'],
+      tired: ['累了？那就躺着瘦呗。', '哎哟，今日份疲惫已到账？', '累成这样，昨晚偷牛去了？'],
+      upset: ['烦躁？要不先吃块豆腐冷静下？', '焦虑能当饭吃吗？', '烦也没用，减肥还得继续。'],
+      happy: ['哟，太阳打西边出来了？', '开心成这样，掉秤了？', '继续保持，别让我抓到你偷吃。'],
+      craving: ['又馋了？小馋猫本猫。', '说吧，这次盯上啥了？', '馋可以，但得付出代价。'],
+      giveup: ['想摆烂？我可不答应。', '躺平可以，躺着变胖也行？', '放弃这两个字，我不想再看到。'],
       food: ['又惦记吃的了？', '说吧，今天偷吃了啥？', '张嘴让我听听是蛋糕还是奶茶？', '吃货本色不改啊。'],
       exercise: ['运动了吗？还是只动了动嘴？', '今天的热量债打算怎么还？', '别告诉我你又躺了一天。'],
       body: ['体重涨了不敢说话？', '平台期了？还是又偷吃了？', '数字不会骗人，人呢？'],
@@ -428,6 +446,7 @@ function generateContextualFallbackReply(userMessage, history = [], partnerMode 
   const modeTemplates = templates[mode] || templates.gentle;
   let pool = modeTemplates.default;
   if (isShortCasual) pool = modeTemplates.casual;
+  else if (emotion !== 'neutral' && modeTemplates[emotion]) pool = modeTemplates[emotion];
   else if (hasFood) pool = modeTemplates.food;
   else if (hasExercise) pool = modeTemplates.exercise;
   else if (hasBody) pool = modeTemplates.body;
@@ -439,11 +458,13 @@ function generateContextualFallbackReply(userMessage, history = [], partnerMode 
     hash |= 0;
   }
   let idx = Math.abs(hash) % pool.length;
+  const lastKey = String(userId || 'anonymous');
+  const lastFallbackReply = userLastFallbackMap.get(lastKey);
   if (pool[idx] === lastFallbackReply && pool.length > 1) {
     idx = (idx + 1) % pool.length;
   }
-  lastFallbackReply = pool[idx];
-  return lastFallbackReply;
+  userLastFallbackMap.set(lastKey, pool[idx]);
+  return pool[idx];
 }
 
 module.exports = {
