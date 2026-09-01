@@ -356,9 +356,8 @@ async function wechatLogin(req, res) {
     }
   }
 
-  // 根据需求：微信登录后直接允许使用，暂不强制绑定手机号
-  // 后续如需绑定，可在设置页引导用户绑定
-  const needBindPhone = false;
+  // 微信登录后若用户未绑定手机号，强制引导绑定手机号
+  const needBindPhone = !user.phone;
 
   const token = generateToken(user);
 
