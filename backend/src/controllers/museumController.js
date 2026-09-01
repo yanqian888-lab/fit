@@ -299,7 +299,7 @@ function updateItem(req, res) {
   const { id } = req.params;
   const { content, sub_type, emotion, effectiveness, is_favorite, tags, extracted_data } = req.body;
 
-  const item = db.prepare('SELECT id, type, content FROM museum_items WHERE id = ? AND user_id = ?').get(id, userId);
+  const item = db.prepare('SELECT id, type, content FROM museum_items WHERE id = ? AND user_id = ? AND status = 1').get(id, userId);
   if (!item) {
     return res.status(404).json(error('内容不存在', 404));
   }
@@ -352,7 +352,7 @@ function deleteItem(req, res) {
   const userId = req.userId;
   const { id } = req.params;
 
-  const item = db.prepare('SELECT id FROM museum_items WHERE id = ? AND user_id = ?').get(id, userId);
+  const item = db.prepare('SELECT id FROM museum_items WHERE id = ? AND user_id = ? AND status = 1').get(id, userId);
   if (!item) {
     return res.status(404).json(error('内容不存在', 404));
   }
@@ -447,7 +447,7 @@ function toggleFavorite(req, res) {
   const userId = req.userId;
   const { id } = req.params;
 
-  const item = db.prepare('SELECT is_favorite FROM museum_items WHERE id = ? AND user_id = ?').get(id, userId);
+  const item = db.prepare('SELECT is_favorite FROM museum_items WHERE id = ? AND user_id = ? AND status = 1').get(id, userId);
   if (!item) {
     return res.status(404).json(error('内容不存在', 404));
   }
@@ -562,7 +562,7 @@ function getMoodStats(req, res) {
 function shareItem(req, res) {
   const userId = req.userId;
   const { id } = req.params;
-  const item = db.prepare('SELECT id FROM museum_items WHERE id = ? AND user_id = ?').get(id, userId);
+  const item = db.prepare('SELECT id FROM museum_items WHERE id = ? AND user_id = ? AND status = 1').get(id, userId);
   if (!item) return res.status(404).json(error('内容不存在', 404));
 
   taskService.updateTaskProgress(userId, 'share', 1);

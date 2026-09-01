@@ -12,7 +12,7 @@ function saveMood(userId, { record_date, emotion, content = '', tags = [] }) {
 
   const existing = db.prepare(`
     SELECT id FROM museum_items
-    WHERE user_id = ? AND sub_type = 'mood' AND record_date = ?
+    WHERE user_id = ? AND sub_type = 'mood' AND record_date = ? AND status = 1
   `).get(userId, date);
 
   if (existing) {
@@ -40,14 +40,14 @@ function getMoods(userId, month, page = 1, size = 20) {
   const list = db.prepare(`
     SELECT id, title, content, emotion, tags, is_favorite, record_date, created_at
     FROM museum_items
-    WHERE user_id = ? AND sub_type = 'mood' AND record_date LIKE ?
+    WHERE user_id = ? AND sub_type = 'mood' AND record_date LIKE ? AND status = 1
     ORDER BY record_date DESC, created_at DESC
     LIMIT ? OFFSET ?
   `).all(userId, `${targetMonth}%`, size, offset);
 
   const total = db.prepare(`
     SELECT COUNT(*) as count FROM museum_items
-    WHERE user_id = ? AND sub_type = 'mood' AND record_date LIKE ?
+    WHERE user_id = ? AND sub_type = 'mood' AND record_date LIKE ? AND status = 1
   `).get(userId, `${targetMonth}%`).count;
 
   return { list, pagination: { page, size, total, has_more: total > page * size } };
@@ -66,7 +66,7 @@ function getMoodStats(userId, month) {
   const rows = db.prepare(`
     SELECT record_date, emotion, COUNT(*) as count
     FROM museum_items
-    WHERE user_id = ? AND sub_type = 'mood' AND record_date LIKE ?
+    WHERE user_id = ? AND sub_type = 'mood' AND record_date LIKE ? AND status = 1
     GROUP BY record_date, emotion
     ORDER BY record_date ASC
   `).all(userId, `${targetMonth}%`);
@@ -108,7 +108,7 @@ function getDiaryHistory(userId, month, page = 1, size = 20) {
   const rows = db.prepare(`
     SELECT id, content, tags, is_favorite, record_date, created_at
     FROM museum_items
-    WHERE user_id = ? AND sub_type = 'daily_diary' AND record_date LIKE ?
+    WHERE user_id = ? AND sub_type = 'daily_diary' AND record_date LIKE ? AND status = 1
     ORDER BY record_date DESC, created_at DESC
     LIMIT ? OFFSET ?
   `).all(userId, `${targetMonth}%`, size, offset);
@@ -131,7 +131,7 @@ function getDiaryHistory(userId, month, page = 1, size = 20) {
 
   const total = db.prepare(`
     SELECT COUNT(*) as count FROM museum_items
-    WHERE user_id = ? AND sub_type = 'daily_diary' AND record_date LIKE ?
+    WHERE user_id = ? AND sub_type = 'daily_diary' AND record_date LIKE ? AND status = 1
   `).get(userId, `${targetMonth}%`).count;
 
   return { list, pagination: { page, size, total, has_more: total > page * size } };
@@ -141,12 +141,12 @@ function getDiaryDetail(userId, id) {
   return db.prepare(`
     SELECT id, type, sub_type, title, content, emotion, tags, is_favorite, record_date, created_at
     FROM museum_items
-    WHERE id = ? AND user_id = ?
+    WHERE id = ? AND user_id = ? AND status = 1
   `).get(id, userId);
 }
 
 function deleteDiary(userId, id) {
-  const item = db.prepare('SELECT id FROM museum_items WHERE id = ? AND user_id = ?').get(id, userId);
+  const item = db.prepare('SELECT id FROM museum_items WHERE id = ? AND user_id = ? AND status = 1').get(id, userId);
   if (!item) return { error: '记录不存在' };
   db.prepare('DELETE FROM museum_items WHERE id = ? AND user_id = ?').run(id, userId);
   // 级联删除关联时间轴，避免产生孤儿记录
@@ -157,7 +157,7 @@ function deleteDiary(userId, id) {
 }
 
 function toggleFavorite(userId, id) {
-  const item = db.prepare('SELECT is_favorite FROM museum_items WHERE id = ? AND user_id = ?').get(id, userId);
+  const item = db.prepare('SELECT is_favorite FROM museum_items WHERE id = ? AND user_id = ? AND status = 1').get(id, userId);
   if (!item) return { error: '记录不存在' };
   const newValue = item.is_favorite ? 0 : 1;
   db.prepare('UPDATE museum_items SET is_favorite = ? WHERE id = ? AND user_id = ?').run(newValue, id, userId);
