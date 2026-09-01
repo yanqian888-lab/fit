@@ -273,24 +273,49 @@ function extractReplyFromReasoning(reasoning, userMessages = []) {
 
 /**
  * 如果模型把历史消息（尤其是上一轮自己的回复）粘到了开头，把它去掉。
+ * 增强：不仅处理整段重复，也处理只重复了上一轮某一句开头的情况。
  */
 function stripLeadingHistoryEcho(reply, history) {
   if (!reply || typeof reply !== 'string') return reply;
+  let cleaned = reply.trim();
+
   const recentPartner = (history || [])
     .filter(msg => msg.role === 'partner' || msg.role === 'assistant')
     .slice(-5)
     .map(msg => String(msg.content || '').trim())
     .filter(Boolean)
     .sort((a, b) => b.length - a.length); // 优先匹配长的，避免短句误伤
+
+  // 收集上轮自己回复里的所有句子，用于判断当前回复是否在重复其中的某一句开头
+  const partnerSentences = new Set();
   for (const prev of recentPartner) {
-    // 完整重复上一轮自己的话，直接丢弃
-    if (reply === prev) return '';
-    if (reply.startsWith(prev)) {
-      const rest = reply.slice(prev.length).replace(/^[，,、；;。！?？\s]+/, '').trim();
+    if (prev === cleaned) return '';
+    if (cleaned.startsWith(prev)) {
+      const rest = cleaned.slice(prev.length).replace(/^[，,、；;。！?？\s]+/, '').trim();
       if (rest.length >= 2) return rest;
     }
+    // 把历史 partner 消息按句拆分（兼容中英文标点）
+    const sentences = prev
+      .split(/(?<=[。！？.?！])\s*/)
+      .map(s => s.trim())
+      .filter(s => s.length >= 4);
+    for (const s of sentences) partnerSentences.add(s);
   }
-  return reply;
+
+  // 循环去掉当前回复开头、与历史 partner 句子完全相同的句子
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const match = cleaned.match(/^([^。！？.?！]+[。！？.?！])\s*/);
+    if (!match) break;
+    const leading = match[1].trim();
+    if (partnerSentences.has(leading)) {
+      cleaned = cleaned.slice(match[0].length).replace(/^[，,、；;。！?？\s]+/, '').trim();
+      changed = true;
+    }
+  }
+
+  return cleaned || reply;
 }
 
 /**

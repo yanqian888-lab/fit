@@ -885,7 +885,7 @@ onShow(() => {
 }
 
 .bottom-placeholder {
-  height: 32rpx;
+  height: 56rpx;
 }
 
 /* 底部按钮 */

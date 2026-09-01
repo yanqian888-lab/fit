@@ -68,6 +68,7 @@ __pycache__/
 *.temp
 server-keys/
 .preview/
+upload-info.json
 # Uploaded user-generated files (keep .gitkeep only)
 backend/public/avatars/*
 !backend/public/avatars/.gitkeep
