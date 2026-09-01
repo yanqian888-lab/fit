@@ -87,6 +87,9 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
       }
     }
 
+    // 去掉模型偶尔把上一轮自己的回复粘到当前回复开头的情况
+    content = stripLeadingHistoryEcho(content, history);
+
     // 检查是否有工具调用标记
     const hasToolCall = content.includes('<<<FunctionCall>>>') || content.includes('<|FunctionCallBegin|>');
     console.log('[callMainAgent] hasToolCall:', hasToolCall, 'content length:', content.length);
@@ -254,6 +257,26 @@ function extractReplyFromReasoning(reasoning, userMessages = []) {
   }
 
   return '';
+}
+
+/**
+ * 如果模型把历史消息（尤其是上一轮自己的回复）粘到了开头，把它去掉。
+ */
+function stripLeadingHistoryEcho(reply, history) {
+  if (!reply || typeof reply !== 'string') return reply;
+  const recentPartner = (history || [])
+    .filter(msg => msg.role === 'partner' || msg.role === 'assistant')
+    .slice(-3)
+    .map(msg => String(msg.content || '').trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length); // 优先匹配长的，避免短句误伤
+  for (const prev of recentPartner) {
+    if (reply.startsWith(prev)) {
+      const rest = reply.slice(prev.length).replace(/^[，,、；;。！?？\s]+/, '').trim();
+      if (rest.length >= 2) return rest;
+    }
+  }
+  return reply;
 }
 
 /**

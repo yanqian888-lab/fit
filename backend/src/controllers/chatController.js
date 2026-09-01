@@ -221,6 +221,21 @@ function isDeclarativeFoodStatement(content) {
   return true;
 }
 
+/**
+ * 判断是否为纯闲聊/情绪/意向，不需要调用 helper 也不需要沉淀
+ * 例如 "？"、"哈哈哈哈"、"想喝个奶茶呢"
+ */
+function isCasualChat(content) {
+  if (!content) return true;
+  const text = String(content).trim();
+  if (text.length === 0) return true;
+  // 纯标点、语气词、笑声
+  if (/^[？?！!，,。\.\s哈呵嘿哼嗯哦…~～]+$/ .test(text)) return true;
+  // 表达意向而非记录或专业提问：想喝/想吃/想个...呢/吧/啊
+  if (/^(想|想喝|想吃|想个)[^？?]{0,30}[呢吧啊~～]$/.test(text)) return true;
+  return false;
+}
+
 // ============================================================
 // Section 4: Core message handler (sendMessage)
 // 聊天主流程：参数校验 → 保存用户消息 → 调用主 Agent → 同步/异步 Helper → 沉淀 Agent
@@ -279,8 +294,9 @@ async function sendMessage(req, res) {
       `);
       const messageId = insertUserMsg.run(userId, content, content_type, partner.mode).lastInsertRowid;
 
-      // 同步标签匹配
-      const preliminaryTag = tagMatcher.matchMessageTags(content);
+      // 同步标签匹配（纯闲聊跳过沉淀标记）
+      const isCasual = isCasualChat(content);
+      const preliminaryTag = isCasual ? null : tagMatcher.matchMessageTags(content);
       if (preliminaryTag) {
         db.prepare('UPDATE chat_messages SET precipitation_status = ?, precipitation_type = ? WHERE id = ?')
           .run(preliminaryTag.status, preliminaryTag.type, messageId);
@@ -299,6 +315,7 @@ async function sendMessage(req, res) {
 
     userMessageId = initResult.messageId;
     const preliminaryTag = initResult.preliminaryTag;
+    const isCasual = isCasualChat(content);
 
     // 获取最近历史消息（排除刚保存的当前消息）
     const history = db.prepare(`
@@ -319,21 +336,26 @@ async function sendMessage(req, res) {
     // 检查是否需要调用 helperAgent（工具调用或兜底）
     const hasFood = containsAnyKeyword(content, FOOD_KEYWORDS);
     const hasExercise = containsAnyKeyword(content, EXERCISE_KEYWORDS);
-    const needsHelper = (agentResult.toolCalls && agentResult.toolCalls.some(t =>
-      t.name === 'call_allround_helper' ||
-      (t.parameters && (t.parameters.question || t.parameters.query))
-    ))
+    // 纯闲聊不调用 helper，也不走沉淀
+    const needsHelper = !isCasual && (
+      (agentResult.toolCalls && agentResult.toolCalls.some(t =>
+        t.name === 'call_allround_helper' ||
+        (t.parameters && (t.parameters.question || t.parameters.query))
+      ))
       || (isProfessionalQuestion(content) && !finalReply.includes('千卡') && !finalReply.includes('kcal') && !finalReply.includes('BMI'))
       || (hasFood && hasExercise && !finalReply.includes('千卡') && !finalReply.includes('kcal'))
       // 关键修复：用户发送纯饮食记录消息（如"早上吃了一个牛角包"）时，
       // 主 Agent 往往只回复共情话术而不调用 helper，导致用户感知"helper不工作"。
       // 此处增加兜底：陈述句饮食内容直接触发异步 helper，自动计算热量并返回结果。
       || (hasFood && isDeclarativeFoodStatement(content) && !finalReply.includes('千卡') && !finalReply.includes('kcal'))
-      || (preliminaryTag && preliminaryTag.type === 'body_data' && !finalReply.includes('千卡') && !finalReply.includes('kcal') && !finalReply.includes('BMI'));
+      || (preliminaryTag && preliminaryTag.type === 'body_data' && !finalReply.includes('千卡') && !finalReply.includes('kcal') && !finalReply.includes('BMI'))
+    );
 
     // ========== 异步调用信息沉淀 Agent（聊天即记录，不阻塞回复） ==========
     // 无论同步还是异步模式，都触发沉淀；保留 Promise 供异步 helper 等待
-    const precipitationPromise = precipitationAgent.callPrecipitationAgent(content, userId, userMessageId, today)
+    const precipitationPromise = isCasual
+      ? Promise.resolve({ extracted: false })
+      : precipitationAgent.callPrecipitationAgent(content, userId, userMessageId, today)
       .then(result => {
         
         if (result && result.precipitation_id && result.status !== 2) {
@@ -484,7 +506,8 @@ async function sendMessage(req, res) {
     }
 
     // 执行工具调用（helper / 跳转）- 同步模式
-    if (agentResult.toolCalls && agentResult.toolCalls.length > 0) {
+    // 纯闲聊跳过工具调用，避免 helper 继续返回专业数据
+    if (!isCasual && agentResult.toolCalls && agentResult.toolCalls.length > 0) {
       const toolResults = await mainAgent.executeToolCalls(
         agentResult.toolCalls,
         userId,
