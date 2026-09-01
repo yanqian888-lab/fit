@@ -7,8 +7,9 @@
         class="search-input"
         placeholder="搜索方法名称或内容"
         confirm-type="search"
+        @confirm="onSearch"
       />
-      <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" />
+      <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" @click="onSearch" />
     </view>
 
     <scroll-view class="list-scroll" scroll-y @scrolltolower="loadMore">
@@ -110,6 +111,11 @@ function loadMore() {
   if (!hasMore.value) return;
   page.value++;
   load(true);
+}
+
+function onSearch() {
+  // 方法库为本地实时过滤，点击搜索图标或回车时收起键盘即可
+  uni.hideKeyboard();
 }
 
 function editItem(item) {

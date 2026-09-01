@@ -10,7 +10,7 @@
         confirm-type="search"
         @confirm="searchExercises"
       />
-      <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" />
+      <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" @click="searchExercises" />
     </view>
 
     <!-- 左侧分类 + 右侧运动列表 -->

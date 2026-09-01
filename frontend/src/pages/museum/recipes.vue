@@ -7,8 +7,9 @@
         class="search-input"
         placeholder="搜索食谱标题"
         confirm-type="search"
+        @confirm="onSearch"
       />
-      <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" />
+      <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" @click="onSearch" />
     </view>
 
     <view class="category-tabs">
@@ -235,6 +236,11 @@ async function confirmDelete() {
   } catch (err) {
     uni.showToast({ title: '删除失败', icon: 'none' });
   }
+}
+
+function onSearch() {
+  // 食谱库为本地实时过滤，点击搜索图标或回车时收起键盘即可
+  uni.hideKeyboard();
 }
 
 async function load(more = false) {

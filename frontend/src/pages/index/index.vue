@@ -298,7 +298,7 @@
       </view>
 
       <view class="food-picker-modal-search">
-        <text class="food-picker-modal-search-icon">🔍</text>
+        <text class="food-picker-modal-search-icon" @click="searchFoods">🔍</text>
         <input
           v-model="foodKeyword"
           class="food-picker-modal-search-input"
