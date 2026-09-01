@@ -223,7 +223,7 @@
         </el-form-item>
         <el-form-item label="值">
           <div style="display:flex;gap:8px;width:100%;">
-            <el-input v-model="whitelistForm.value" :placeholder="whitelistForm.type === 'user' ? '用户账号或ID' : '版本号或IP'" style="flex:1;" @input="lookupState = ''" />
+            <el-input v-model="whitelistForm.value" :placeholder="whitelistForm.type === 'user' ? '用户账号 / ID / 手机号 / OpenID' : '版本号或IP'" style="flex:1;" @input="lookupState = ''" />
             <el-button v-if="whitelistForm.type === 'user'" :loading="lookupLoading" @click="lookupUserAccount">查找</el-button>
           </div>
           <div v-if="whitelistForm.type === 'user' && lookupState === 'found'" class="lookup-result found">
@@ -279,7 +279,7 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="值列表">
-          <el-input v-model="batchForm.values" type="textarea" :rows="8" placeholder="每行一个，支持换行批量粘贴" />
+          <el-input v-model="batchForm.values" type="textarea" :rows="8" :placeholder="batchForm.type === 'user' ? '每行一个，支持用户账号 / ID / 手机号 / OpenID' : '每行一个，支持换行批量粘贴'" />
         </el-form-item>
         <el-form-item label="过期时间">
           <el-date-picker v-model="batchForm.expire_at" type="datetime" placeholder="永久则留空" value-format="YYYY-MM-DD HH:mm:ss" />
