@@ -2,8 +2,8 @@
   "name": "掉秤搭搭",
   "appid": "__UNI__A19875F",
   "description": "你的AI掉秤搭子，陪你一起健康瘦下去～",
-  "versionName": "1.0.1",
-  "versionCode": "101",
+  "versionName": "1.0.2",
+  "versionCode": "102",
   "transformPx": false,
   "mp-weixin": {
     "appid": "wx75c8626270f27ea1",

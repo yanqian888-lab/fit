@@ -10,7 +10,7 @@
         confirm-type="search"
         @confirm="searchFoods"
       />
-      <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" />
+      <image class="search-icon" src="/static/image/icon/sousuo.svg" mode="aspectFit" @click="searchFoods" />
     </view>
 
     <!-- 左侧分类 + 右侧食物列表 -->
