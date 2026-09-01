@@ -737,7 +737,7 @@ onShow(() => {
   flex: 1;
   height: 100%;
   margin-top: 32rpx;
-  padding: 0 32rpx;
+  padding: 0 32rpx 180rpx;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
