@@ -378,8 +378,11 @@ async function loadConfig() {
   try {
     const res = await cmsTrialApi.getConfig()
     // 接口数值字段是字符串，滑杆/数字输入绑定前统一转 Number，避免显示回退为 0 后被误保存
+    // 开关/单选字段（'0'/'1'）保持字符串，否则 el-radio/el-switch 的 label/value 匹配会失败
+    const keepStringKeys = new Set(['global_enabled', 'ai_chat_enabled', 'diary_enabled'])
     const data = { ...res.data }
     for (const k of Object.keys(data)) {
+      if (keepStringKeys.has(k)) continue
       if (typeof data[k] === 'string' && data[k] !== '' && !isNaN(Number(data[k]))) data[k] = Number(data[k])
     }
     Object.assign(config, data)
