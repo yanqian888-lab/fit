@@ -2371,7 +2371,10 @@ async function fallbackExtractDietRecord(content, userId, recordDate) {
       fatPer100g = estimated.fat_per_100g;
     } else {
       // LLM 估算失败时的保守规则兜底：避免「油炸豆泡」被估成 100 kcal/100g 这种离谱值
-      if (/面|粉|米线|拉面|板面|刀削面|炸酱面|拌面|炒面|热干面|螺蛳粉|酸辣粉|米粉|河粉|凉皮|面皮/.test(foodName)) {
+      if (/发面饼|烙饼|煎饼|油饼|手抓饼|大饼|烧饼|馅饼/.test(foodName)) {
+        // 烤/烙/煎制的面食能量密度明显高于水煮面条
+        caloriePer100g = 250;
+      } else if (/面|粉|米线|拉面|板面|刀削面|炸酱面|拌面|炒面|热干面|螺蛳粉|酸辣粉|米粉|河粉|凉皮|面皮/.test(foodName)) {
         caloriePer100g = 140;
       } else if (/饭|炒饭|盖饭|拌饭|焖饭|焗饭|烩饭|煲仔饭|粥|稀饭|燕麦粥|小米粥/.test(foodName)) {
         caloriePer100g = /粥|稀饭/.test(foodName) ? 50 : 130;

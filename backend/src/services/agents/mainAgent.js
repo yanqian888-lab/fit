@@ -73,13 +73,13 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
     // 混元 Hy3 偶发在 high 下只输出 reasoning_content、content 为空。
     // 此时尝试从 reasoning_content 提取最终结论作为回复，避免业务层落入固定兜底。
     if (!content.trim() && response.choices[0].message.reasoning_content) {
-      const recentUserMessages = history
-        .filter(msg => msg.role === 'user')
-        .slice(-5)
+      const recentHistoryMessages = history
+        .filter(msg => msg.role === 'user' || msg.role === 'partner' || msg.role === 'assistant')
+        .slice(-6)
         .map(msg => msg.content);
       const extracted = extractReplyFromReasoning(response.choices[0].message.reasoning_content, [
         userMessage,
-        ...recentUserMessages
+        ...recentHistoryMessages
       ]);
       if (extracted) {
         console.log('[callMainAgent] 从 reasoning_content 提取到回复');
