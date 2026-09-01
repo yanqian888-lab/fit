@@ -267,7 +267,7 @@ function getExercise(req, res) {
 
   const rows = db.prepare(`
     SELECT * FROM exercise_records
-    WHERE user_id = ? AND record_date = ?
+    WHERE user_id = ? AND record_date = ? AND status = 1
     ORDER BY created_at DESC
   `).all(userId, date);
 
