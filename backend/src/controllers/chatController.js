@@ -236,6 +236,72 @@ function isCasualChat(content) {
   return false;
 }
 
+/**
+ * 判断消息是否为对今天已有饮食记录的修正/澄清。
+ * 典型：用户先说"下午喝了一杯茉莉花茶"，后说"我喝的是无糖的茉莉花茶"。
+ * 后者应视为修正，而不是新增一条记录。
+ */
+function isCorrectionMessage(content, userId, recordDate) {
+  const text = String(content || '').trim();
+  if (!text) return false;
+
+  const correctionPrefixes = [
+    /^我[吃喝]的是/, /^其实[是我]?[吃喝][的是]?/, /^不对[，,]?/, /^不是[，,]?/,
+    /^更正[一下]?[，,]?/, /^修正[一下]?[，,]?/, /^补充[一下]?[，,]?/,
+    /^忘说了[，,]?/, /^忘了说[，,]?/, /^顺便说[，,]?/, /^另外[，,]?我[吃喝][的是]?/
+  ];
+  const hasCorrectionPrefix = correctionPrefixes.some(p => p.test(text));
+  const hasSugarClarification = /(无糖|低糖|全糖|去糖|少糖|加糖|有糖|甜|不甜)/.test(text);
+
+  if (!hasCorrectionPrefix && !hasSugarClarification) return false;
+
+  // 简单清洗出候选食物名
+  let candidate = text
+    .replace(/^我[吃喝]的是/, '')
+    .replace(/^其实[是我]?[吃喝][的是]?/, '')
+    .replace(/^不对[，,]?/, '')
+    .replace(/^不是[，,]?/, '')
+    .replace(/^更正[一下]?[，,]?/, '')
+    .replace(/^修正[一下]?[，,]?/, '')
+    .replace(/^补充[一下]?[，,]?/, '')
+    .replace(/^忘说了[，,]?/, '')
+    .replace(/^忘了说[，,]?/, '')
+    .replace(/^顺便说[，,]?/, '')
+    .replace(/^另外[，,]?我[吃喝][的是]?/, '')
+    .replace(/无糖的|低糖的|全糖的|去糖的|少糖的|加糖的|有糖的|甜的|不甜的/g, '')
+    .replace(/[，,、。！？!?；;：:…~～\s]+/g, ' ')
+    .trim();
+
+  if (!candidate || candidate.length < 2) return false;
+
+  try {
+    const rows = db.prepare(`
+      SELECT foods FROM diet_records
+      WHERE user_id = ? AND record_date = ? AND status = 1
+      ORDER BY updated_at DESC
+      LIMIT 10
+    `).all(userId, recordDate);
+    for (const row of rows) {
+      const foods = safeJsonParse(row.foods, []);
+      for (const f of foods) {
+        const name = String(f.name || '').trim();
+        if (!name) continue;
+        if (candidate.includes(name) || name.includes(candidate)) return true;
+        // 去掉常见修饰词后再做一次模糊匹配
+        const normalizedCandidate = candidate.replace(/茉莉|花|茶|糖/g, '').trim();
+        const normalizedName = name.replace(/茉莉|花|茶|糖/g, '').trim();
+        if (normalizedCandidate && normalizedName &&
+            (normalizedCandidate.includes(normalizedName) || normalizedName.includes(normalizedCandidate))) {
+          return true;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[isCorrectionMessage] 查询历史饮食记录失败:', e.message);
+  }
+  return false;
+}
+
 // ============================================================
 // Section 4: Core message handler (sendMessage)
 // 聊天主流程：参数校验 → 保存用户消息 → 调用主 Agent → 同步/异步 Helper → 沉淀 Agent
@@ -294,9 +360,10 @@ async function sendMessage(req, res) {
       `);
       const messageId = insertUserMsg.run(userId, content, content_type, partner.mode).lastInsertRowid;
 
-      // 同步标签匹配（纯闲聊跳过沉淀标记）
+      // 同步标签匹配（纯闲聊或修正/澄清消息跳过沉淀标记）
       const isCasual = isCasualChat(content);
-      const preliminaryTag = isCasual ? null : tagMatcher.matchMessageTags(content);
+      const isCorrection = !isCasual && isCorrectionMessage(content, userId, today);
+      const preliminaryTag = (isCasual || isCorrection) ? null : tagMatcher.matchMessageTags(content);
       if (preliminaryTag) {
         db.prepare('UPDATE chat_messages SET precipitation_status = ?, precipitation_type = ? WHERE id = ?')
           .run(preliminaryTag.status, preliminaryTag.type, messageId);
@@ -310,11 +377,12 @@ async function sendMessage(req, res) {
       taskService.updateTaskProgress(userId, 'chat', 1);
       newbieTaskService.checkAction(userId, 'chat');
 
-      return { messageId, preliminaryTag };
+      return { messageId, preliminaryTag, isCorrection };
     });
 
     userMessageId = initResult.messageId;
     const preliminaryTag = initResult.preliminaryTag;
+    const isCorrection = initResult.isCorrection;
     const isCasual = isCasualChat(content);
 
     // 获取最近历史消息（排除刚保存的当前消息）
@@ -352,9 +420,9 @@ async function sendMessage(req, res) {
     );
 
     // ========== 异步调用信息沉淀 Agent（聊天即记录，不阻塞回复） ==========
-    // 无论同步还是异步模式，都触发沉淀；保留 Promise 供异步 helper 等待
-    const precipitationPromise = isCasual
-      ? Promise.resolve({ extracted: false })
+    // 修正/澄清消息不创建新沉淀，避免把"我喝的是无糖的..."这类说明重复记录
+    const precipitationPromise = (isCasual || isCorrection)
+      ? Promise.resolve({ extracted: false, reason: isCorrection ? '修正/澄清消息不沉淀' : '闲聊不沉淀' })
       : precipitationAgent.callPrecipitationAgent(content, userId, userMessageId, today)
       .then(result => {
         
