@@ -451,7 +451,13 @@ async function lookupUserAccount() {
   lookupState.value = ''
   try {
     const res = await cmsAppUserApi.list({ keyword: value, page: 1, size: 20 })
-    const match = (res.data?.list || []).find(u => u.username === value || String(u.id) === value)
+    const match = (res.data?.list || []).find(u =>
+      u.username === value ||
+      String(u.id) === value ||
+      u.user_id === value ||
+      u.phone === value ||
+      u.openid === value
+    )
     if (match) {
       lookupState.value = 'found'
       lookupResult.value = match
