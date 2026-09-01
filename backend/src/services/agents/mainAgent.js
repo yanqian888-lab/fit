@@ -105,11 +105,17 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
     
     // 解析工具调用
     const toolCalls = parseToolCalls(content);
-    const reply = cleanToolCallMarkers(content).trim();
+    let reply = cleanToolCallMarkers(content).trim();
 
     console.log('[callMainAgent] toolCalls count:', toolCalls.length, 'reply length:', reply.length);
     if (toolCalls.length > 0) {
       console.log('[callMainAgent] 解析到工具调用:', JSON.stringify(toolCalls));
+    }
+
+    // 过滤模型偶发的无意义反问（如“还是闲聊？”、“什么意思？”）
+    if (toolCalls.length === 0 && isUnhelpfulReply(reply, userMessage)) {
+      console.log('[callMainAgent] 主Agent返回无意义反问，使用语境化兜底:', reply);
+      reply = generateContextualFallbackReply(userMessage, history, mode);
     }
 
     // 强制兜底：如果模型说"方案""计划""方法""给你""算算""整""热量""消耗""卡路里"但没有调用工具，强制添加工具调用
@@ -316,6 +322,26 @@ function stripLeadingHistoryEcho(reply, history) {
   }
 
   return cleaned || reply;
+}
+
+/**
+ * 判断模型返回的回复是否是无意义反问/敷衍，需要走兜底。
+ * 典型 bad case：用户说"下午喝了一杯茉莉花茶"，模型回"还是闲聊？"
+ */
+function isUnhelpfulReply(reply, userMessage) {
+  if (!reply || typeof reply !== 'string') return true;
+  const r = reply.trim();
+  if (r.length === 0) return true;
+  // 极短回复大概率是敷衍
+  if (r.length <= 6) return true;
+  // 包含明显无意义反问关键词
+  const badPatterns = /(还是闲聊|这是闲聊|什么意思|再说一遍|你在说什么|只是闲聊|无聊|随便|都行|随便你|所以呢|然后呢)/i;
+  if (badPatterns.test(r)) return true;
+  // 用户不是提问，但模型回了一个短问句（如"还是闲聊？"）
+  const isUserQuestion = /[？?]/.test(userMessage || '');
+  const isReplyQuestion = /[？?]/.test(r);
+  if (isReplyQuestion && !isUserQuestion && r.length < 20) return true;
+  return false;
 }
 
 /**
