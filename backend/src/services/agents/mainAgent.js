@@ -90,6 +90,12 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
     // 去掉模型偶尔把上一轮自己的回复粘到当前回复开头的情况
     content = stripLeadingHistoryEcho(content, history);
 
+    // 如果模型还是没给出可用回复，使用基于语境的兜底回复（避免一直重复固定句子）
+    if (!content.trim()) {
+      content = generateContextualFallbackReply(userMessage, history, mode);
+      console.log('[callMainAgent] 使用语境化兜底回复:', content);
+    }
+
     // 检查是否有工具调用标记
     const hasToolCall = content.includes('<<<FunctionCall>>>') || content.includes('<|FunctionCallBegin|>');
     console.log('[callMainAgent] hasToolCall:', hasToolCall, 'content length:', content.length);
@@ -266,11 +272,13 @@ function stripLeadingHistoryEcho(reply, history) {
   if (!reply || typeof reply !== 'string') return reply;
   const recentPartner = (history || [])
     .filter(msg => msg.role === 'partner' || msg.role === 'assistant')
-    .slice(-3)
+    .slice(-5)
     .map(msg => String(msg.content || '').trim())
     .filter(Boolean)
     .sort((a, b) => b.length - a.length); // 优先匹配长的，避免短句误伤
   for (const prev of recentPartner) {
+    // 完整重复上一轮自己的话，直接丢弃
+    if (reply === prev) return '';
     if (reply.startsWith(prev)) {
       const rest = reply.slice(prev.length).replace(/^[，,、；;。！?？\s]+/, '').trim();
       if (rest.length >= 2) return rest;
@@ -317,6 +325,68 @@ async function executeToolCalls(toolCalls, userId, userMessage, userInfo, partne
     }
   }
   return results;
+}
+
+/**
+ * 当模型无法返回可用 content 时，基于用户当前语境和搭子模式生成多样化兜底回复。
+ * 避免一直重复固定句子。
+ */
+function generateContextualFallbackReply(userMessage, history = [], partnerMode = 'gentle') {
+  const mode = partnerMode || 'gentle';
+  const text = String(userMessage || '').trim();
+
+  // 合并最近几条用户消息，用于判断当前话题
+  const recentUserTexts = (history || [])
+    .filter(msg => msg.role === 'user')
+    .slice(-3)
+    .map(msg => msg.content)
+    .concat(text)
+    .join(' ');
+
+  const isShortCasual = /^[？?！!，,。\.\s哈呵嘿哼嗯哦啊呀…~～]{1,6}$/.test(text);
+  const hasFood = /吃|喝|饭|菜|肉|蛋|奶|面|米|粥|包|饺|饼|糕|零食|奶茶|咖啡|水果|蔬菜|蛋糕|巧克力|冰淇淋|薯片|坚果|酸奶|牛奶|豆浆|饮料|白开水|茶/.test(recentUserTexts);
+  const hasExercise = /运动|跑|走|跳|练|健身|瑜伽|游泳|骑车|骑行|哑铃|杠铃|深蹲|俯卧撑|平板支撑|HIIT|Tabata|帕梅拉|拉伸|公里|千卡|卡|步|爬楼|爬山|动感单车|椭圆机|划船机/.test(recentUserTexts);
+  const hasBody = /体重|体脂|腰围|腿围|臀围|胸围|身高|BMI|掉秤|涨秤|平台期|瘦了|胖了/.test(recentUserTexts);
+
+  const templates = {
+    gentle: {
+      casual: ['在呢，我听着呢～', '怎么啦，想跟我说说吗？', '我在，慢慢讲～', '嗯，我陪着你呢～'],
+      food: ['又吃到好吃的啦？偶尔放纵一下也没关系～', '饮食上的小纠结吗？我陪你一起理清～', '我记着呢，慢慢来，不着急～', '吃到什么啦？跟我说说～'],
+      exercise: ['动起来就是进步，已经很棒啦～', '今天运动了吗？我陪你坚持～', '运动这事，动了就比不动强～'],
+      body: ['身体变化我帮你盯着呢，别着急～', '我记下来啦，一起观察变化～', '体重波动很正常，继续按节奏来～'],
+      default: ['说说看，我陪你～', '嗯嗯，我在听～', '我在呢，继续讲～', '有什么想跟我聊的吗？']
+    },
+    strict: {
+      casual: ['有话直说，别只发符号。', '我在等你的正事。', '别绕弯子，说。'],
+      food: ['吃了什么直接报。', '饮食记录呢？', '别藏着，吃了多少如实说。'],
+      exercise: ['运动了就说，没运动也老实交代。', '动起来，别光说。', '今天练了什么？'],
+      body: ['数据报上来。', '体重/体脂多少？', '别逃避，面对现实。'],
+      default: ['说重点。', '我在听，但要说正事。', '有话快说。']
+    },
+    tease: {
+      casual: ['咋了，手指累了？', '一个问号是想让我猜？', '神秘感拿捏了？', '说吧，别欲言又止。'],
+      food: ['又惦记吃的了？', '说吧，今天偷吃了啥？', '张嘴让我听听是蛋糕还是奶茶？', '吃货本色不改啊。'],
+      exercise: ['运动了吗？还是只动了动嘴？', '今天的热量债打算怎么还？', '别告诉我你又躺了一天。'],
+      body: ['体重涨了不敢说话？', '平台期了？还是又偷吃了？', '数字不会骗人，人呢？'],
+      default: ['说，是不是又偷懒了？', '快交代，别让我催。', '你这意志力，我可盯着你呢。', '别装死，说话。']
+    }
+  };
+
+  const modeTemplates = templates[mode] || templates.gentle;
+  let pool = modeTemplates.default;
+  if (isShortCasual) pool = modeTemplates.casual;
+  else if (hasFood) pool = modeTemplates.food;
+  else if (hasExercise) pool = modeTemplates.exercise;
+  else if (hasBody) pool = modeTemplates.body;
+
+  // 用用户消息做简单散列，保证同一条消息多次进来时也有固定但多样的选择
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) - hash) + text.charCodeAt(i);
+    hash |= 0;
+  }
+  const idx = Math.abs(hash) % pool.length;
+  return pool[idx];
 }
 
 module.exports = {
