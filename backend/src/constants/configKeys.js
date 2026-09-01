@@ -65,12 +65,12 @@ const DEFAULT_CONFIG_VALUES = {
   [CONFIG_KEYS.POPUP_AI.CONTENT]: '您的免费试用次数已使用完毕，如需继续使用该功能，可联系客服获取正式使用授权。',
   [CONFIG_KEYS.POPUP_AI.PRIMARY_BTN]: '联系客服获取授权',
   [CONFIG_KEYS.POPUP_AI.SECONDARY_BTN]: '取消',
-  [CONFIG_KEYS.POPUP_AI.CONTACT]: '客服微信号',
+  [CONFIG_KEYS.POPUP_AI.CONTACT]: 'xixishouzuo666',
   [CONFIG_KEYS.POPUP_DIARY.TITLE]: '试用权限已用尽',
   [CONFIG_KEYS.POPUP_DIARY.CONTENT]: '您的免费试用次数已使用完毕，如需继续使用该功能，可联系客服获取正式使用授权。',
   [CONFIG_KEYS.POPUP_DIARY.PRIMARY_BTN]: '联系客服获取授权',
   [CONFIG_KEYS.POPUP_DIARY.SECONDARY_BTN]: '取消',
-  [CONFIG_KEYS.POPUP_DIARY.CONTACT]: '客服微信号'
+  [CONFIG_KEYS.POPUP_DIARY.CONTACT]: 'xixishouzuo666'
 };
 
 module.exports = {
