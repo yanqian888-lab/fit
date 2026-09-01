@@ -384,8 +384,15 @@ async function loadRecordDates() {
 }
 
 function addFood() {
-  uni.navigateTo({
-    url: `/pages/record/add-food?meal=breakfast&date=${selectedDate.value}&editMode=1`
+  const mealLabels = MEAL_OPTIONS.map(m => m.label);
+  uni.showActionSheet({
+    itemList: mealLabels,
+    success: (res) => {
+      const meal = MEAL_OPTIONS[res.tapIndex].value;
+      uni.navigateTo({
+        url: `/pages/record/add-food?meal=${meal}&date=${selectedDate.value}&editMode=1`
+      });
+    }
   });
 }
 
