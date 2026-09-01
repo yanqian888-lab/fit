@@ -83,15 +83,15 @@ function auditMode(req, res) {
 }
 
 /**
- * 检查用户是否存在（支持 username、user_id、phone、openid）
+ * 检查用户是否存在（支持 username、user_id、id、phone、openid）
  */
 function checkUserExists(value) {
   if (!value) return false;
   const user = db.prepare(`
     SELECT id FROM users
-    WHERE username = ? OR id = ? OR phone = ? OR openid = ?
+    WHERE username = ? OR user_id = ? OR id = ? OR phone = ? OR openid = ?
     LIMIT 1
-  `).get(value, value, value, value);
+  `).get(value, value, value, value, value);
   return !!user;
 }
 

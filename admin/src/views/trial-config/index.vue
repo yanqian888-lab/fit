@@ -226,8 +226,18 @@
             <el-input v-model="whitelistForm.value" :placeholder="whitelistForm.type === 'user' ? '用户账号 / ID / 手机号 / OpenID' : '版本号或IP'" style="flex:1;" @input="lookupState = ''" />
             <el-button v-if="whitelistForm.type === 'user'" :loading="lookupLoading" @click="lookupUserAccount">查找</el-button>
           </div>
-          <div v-if="whitelistForm.type === 'user' && lookupState === 'found'" class="lookup-result found">
-            ✓ 已找到用户：{{ lookupResult.nickname || '-' }}（账号 {{ lookupResult.username }}）
+          <div v-if="whitelistForm.type === 'user' && lookupState === 'found'" style="margin-top: 8px;">
+            <div style="font-size: 13px; color: #67c23a; margin-bottom: 8px;">✓ 已找到 {{ lookupResults.length }} 位用户，请选择</div>
+            <el-radio-group v-model="selectedUserId" style="display: flex; flex-direction: column; gap: 8px;">
+              <el-radio v-for="u in lookupResults" :key="u.id" :label="u.user_id || String(u.id)" style="height: auto; align-items: flex-start; white-space: normal;">
+                <div style="line-height: 1.4;">
+                  <div>{{ u.nickname || '-' }}（账号: {{ u.username || '-' }}）</div>
+                  <div style="font-size: 12px; color: #909399;">
+                    ID: {{ u.user_id || u.id }} | 手机: {{ u.phone || '-' }} | OpenID: {{ u.openid ? u.openid.slice(0, 16) + '...' : '-' }}
+                  </div>
+                </div>
+              </el-radio>
+            </el-radio-group>
           </div>
           <div v-else-if="whitelistForm.type === 'user' && lookupState === 'notfound'" class="lookup-result notfound">
             ✗ 库中没有该用户，无法添加白名单
@@ -359,6 +369,8 @@ const whitelistForm = reactive({ type: 'user', value: '', expire_at: '', remark:
 // 用户账号查找校验（库中无此用户则不允许添加）
 const lookupState = ref('') // '' | 'found' | 'notfound'
 const lookupResult = ref(null)
+const lookupResults = ref([])
+const selectedUserId = ref('')
 const lookupLoading = ref(false)
 const batchDialogVisible = ref(false)
 const batchForm = reactive({ type: 'user', values: '', expire_at: '', remark: '' })
@@ -440,6 +452,8 @@ function openWhitelistDialog() {
   whitelistForm.remark = ''
   lookupState.value = ''
   lookupResult.value = null
+  lookupResults.value = []
+  selectedUserId.value = ''
   whitelistDialogVisible.value = true
 }
 
@@ -449,18 +463,24 @@ async function lookupUserAccount() {
   if (!value) return ElMessage.warning('请输入用户账号')
   lookupLoading.value = true
   lookupState.value = ''
+  lookupResults.value = []
+  selectedUserId.value = ''
   try {
     const res = await cmsAppUserApi.list({ keyword: value, page: 1, size: 20 })
-    const match = (res.data?.list || []).find(u =>
+    const matches = (res.data?.list || []).filter(u =>
       u.username === value ||
       String(u.id) === value ||
       u.user_id === value ||
       u.phone === value ||
       u.openid === value
     )
-    if (match) {
+    if (matches.length > 0) {
       lookupState.value = 'found'
-      lookupResult.value = match
+      lookupResults.value = matches
+      // 只有一条时自动选中
+      if (matches.length === 1) {
+        selectedUserId.value = matches[0].user_id || String(matches[0].id)
+      }
     } else {
       lookupState.value = 'notfound'
       lookupResult.value = null
@@ -471,10 +491,6 @@ async function lookupUserAccount() {
 }
 
 async function saveWhitelist() {
-  if (!whitelistForm.value) {
-    return ElMessage.warning('请输入值')
-  }
-  // 用户账号类型：必须先查找并确认用户存在
   if (whitelistForm.type === 'user') {
     if (lookupState.value !== 'found') {
       await lookupUserAccount()
@@ -482,6 +498,12 @@ async function saveWhitelist() {
     if (lookupState.value !== 'found') {
       return ElMessage.error('库中没有该用户，无法添加白名单')
     }
+    if (!selectedUserId.value) {
+      return ElMessage.warning('请选择一个用户')
+    }
+    whitelistForm.value = selectedUserId.value
+  } else if (!whitelistForm.value) {
+    return ElMessage.warning('请输入值')
   }
   try {
     await cmsTrialApi.createWhitelist(whitelistForm)

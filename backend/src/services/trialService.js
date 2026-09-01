@@ -133,9 +133,9 @@ function getPopupConfig(featureType, globalConfig) {
 
 /**
  * 校验白名单
- * type: user 时 value 支持 user_id 字符串或 username；device/version/ip 直接匹配
+ * type: user 时 value 支持 user_id、username、phone、openid；device/version/ip 直接匹配
  */
-function checkWhitelist({ userId, deviceId, username, phone, openid, appVersion, ip }) {
+function checkWhitelist({ userId, userCode, deviceId, username, phone, openid, appVersion, ip }) {
   const rows = db.prepare('SELECT type, value, expire_at FROM trial_whitelist').all();
   for (const row of rows) {
     if (isExpired(row.expire_at)) continue;
@@ -143,6 +143,7 @@ function checkWhitelist({ userId, deviceId, username, phone, openid, appVersion,
     if (row.type === 'user') {
       const val = String(row.value);
       if (userId && val === String(userId)) hit = true;
+      if (userCode && val === String(userCode)) hit = true;
       if (username && val === username) hit = true;
       // 也支持用手机号或 openid 做白名单值
       if (phone && val === String(phone)) hit = true;
@@ -249,19 +250,21 @@ function checkPermission({ userId, deviceId, featureType, appVersion, ip, userna
 
   const config = getConfig();
 
-  // 查询用户手机号/openid，用于白名单匹配
+  // 查询用户 user_id/手机号/openid，用于白名单匹配
+  let userCode = null;
   let phone = null;
   let openid = null;
   if (userId) {
-    const user = db.prepare('SELECT phone, openid FROM users WHERE id = ?').get(userId);
+    const user = db.prepare('SELECT user_id, phone, openid FROM users WHERE id = ?').get(userId);
     if (user) {
+      userCode = user.user_id || null;
       phone = user.phone || null;
       openid = user.openid || null;
     }
   }
 
   // 1. 白名单校验（最高优先级，永久豁免）
-  const wl = checkWhitelist({ userId, deviceId, username, phone, openid, appVersion, ip });
+  const wl = checkWhitelist({ userId, userCode, deviceId, username, phone, openid, appVersion, ip });
   if (wl.hit) {
     addLog({ userId, deviceId, featureType, action: 'whitelist', reason: `命中${wl.type}白名单:${wl.value}`, ip });
     return { allow_use: true, show_popup: false, remain_times: -1, popup_config: null, reason: '白名单放行' };
