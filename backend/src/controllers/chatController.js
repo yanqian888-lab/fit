@@ -5,6 +5,7 @@
 const { db, withTransaction } = require('../db');
 const { success, error } = require('../utils/response');
 const mainAgent = require('../services/agents/mainAgent');
+const { generateContextualFallbackReply } = mainAgent;
 const precipitationAgent = require('../services/agents/precipitationAgent');
 const helperAgent = require('../services/agents/helperAgent');
 const partnerAssetAgent = require('../services/agents/partnerAssetAgent');
@@ -240,15 +241,15 @@ function isCasualChat(content) {
     const casualShortPatterns = [
       /^(早|晚安|在吗|在嘛|在不在|你好|哈喽|嗨|hello|hi|吃了吗|睡了吗|起了吗|累|好累|好烦|烦|开心|难过|焦虑|崩溃|无语|栓q|6|666|笑死|哈哈哈|呵呵|嗯|哦|啊|好|行|可以|知道了|明白|了解|就这样|算了|罢了|随便|都行|拜拜|再见|see you)$/i,
       /^(想|想喝|想吃|想个|想试|想问|想聊)[^？?]{0,50}[呢吧啊~～]?$/,
-      /^(我)?(好|太|有点|特别|真的)?(累|烦|困|饿|馋|饱|开心|难过|伤心|焦虑|崩溃|无语|兴奋|激动|失落|沮丧|生气|愤怒|委屈|无语|栓Q|笑死)[了啊吧呢]?$/,
-      /^(睡不着|压力大|好困|好饿|好馋|好累|好烦|好开心|好难过|好焦虑|好崩溃|不想吃|不想动|不想练|不想说话|emo|Emo|EMO)$/i
+      /^(我)?(好|太|有点|特别|真的)?(累|疲惫|疲倦|疲乏|烦|困|饿|馋|饱|开心|难过|伤心|焦虑|崩溃|无语|兴奋|激动|失落|沮丧|生气|愤怒|委屈|无语|栓Q|笑死)[了啊吧呢]?$/,
+      /^(睡不着|压力大|好困|好饿|好馋|好累|好疲惫|好烦|好开心|好难过|好焦虑|好崩溃|不想吃|不想动|不想练|不想说话|emo|Emo|EMO)$/i
     ];
     if (casualShortPatterns.some(p => p.test(text))) return true;
   }
 
   // 3. 宽泛的情绪/生活/闲聊句式（不携带具体饮食/运动/数据记录）
   const casualPatterns = [
-    /^(今天|昨晚|最近|刚才|刚刚|现在|这会儿)(感觉|有点|有点点|特别|真的|好|太)?(累|困|饿|馋|饱|开心|难过|烦|焦虑|崩溃|无语|兴奋|失落|沮丧|生气|委屈)[了啊吧呢]?$/,
+    /^(今天|昨晚|最近|刚才|刚刚|现在|这会儿)(感觉|有点|有点点|特别|真的|好|太)?(累|疲惫|疲倦|疲乏|困|饿|馋|饱|开心|难过|烦|焦虑|崩溃|无语|兴奋|失落|沮丧|生气|委屈)[了啊吧呢]?$/,
     /^(我)?(今天|昨晚|最近)(没睡好|睡不着|熬夜了|失眠了|睡过了|起晚了|赖床了)[了啊吧呢]?$/,
     /^(我)?(今天|最近|这段时间)(压力|好烦|好难|不想动|不想练|不想吃|不想说话|想放弃|想摆烂|emo|Emo|EMO)[了啊吧呢]?$/,
     /^(早安|晚安|早上好|中午好|晚上好|在吗|在嘛|在不在|人呢|回我|理我|哈喽|嗨|你好|hello|hi|吃了吗|睡了吗|起了吗)$/i,
@@ -419,6 +420,31 @@ async function sendMessage(req, res) {
       ORDER BY created_at DESC
       LIMIT 20
     `).all(userId, userMessageId).reverse();
+
+    // 闲聊快速路径：直接本地生成共情/毒舌回复，不调用主 Agent，避免 AI 推理慢导致用户等待
+    if (isCasual) {
+      const quickReply = generateContextualFallbackReply(content, history, partner.mode, userId);
+      const insertPartnerMsg = db.prepare(`
+        INSERT INTO chat_messages (user_id, role, content, content_type, mode)
+        VALUES (?, 'partner', ?, 'text', ?)
+      `);
+      const partnerMessageId = insertPartnerMsg.run(userId, quickReply, partner.mode).lastInsertRowid;
+
+      // 闲聊不沉淀，直接返回
+      return res.json(success({
+        message: {
+          id: partnerMessageId,
+          role: 'partner',
+          content: quickReply,
+          content_type: 'text',
+          mode: partner.mode,
+          created_at: new Date().toISOString(),
+          is_async_helper: false,
+          precipitation_status: 0
+        },
+        user_message_id: userMessageId
+      }));
+    }
 
     // 调用主协调 Agent
     const agentResult = await mainAgent.callMainAgent(content, history, user, partner);

@@ -471,5 +471,6 @@ module.exports = {
   callMainAgent,
   parseToolCalls,
   cleanToolCallMarkers,
-  executeToolCalls
+  executeToolCalls,
+  generateContextualFallbackReply
 };
