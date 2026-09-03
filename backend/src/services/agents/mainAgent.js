@@ -412,6 +412,41 @@ async function executeToolCalls(toolCalls, userId, userMessage, userInfo, partne
 }
 
 /**
+ * 从用户消息中提取食物实体，用于生成与用户内容相关的兜底回复。
+ * 例如"今天中午吃了8条油炸小黄鱼" → "油炸小黄鱼"
+ */
+function extractFoodEntity(text) {
+  if (!text || typeof text !== 'string') return null;
+  const clean = text
+    .replace(/[，。！？,.!?；;：:\s~～…]+/g, '')
+    .trim();
+
+  // 匹配 吃/喝 后面的内容
+  const m = clean.match(/[吃喝]了?(.+)$/);
+  if (!m) return null;
+
+  let food = m[1];
+  // 去掉开头的时间词
+  food = food.replace(/^(今天|昨天|明天|早上|中午|晚上|下午|上午|昨晚|今夜|宵夜|夜宵|早餐|午餐|晚餐|加餐|早|中|晚)/, '');
+  // 去掉开头的数字+量词
+  food = food.replace(/^[\d.]+\s*(个|份|碗|杯|根|块|片|包|袋|瓶|只|串|勺|条|粒|颗|克|g|公斤|kg|ml|毫升|升|l)?/, '');
+  // 去掉中文数字+量词
+  food = food.replace(/^(一|二|两|三|四|五|六|七|八|九|十|半|几|好几)(个|份|碗|杯|根|块|片|包|袋|瓶|只|串|勺|条|粒|颗|克|g)?/, '');
+  // 去掉常见量词前缀
+  food = food.replace(/^(一个|一份|一碗|一杯|一根|一块|一片|一包|一袋|一瓶|一只|一串|一勺|一条|好几|很多|好多|一点|一些|点|些)?/, '');
+  // 去掉"的"
+  food = food.replace(/^的/, '');
+
+  // 过滤掉太短或明显不是食物的词
+  if (!food || food.length < 2) return null;
+  if (/^(了|的|和|跟|与|还有|再|又)$/.test(food)) return null;
+  // 如果提取结果还包含动词，说明结构复杂，放弃提取
+  if (/[吃喝]|做|买|点|叫/.test(food)) return null;
+
+  return food;
+}
+
+/**
  * 当模型无法返回可用 content 时，基于用户当前语境和搭子模式生成多样化兜底回复。
  * 避免一直重复固定句子。
  */
@@ -436,6 +471,8 @@ function generateContextualFallbackReply(userMessage, history = [], partnerMode 
     /不想动|想放弃|摆烂|躺平|emo/.test(text) ? 'giveup' :
     'neutral';
 
+  const foodEntity = hasFood ? extractFoodEntity(text) : null;
+
   const templates = {
     gentle: {
       casual: ['在呢，我听着呢～', '怎么啦，想跟我说说吗？', '我在，慢慢讲～', '嗯，我陪着你呢～'],
@@ -444,7 +481,9 @@ function generateContextualFallbackReply(userMessage, history = [], partnerMode 
       happy: ['真好，替你开心～', '继续保持，你超棒的！', '好消息就要分享呀～'],
       craving: ['又馋啦？偶尔满足一下也没关系～', '想吃什么？跟我说说，我们一起看看～', '嘴馋很正常，别自责～'],
       giveup: ['别放弃呀，你已经走了这么远了～', '累了就歇，但不要停，我陪你～', '动摇的时候，想想自己为什么开始～'],
-      food: ['又吃到好吃的啦？偶尔放纵一下也没关系～', '饮食上的小纠结吗？我陪你一起理清～', '我记着呢，慢慢来，不着急～', '吃到什么啦？跟我说说～'],
+      food: foodEntity
+        ? [`${foodEntity}？我记下来了，一会儿帮你看看热量～`, `收到，${foodEntity}已记录，稍后告诉你影响～`, `${foodEntity}听起来不错，我帮你记着了～`]
+        : ['又吃到好吃的啦？偶尔放纵一下也没关系～', '饮食上的小纠结吗？我陪你一起理清～', '我记着呢，慢慢来，不着急～', '吃到什么啦？跟我说说～'],
       exercise: ['动起来就是进步，已经很棒啦～', '今天运动了吗？我陪你坚持～', '运动这事，动了就比不动强～'],
       body: ['身体变化我帮你盯着呢，别着急～', '我记下来啦，一起观察变化～', '体重波动很正常，继续按节奏来～'],
       default: ['说说看，我陪你～', '嗯嗯，我在听～', '我在呢，继续讲～', '有什么想跟我聊的吗？']
@@ -456,7 +495,9 @@ function generateContextualFallbackReply(userMessage, history = [], partnerMode 
       happy: ['别得意太早，继续保持。', '好，继续保持这个节奏。', '有进步，但还不够。'],
       craving: ['馋？忍着。', '想吃什么先问热量。', '嘴馋就喝水。'],
       giveup: ['想放弃？想想你立的 flag。', '现在放弃，之前的苦都白受了。', '别让我看不起你。'],
-      food: ['吃了什么直接报。', '饮食记录呢？', '别藏着，吃了多少如实说。'],
+      food: foodEntity
+        ? [`${foodEntity}，吃了多少？我帮你记着。`, `${foodEntity}已记录，热量我稍后算给你。`, `行，${foodEntity}记上了，别超量。`]
+        : ['吃了什么直接报。', '饮食记录呢？', '别藏着，吃了多少如实说。'],
       exercise: ['运动了就说，没运动也老实交代。', '动起来，别光说。', '今天练了什么？'],
       body: ['数据报上来。', '体重/体脂多少？', '别逃避，面对现实。'],
       default: ['说重点。', '我在听，但要说正事。', '有话快说。']
@@ -468,7 +509,9 @@ function generateContextualFallbackReply(userMessage, history = [], partnerMode 
       happy: ['哟，太阳打西边出来了？', '开心成这样，掉秤了？', '继续保持，别让我抓到你偷吃。'],
       craving: ['又馋了？小馋猫本猫。', '说吧，这次盯上啥了？', '馋可以，但得付出代价。'],
       giveup: ['想摆烂？我可不答应。', '躺平可以，躺着变胖也行？', '放弃这两个字，我不想再看到。'],
-      food: ['又惦记吃的了？', '说吧，今天偷吃了啥？', '张嘴让我听听是蛋糕还是奶茶？', '吃货本色不改啊。'],
+      food: foodEntity
+        ? [`${foodEntity}？行吧，我记下来了，吃完这顿给我好好练。`, `哟，${foodEntity}，胆子不小啊，我盯着呢。`, `${foodEntity}都敢吃？我记下了，一会儿给你算笔账。`]
+        : ['又惦记吃的了？', '说吧，今天偷吃了啥？', '张嘴让我听听是蛋糕还是奶茶？', '吃货本色不改啊。'],
       exercise: ['运动了吗？还是只动了动嘴？', '今天的热量债打算怎么还？', '别告诉我你又躺了一天。'],
       body: ['体重涨了不敢说话？', '平台期了？还是又偷吃了？', '数字不会骗人，人呢？'],
       default: ['说，是不是又偷懒了？', '快交代，别让我催。', '你这意志力，我可盯着你呢。', '别装死，说话。']
