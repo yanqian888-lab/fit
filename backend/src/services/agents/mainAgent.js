@@ -118,6 +118,12 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
       reply = generateContextualFallbackReply(userMessage, history, mode, userInfo.id);
     }
 
+    // 过滤模型泄露的内部指令/思考过程（如“扎心之后必须给出具体下一步动作。”）
+    if (toolCalls.length === 0 && isInternalInstruction(reply)) {
+      console.log('[callMainAgent] 主Agent返回疑似内部指令，使用语境化兜底:', reply);
+      reply = generateContextualFallbackReply(userMessage, history, mode, userInfo.id);
+    }
+
     // 强制兜底：如果模型明确要给方案/计算/推荐/适配但没有调用工具，才强制添加工具调用
     // 避免"我怎么这么胖""你怎么不回我"这类口语化表达误触发 Helper
     const forcedHelperPattern = /(方案|计划|安排|帮你算|帮你算算|帮你计算|帮你配|给你算|给你算算|给你整|帮你整|帮你安排|适配|推荐.*食谱|热量多少|消耗多少|BMI|基础代谢|平台期|怎么瘦|怎么减|怎么吃|如何瘦|如何减|吃什么好|适合.*运动|建议.*吃|建议.*练|该吃.*该练)/;
@@ -233,7 +239,8 @@ function extractReplyFromReasoning(reasoning, userMessages = []) {
   }
 
   const thinkPrefixes = /^(思考|分析|首先|其次|然后|因此|所以|综上|结论|那么|这里|现在|接下来|我需|我应|我打算|让我|我需要|我应该|我认为|我觉得|看起来|从上面|基于|根据|由于|因为|虽然|但是|不过|而且|用户问|当前角色|要求|结合|选一个|或者|例如)/;
-  const internalHints = /工具调用|FunctionCall|回复中需要|嵌入工具|调用工具|函数调用|我需要调用|我应该调用|这里应该|请调用|可以调用|毒舌模式|温柔鼓励型|严格监督型|1-3句话|最多50字|50字|字数限制|严格按照|按照.*回复|模式.*回复|回复.*模式|生成.*回复|输出.*回复|系统提示|用户消息|角色设定|人设约束|为了安全|如果不调用|基于记忆|专业人士|直接基于|直接给|我今天|我中午|我早上|我晚上|我吃了|我喝了|我运动|我体重|示例/;
+  // 新增"扎心"类人设指令与"必须给出/之后必须"等内部指令特征
+  const internalHints = /工具调用|FunctionCall|回复中需要|嵌入工具|调用工具|函数调用|我需要调用|我应该调用|这里应该|请调用|可以调用|毒舌模式|温柔鼓励型|严格监督型|1-3句话|最多50字|50字|字数限制|严格按照|按照.*回复|模式.*回复|回复.*模式|生成.*回复|输出.*回复|系统提示|用户消息|角色设定|人设约束|为了安全|如果不调用|基于记忆|专业人士|直接基于|直接给|我今天|我中午|我早上|我晚上|我吃了|我喝了|我运动|我体重|示例|扎心|之后必须|必须给出|给出具体|具体下一步|下一步动作|先.*后.*|先.*再.*|应该给出|需要给出|可以.*回复|回应.*用户/;
 
   function isSafeReply(s) {
     const t = s.trim();
@@ -337,6 +344,31 @@ function isUnhelpfulReply(reply, userMessage) {
   const isReplyQuestion = /[？?]/.test(r);
   if (isReplyQuestion && !isUserQuestion && r.length < 20) return true;
   return false;
+}
+
+/**
+ * 判断模型返回的回复是否是泄露的内部指令/思考过程。
+ * 典型 bad case：用户说"今天上午喝瑞幸的小黄油美式"，模型回"扎心之后必须给出具体下一步动作。"
+ */
+function isInternalInstruction(reply) {
+  if (!reply || typeof reply !== 'string') return false;
+  const r = reply.trim();
+  if (!r) return false;
+
+  // 明显的人设/系统指令关键词
+  const internalPatterns = [
+    /扎心.*(必须|应该|给出|动作|建议|回复|毒舌)/,
+    /(必须|应该|需要|可以|要)(给出|提供|输出|生成|回复|回应|告诉).*(具体|下一步|实际|动作|建议|方案|计划)/,
+    /(之后|然后|接着|同时)(必须|应该|需要|要)(给出|提供|输出|生成|回复|回应|告诉)/,
+    /(先|首先).*(后|再|然后|接着).*(必须|应该|需要|给出|提供|动作|建议|回复|回应)/,
+    /(具体|实际)?(下一步|后续)(动作|步骤|建议|计划|方案|回复)/,
+    /(人设|角色|模式|性格|语气|风格|系统提示|指令|prompt|Prompt).*(要求|约束|设定|必须|应该|按照)/,
+    /(回复|回应|回答)(中|里|时|要|应|需)(包含|有|带|体现|保持)/,
+    /(不能|不要|不可|避免)(只|仅仅|单纯)(回复|回应|回答|说)/,
+    /(用户|对方)(问|说|提到|表达).*(我|我们)(应该|需要|必须|可以)/
+  ];
+
+  return internalPatterns.some(p => p.test(r));
 }
 
 /**
