@@ -13,6 +13,23 @@ function normalizeStatus(status) {
   return status ? 1 : 0;
 }
 
+/**
+ * 解析 condition_json 字段
+ * 数据库中存储的是 JSON 字符串，需要解析为对象后返回给前端
+ * @param {string|object|null} raw - condition_json 原始值
+ * @returns {object} 解析后的对象，解析失败返回空对象
+ */
+function parseConditionJson(raw) {
+  if (!raw) return {};
+  if (typeof raw === 'object') return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function list(req, res) {
   const page = parseInt(req.query.page) || 1;
   const size = Math.min(100, Math.max(1, parseInt(req.query.size) || 20));
@@ -39,12 +56,18 @@ function list(req, res) {
 
   const total = db.prepare(`SELECT COUNT(*) as count FROM tasks ${where}`).get(...params).count;
 
-  const list = db.prepare(`
+  const rows = db.prepare(`
     SELECT * FROM tasks
     ${where}
     ORDER BY sort_order ASC, id ASC
     LIMIT ? OFFSET ?
   `).all(...params, size, offset);
+
+  // 解析 condition_json 字段，确保返回对象而非字符串
+  const list = rows.map(row => ({
+    ...row,
+    condition_json: parseConditionJson(row.condition_json)
+  }));
 
   return res.json(success({
     list,
@@ -59,6 +82,8 @@ function getById(req, res) {
   if (!item) {
     return res.status(404).json(error('任务不存在', 404));
   }
+  // 解析 condition_json 字段，确保返回对象而非字符串
+  item.condition_json = parseConditionJson(item.condition_json);
   return res.json(success(item));
 }
 

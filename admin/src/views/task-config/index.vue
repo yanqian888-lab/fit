@@ -119,7 +119,12 @@ function reset() {
 
 function openDialog(row = null) {
   if (row) {
-    const cond = row.condition_json && typeof row.condition_json === 'object' ? row.condition_json : {}
+    // 防御性解析：condition_json 可能是 JSON 字符串（后端未解析时）或对象（已解析后）
+    let rawCond = row.condition_json
+    if (typeof rawCond === 'string') {
+      try { rawCond = JSON.parse(rawCond) } catch { rawCond = {} }
+    }
+    const cond = rawCond && typeof rawCond === 'object' ? rawCond : {}
     form.value = { ...row, status: Boolean(row.status), condition_json: { action: cond.action || '', count: cond.count || 1 } }
   } else {
     form.value = { name: '', type: 'daily', description: '', condition_json: emptyCondition(), reward_berries: 0, reward_flowers: 0, jump_page: '', sort_order: 0, start_time: '', end_time: '', status: true }
