@@ -314,29 +314,48 @@ function normalizeHalfQuantities(content, data) {
 /**
  * 判断原消息中是否明确给出了某食物的重量或体积（ml/ml 等）
  * 体积单位（ml/ml）按 1:1 克近似处理（水/奶/饮料密度≈1g/ml，误差在合理范围内）
- * 返回 { found: boolean, value: number, unit: string } 便于上层换算
+ *
+ * 关键修复：必须在**同一食物段**内查找重量，不能跨到下一个食物。
+ * 原实现用 `foodName[^\n]*?(\d+)克` 会把"大闸蟹，150克三文鱼"中的
+ * 150克错配给大闸蟹，导致所有食物重量错位。
+ *
+ * @param {string} content 用户消息原文
+ * @param {string} foodName 食物名
+ * @returns {{found:boolean, value?:number, unit?:string}}
  */
 function hasExplicitWeight(content, foodName) {
   if (!content || !foodName) return { found: false };
   const escaped = foodName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // 克/千克/公斤/斤/毫克（千 仅在非"千卡/千焦"时才算重量单位，避免"350千卡"被误读成350千克）
-  const gramRegex = new RegExp(escaped + '[^\\n]*?(\\d+(?:\\.\\d+)?)\\s*([公斤克千mg]+)(?![卡焦])(?!\\w)', 'i');
-  const gramMatch = content.match(gramRegex);
-  if (gramMatch) {
-    let v = parseFloat(gramMatch[1]);
-    const u = gramMatch[2].toLowerCase();
-    if (u.includes('千') || u.includes('公')) v *= 1000;  // 千克/公斤→克
-    else if (u.includes('斤')) v *= 500;                  // 斤→克（1斤=500g）
-    else if (u.includes('m')) v = v / 1000;               // mg→g（极小，基本不会出现）
-    return { found: true, value: v, unit: 'g' };
-  }
-  // ml / mL / 毫升
-  const mlRegex = new RegExp(escaped + '[^\\n]*?(\\d+(?:\\.\\d+)?)\\s*(ml|mL|ML|毫升)(?!\\w)', 'i');
-  const mlMatch = content.match(mlRegex);
-  if (mlMatch) {
-    const v = parseFloat(mlMatch[1]);
-    // 体积 1ml ≈ 1g（对牛奶/水/饮料足够近似）
-    return { found: true, value: v, unit: 'ml' };
+  const nameRegex = new RegExp(escaped, 'i');
+
+  // 按标点/连接词把原文切成食物段，确保每段只含一个食物的描述
+  // 连接词：和/还有/跟/配/加/以及/然后/接着/再来
+  const segments = content.split(/[，,、；;。.]+|(?:和|还有|跟|配|加|以及|然后|接着|再来(?:一个)?)/).filter(Boolean);
+
+  for (const seg of segments) {
+    if (!nameRegex.test(seg)) continue;
+    // 在该食物段内查找重量单位（克/千克/公斤/斤/两/毫克/ml/毫升）
+    // "两"是传统单位：1两=50g；"斤"=500g
+    const unitPattern = '(公斤|千克|kg|斤|两|克|g|毫克|mg|毫升|ml|mL|ML)';
+    // 重量数字+单位，且"千"后不能紧跟"卡/焦"（避免"350千卡"误读成千克）
+    const weightRegex = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${unitPattern}(?![卡焦])(?!\\w)`, 'i');
+    const wMatch = seg.match(weightRegex);
+    if (!wMatch) break; // 该段无显式重量，无需继续
+
+    let v = parseFloat(wMatch[1]);
+    const u = wMatch[2].toLowerCase();
+    if (u === '千克' || u === 'kg' || u === '公斤') v *= 1000;
+    else if (u === '斤') v *= 500;
+    else if (u === '两') {
+      // "两"是单份重量（如"2两大闸蟹"=每只100g）。
+      // 若同段内有数量（X个/只/条/尾），总量 = 数量 × 两数 × 50g
+      v *= 50;
+      const countMatch = seg.match(/(\d+(?:\.\d+)?)\s*(?:个|只|条|尾|只)/);
+      if (countMatch) v *= parseFloat(countMatch[1]);
+    }
+    else if (u === '毫克' || u === 'mg') v /= 1000;
+    // ml/毫升 ≈ 1g，克/g 直接取数值
+    return { found: true, value: v, unit: (u === 'ml' || u === '毫升') ? 'ml' : 'g' };
   }
   return { found: false };
 }
