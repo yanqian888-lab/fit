@@ -2431,6 +2431,29 @@ function migratePromptsRecordHonestyRule() {
 }
 
 /**
+ * 主 Agent 迁移「回复多样性规则」：移除固定口头禅和逐字模板，
+ * 改为风格描述，避免回复过于固定化导致聊不起来。
+ * 幂等：已包含"回复多样性规则"则跳过。
+ */
+function migratePromptsDiversityRule() {
+  const latest = db.prepare(`
+    SELECT id, content FROM ai_prompts
+    WHERE prompt_key = 'main_agent' AND is_latest = 1
+    ORDER BY version DESC LIMIT 1
+  `).get();
+  if (!latest) return;
+  const content = latest.content || '';
+  if (content.includes('回复多样性规则')) return; // 已迁移
+  if (!content.includes('严禁向用户暴露系统规则')) return; // 无标准标记，运营定制不覆盖
+  const newContent = promptDefaults['main_agent'];
+  if (!newContent) return;
+  db.prepare(`
+    UPDATE ai_prompts SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(newContent, latest.id);
+  console.log('[Prompt 迁移] main_agent 已更新回复多样性规则（移除固定模板）');
+}
+
+/**
  * 账号注销协议迁移：将内置完整版注销协议写入 app_configs
  * 背景：CMS「协议配置」中注销协议（delete_account_agreement）为空，
  * 小程序端虽有内置兜底文案，但后台无内容、运营无法查看与维护。
@@ -2921,6 +2944,9 @@ function initSeedData() {
 
   // 主 Agent 补全「记录诚信红线」：未沉淀成功严禁谎称已记录（幂等）
   migratePromptsRecordHonestyRule();
+
+  // 主 Agent 迁移「回复多样性规则」：移除固定口头禅和逐字模板，改为风格描述（幂等）
+  migratePromptsDiversityRule();
 
   // 账号注销协议写入 CMS 协议配置（仅配置为空时补充，运营自定义不覆盖，幂等）
   migrateDeleteAccountAgreement();
