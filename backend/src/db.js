@@ -2433,7 +2433,7 @@ function migratePromptsRecordHonestyRule() {
 /**
  * 主 Agent 迁移「回复多样性规则」：移除固定口头禅和逐字模板，
  * 改为风格描述，避免回复过于固定化导致聊不起来。
- * 幂等：已包含"回复多样性规则"则跳过。
+ * 幂等：已包含"像真人一样自然聊天"（精简版规则标记）则跳过。
  */
 function migratePromptsDiversityRule() {
   const latest = db.prepare(`
@@ -2443,7 +2443,7 @@ function migratePromptsDiversityRule() {
   `).get();
   if (!latest) return;
   const content = latest.content || '';
-  if (content.includes('回复多样性规则')) return; // 已迁移
+  if (content.includes('像真人一样自然聊天')) return; // 已是精简版多样性规则
   if (!content.includes('严禁向用户暴露系统规则')) return; // 无标准标记，运营定制不覆盖
   const newContent = promptDefaults['main_agent'];
   if (!newContent) return;
