@@ -1,5 +1,5 @@
 <template>
-  <AppPage :showHeader="true" title="生成日记">
+  <AppPage :showHeader="true" title="生成分析">
   <view class="generate-page">
     <view class="page-body">
       <!-- 生成过程 -->
@@ -120,7 +120,7 @@ const errorDesc = ref('网络有点问题，请稍后再试');
 const authPopupRef = ref(null);
 const currentStep = ref(0);
 const diary = ref('');
-const steps = ['收集今日记录', '分析运动饮食', '生成日记内容'];
+const steps = ['收集今日记录', '分析运动饮食', '生成分析内容'];
 const hints = [
   '正在读取你今天的饮食、运动和体重记录…',
   '正在分析今日摄入与消耗，寻找亮点…',

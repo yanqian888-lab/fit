@@ -13,6 +13,14 @@
       <el-table :data="list" v-loading="loading" border empty-text="暂无内容" @filter-change="handleFilterChange">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="food_name" label="名称" />
+        <el-table-column label="别名" min-width="200">
+          <template #default="{ row }">
+            <template v-if="parseAliases(row.aliases).length">
+              <el-tag v-for="a in parseAliases(row.aliases)" :key="a" size="small" class="alias-tag">{{ a }}</el-tag>
+            </template>
+            <span v-else class="alias-empty">-</span>
+          </template>
+        </el-table-column>
         <el-table-column
           prop="category"
           label="分类"
@@ -25,6 +33,14 @@
         <el-table-column prop="protein_per_100g" label="蛋白质" width="90" />
         <el-table-column prop="carb_per_100g" label="碳水" width="90" />
         <el-table-column prop="fat_per_100g" label="脂肪" width="90" />
+        <el-table-column label="来源" width="150">
+          <template #default="{ row }">
+            <el-tag v-if="row.source === 'cnfood6'" type="success" size="small">中国食物成分表第6版</el-tag>
+            <el-tag v-else-if="row.source === 'cn-brands'" type="warning" size="small">品牌官方数据</el-tag>
+            <el-tag v-else-if="row.source === 'user'" type="danger" size="small">用户创建</el-tag>
+            <el-tag v-else size="small">本身</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="160">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDialog(row)" v-perm="'food_lib:write'">编辑</el-button>
@@ -40,6 +56,12 @@
         <el-form-item label="名称"><el-input v-model="form.food_name" /></el-form-item>
         <el-form-item label="分类"><el-input v-model="form.category" /></el-form-item>
         <el-form-item label="子分类"><el-input v-model="form.sub_category" /></el-form-item>
+        <el-form-item label="别名">
+          <el-select v-model="form.aliases" multiple filterable allow-create default-first-option placeholder="输入别名后回车添加">
+            <el-option v-for="a in form.aliases" :key="a" :label="a" :value="a" />
+          </el-select>
+          <div class="form-tip">用户口语可能用这些别名匹配到此食物</div>
+        </el-form-item>
         <el-form-item label="热量/100g"><el-input-number v-model="form.calories_per_100g" :precision="2" /></el-form-item>
         <el-form-item label="蛋白质"><el-input-number v-model="form.protein_per_100g" :precision="2" /></el-form-item>
         <el-form-item label="碳水"><el-input-number v-model="form.carb_per_100g" :precision="2" /></el-form-item>
@@ -74,7 +96,7 @@ const total = ref(0)
 const categories = ref([])
 const query = ref({ keyword: '', category: '', page: 1, size: 20 })
 const dialogVisible = ref(false)
-const form = ref({ food_name: '', category: '', sub_category: '', calories_per_100g: 0, protein_per_100g: 0, carb_per_100g: 0, fat_per_100g: 0, common_unit: '', remark: '' })
+const form = ref({ food_name: '', category: '', sub_category: '', calories_per_100g: 0, protein_per_100g: 0, carb_per_100g: 0, fat_per_100g: 0, common_unit: '', remark: '', aliases: [] })
 
 onMounted(load)
 
@@ -105,8 +127,27 @@ function reset() {
   load()
 }
 
+/**
+ * 解析数据库 aliases JSON 字段为数组
+ * @param {string|null} raw - 数据库存储的 JSON 字符串，如 '["青岛经典"]'
+ * @returns {string[]} 别名数组，解析失败或空时返回空数组
+ */
+function parseAliases(raw) {
+  if (!raw) return []
+  try {
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr.filter(Boolean) : []
+  } catch {
+    return []
+  }
+}
+
 function openDialog(row = null) {
-  form.value = row ? { ...row } : { food_name: '', category: '', sub_category: '', calories_per_100g: 0, protein_per_100g: 0, carb_per_100g: 0, fat_per_100g: 0, common_unit: '', remark: '' }
+  if (row) {
+    form.value = { ...row, aliases: parseAliases(row.aliases) }
+  } else {
+    form.value = { food_name: '', category: '', sub_category: '', calories_per_100g: 0, protein_per_100g: 0, carb_per_100g: 0, fat_per_100g: 0, common_unit: '', remark: '', aliases: [] }
+  }
   dialogVisible.value = true
 }
 
@@ -139,5 +180,19 @@ async function remove(row) {
 .pagination {
   margin-top: 16px;
   justify-content: flex-end;
+}
+.alias-tag {
+  margin-right: 4px;
+  margin-bottom: 2px;
+}
+.alias-empty {
+  color: #c0c4cc;
+  font-size: 12px;
+}
+.form-tip {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 4px;
 }
 </style>

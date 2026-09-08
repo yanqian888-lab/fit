@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { authApi, userApi } from '../api';
+import { setUmengOpenid } from '../utils/umeng';
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(uni.getStorageSync('token') || '');
@@ -20,6 +21,10 @@ export const useUserStore = defineStore('user', () => {
       if (storedUser) {
         try {
           userInfo.value = typeof storedUser === 'string' ? JSON.parse(storedUser) : storedUser;
+          // 友盟埋点：启动恢复登录态时，若本地已缓存 openid 则立即上报（无网络也能先关联）
+          if (userInfo.value && userInfo.value.openid) {
+            setUmengOpenid(userInfo.value.openid);
+          }
         } catch (e) {
           console.warn('[store] 恢复 userInfo 失败:', e);
         }
@@ -45,6 +50,14 @@ export const useUserStore = defineStore('user', () => {
     uni.setStorageSync('token', newToken);
     if (user) {
       uni.setStorageSync('userInfo', typeof user === 'string' ? user : JSON.stringify(user));
+      // 友盟埋点：登录成功后上报 openid（user 可能是对象或 JSON 字符串，兼容解析）
+      let openid = null;
+      if (typeof user === 'string') {
+        try { openid = JSON.parse(user).openid; } catch (e) { openid = null; }
+      } else {
+        openid = user.openid;
+      }
+      if (openid) setUmengOpenid(openid);
     }
   }
 
@@ -69,6 +82,10 @@ export const useUserStore = defineStore('user', () => {
       userInfo.value = res.data;
       // 保存最新 userInfo 到 storage，保证下次初始化正确
       uni.setStorageSync('userInfo', JSON.stringify(res.data));
+      // 友盟埋点：getMe 返回最新 openid 后上报（覆盖已登录老用户启动场景）
+      if (res.data && res.data.openid) {
+        setUmengOpenid(res.data.openid);
+      }
       return res.data;
     } catch (err) {
       console.error('获取用户信息失败:', err);

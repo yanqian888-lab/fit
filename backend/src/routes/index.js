@@ -41,7 +41,6 @@ const uploadController = require('../controllers/uploadController');
 const companionController = require('../controllers/companionController');
 const newbieTaskController = require('../controllers/newbieTaskController');
 const workoutController = require('../controllers/workoutController');
-const voiceController = require('../controllers/voiceController');
 const cmsPetController = require('../controllers/cmsPetController');
 const cmsCurrencyController = require('../controllers/cmsCurrencyController');
 const cmsShopController = require('../controllers/cmsShopController');
@@ -494,10 +493,6 @@ router.get('/methods', authMiddleware, methodController.getMethods);
 router.post('/methods', authMiddleware, methodController.addMethod);
 router.put('/methods/:id', authMiddleware, methodController.updateMethod);
 router.delete('/methods/:id', authMiddleware, methodController.deleteMethod);
-
-// 语音输入/输出
-router.post('/voice/transcribe', authMiddleware, voiceController.transcribe);
-router.post('/voice/tts', authMiddleware, voiceController.textToSpeech);
 
 // 照片/对比墙
 router.get('/photos', authMiddleware, photoController.getPhotos);

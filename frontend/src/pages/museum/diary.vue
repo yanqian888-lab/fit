@@ -57,7 +57,7 @@
 
         <view v-if="todayDiaryContent" class="diary-card">
           <view class="diary-header">
-            <text class="diary-date">{{ todayStr }} 日记</text>
+            <text class="diary-date">{{ todayStr }} 分析</text>
             <text class="diary-status">已生成</text>
           </view>
           <text class="diary-content">{{ todayDiaryContent }}</text>
@@ -65,20 +65,20 @@
 
         <view v-if="selectedDate && selectedDate !== todayStr" class="diary-card">
           <view class="diary-header">
-            <text class="diary-date">{{ selectedDate }} 日记</text>
+            <text class="diary-date">{{ selectedDate }} 分析</text>
             <text v-if="selectedDiary" class="diary-status">已生成</text>
             <text v-else class="diary-status pending">未生成</text>
           </view>
           <text v-if="selectedDiary" class="diary-content">{{ selectedDiary }}</text>
           <view v-else class="diary-empty">
             <image class="empty-image" :src="resolveStaticUrl('/static/image/icon/quesheng01.png')" mode="aspectFit" />
-            <text class="empty-text">这一天还没有日记</text>
+            <text class="empty-text">这一天还没有分析</text>
           </view>
         </view>
 
         <view v-if="monthlyDiary" class="diary-card monthly">
           <view class="diary-header">
-            <text class="diary-date">{{ monthlyMonth }} 月度日记</text>
+            <text class="diary-date">{{ monthlyMonth }} 月度分析</text>
           </view>
           <text class="diary-content">{{ monthlyDiary }}</text>
         </view>
@@ -96,7 +96,7 @@
       >
         <image v-if="loading" class="btn-loading" src="/static/image/icon/loading01.svg" mode="aspectFit" />
         <text v-if="loading">生成中...</text>
-        <text v-else>{{ selectedDiary ? '重新生成' : '生成日记' }}</text>
+        <text v-else>{{ selectedDiary ? '重新生成' : '生成分析' }}</text>
       </view>
     </view>
 
@@ -387,7 +387,7 @@ async function generateDailyDiary() {
                        (exercise.total_duration || 0) > 0;
 
     if (!hasRecords) {
-      uni.showToast({ title: '这一天没有记录，无法生成日记', icon: 'none' });
+      uni.showToast({ title: '这一天没有记录，无法生成分析', icon: 'none' });
       return;
     }
   } catch (err) {
@@ -397,11 +397,11 @@ async function generateDailyDiary() {
   }
 
   loading.value = true;
-  showGlobalLoading({ text: '正在生成日记…' });
+  showGlobalLoading({ text: '正在生成分析…' });
   try {
     const res = await aiApi.generateDiary(selectedDate.value, getFastingParams(selectedDate.value));
     diaries.value[selectedDate.value] = res.data.diary;
-    uni.showToast({ title: '日记已生成', icon: 'success' });
+    uni.showToast({ title: '分析已生成', icon: 'success' });
     // 成功后上报日记生成次数
     reportCount('diary');
   } catch (err) {

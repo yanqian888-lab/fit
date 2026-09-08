@@ -21,11 +21,19 @@ export const routes = [
     children: [
       { path: '/app-config/protocol', title: '协议配置', icon: 'DocumentCopy', perm: 'app_config:read' },
       { path: '/template-config', title: '模板消息', icon: 'ChatLineRound', perm: 'template_config:read' },
-      { path: '/food-lib', title: '公共食品库', icon: 'Food', perm: 'food_lib:read' },
-      { path: '/custom-food-audit', title: '自定义食物审核', icon: 'DocumentChecked', perm: 'food_lib:read' },
       { path: '/exercise-lib', title: '运动库', icon: 'Basketball', perm: 'exercise_lib:read' },
       { path: '/milestone-config', title: '里程碑文案', icon: 'Trophy', perm: 'milestone:read' },
       { path: '/museum-config', title: '博物馆入口', icon: 'Grid', perm: 'museum_config:read' }
+    ]
+  },
+  {
+    path: '/food-lib',
+    title: '食品库',
+    icon: 'Food',
+    perm: 'food_lib:read',
+    children: [
+      { path: '/food-lib/list', title: '公共食品库', icon: 'Food', perm: 'food_lib:read' },
+      { path: '/food-lib/audit', title: '自定义食物审核', icon: 'DocumentChecked', perm: 'food_lib:read' }
     ]
   },
   {

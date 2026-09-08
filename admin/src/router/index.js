@@ -30,8 +30,15 @@ const routes = [
       { path: 'app-users', component: () => import('@/views/app-users/index.vue'), meta: { title: 'C端用户', icon: 'UserFilled', perm: 'app_user:read' } },
       { path: 'app-users/:id', component: () => import('@/views/app-users/detail.vue'), meta: { title: '用户详情', icon: 'UserFilled', perm: 'app_user:read' } },
       { path: 'feedbacks', component: () => import('@/views/feedbacks/index.vue'), meta: { title: '反馈管理', icon: 'Message', perm: 'feedback:read' } },
-      { path: 'food-lib', component: () => import('@/views/food-lib/index.vue'), meta: { title: '公共食品库', icon: 'Food', perm: 'food_lib:read' } },
-      { path: 'custom-food-audit', component: () => import('@/views/custom-food-audit/index.vue'), meta: { title: '自定义食物审核', icon: 'DocumentChecked', perm: 'food_lib:read' } },
+      {
+        path: 'food-lib',
+        meta: { title: '食品库', icon: 'Food', perm: 'food_lib:read' },
+        redirect: '/food-lib/list',
+        children: [
+          { path: 'list', component: () => import('@/views/food-lib/index.vue'), meta: { title: '公共食品库', icon: 'Food', perm: 'food_lib:read' } },
+          { path: 'audit', component: () => import('@/views/custom-food-audit/index.vue'), meta: { title: '自定义食物审核', icon: 'DocumentChecked', perm: 'food_lib:read' } }
+        ]
+      },
       { path: 'exercise-lib', component: () => import('@/views/exercise-lib/index.vue'), meta: { title: '运动库', icon: 'Basketball', perm: 'exercise_lib:read' } },
       {
         path: 'cms-users',

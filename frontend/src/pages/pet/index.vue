@@ -1190,10 +1190,16 @@ function wrapShareText(ctx, text, maxWidth, maxLines) {
 }
 
 // 生成事件分享图，返回临时文件路径（H5 为 dataURL）
+// 单张图加载失败不阻塞整张海报：事件图降级为默认图，二维码降级为本地占位图
 async function buildEventShareImage(ev, photoUrl) {
+  const loadOrFallback = (src, fallbackSrc) =>
+    loadDrawableImage(src).catch((err) => {
+      console.warn('[pet] 分享图加载失败，使用兜底图:', src, err?.errMsg || err?.message || err);
+      return loadDrawableImage(fallbackSrc);
+    });
   const [photo, qr] = await Promise.all([
-    loadDrawableImage(photoUrl),
-    loadDrawableImage(shareQrUrl.value)
+    loadOrFallback(photoUrl, eventDefaultUrl),
+    loadOrFallback(shareQrUrl.value, SHARE_QR_PLACEHOLDER)
   ]);
   const ctx = uni.createCanvasContext('eventShareCanvas');
   const W = SHARE_CANVAS_W;
@@ -1286,7 +1292,7 @@ async function buildEventShareImage(ev, photoUrl) {
           destWidth: W,
           destHeight: H,
           success: (res) => resolve(res.tempFilePath),
-          fail: reject
+          fail: (err) => reject(new Error(err?.errMsg || 'canvas export failed'))
         });
       }, 80);
     });
@@ -1569,8 +1575,9 @@ onUnmounted(() => {
   width: 100%;
   height: 100vh;
   overflow: hidden;
-  /* 页面背景透明，让 scene-stage 的背景图从顶部状态栏位置显示 */
-  background: transparent;
+  /* 页面底色统一为浅绿色 #F7FBF4，scene-stage 场景图铺在上方，未覆盖区域（tabBar 上方、功能面板左右缩进）
+     自然透出浅绿色，形成从场景图底部 → 功能面板背后 → tabBar 的一整片浅绿色衬底 */
+  background: #F7FBF4;
 }
 
 .status-bar {
@@ -1591,25 +1598,25 @@ onUnmounted(() => {
   top: 0;
   left: 0;
   right: 0;
-  /*
-   * 向下扩展背景图高度，减少浅绿色底色区域：
-   * 背景图下沿接近功能区底部，仅保留功能区本身所需的浅绿色背景。
-   * 功能区底部距 tabBar 16rpx，因此场景舞台下沿设为 16rpx。
-   */
-  bottom: calc(16rpx + env(safe-area-inset-bottom));
+  /* 场景图一直铺到 tabBar 上方（不留 16rpx gap），
+     让浅绿色从场景图底部 → 功能面板背后 → tabBar 连成一整片 */
+  bottom: env(safe-area-inset-bottom);
   overflow: hidden;
   touch-action: none;
   user-select: none;
-  /* 兜底背景色：场景图加载失败时至少显示浅绿色，避免整页空白 */
-  background: #E8F6D7;
+  /* 兜底背景色：场景图加载失败时显示统一浅绿色 #F7FBF4 */
+  background: #F7FBF4;
 }
 
 .scene-map {
   position: absolute;
   top: 0;
   left: 0;
-  height: 100%;
+  /* 场景图只铺到功能区卡片顶部：功能区高 160rpx，下方留给 scene-stage 浅绿色背景 */
+  height: calc(100% - 160rpx);
   will-change: transform;
+  /* 防止场景物品超出底部被截断时出现滚动条 */
+  overflow: hidden;
 }
 
 .scene-bg {
@@ -1792,11 +1799,11 @@ onUnmounted(() => {
   position: absolute;
   left: 32rpx;
   right: 32rpx;
-  /* 功能区底部与 tabBar 顶部保持 8px（16rpx）间距 */
-  bottom: 16rpx;
+  /* 功能区底部紧贴 tabBar 上方，上移 8px(16rpx) */
+  bottom: calc(env(safe-area-inset-bottom) + 16rpx);
   height: 160rpx;
-  /* 功能区保持完整的浅绿色背景 */
-  background: #E8F6D7;
+  /* 功能区背景色统一为 #F7FBF4，与 pet-page / scene-stage 衬底一致 */
+  background: #F7FBF4;
   border-radius: 24rpx;
   display: flex;
   align-items: center;

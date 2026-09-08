@@ -111,16 +111,21 @@ function reset() {
 }
 
 function openDialog(row = null) {
-  form.value = row ? { ...row } : { template_type: types.value[0] || '', mode: modes.value[0] || '', content: '', sort_order: 0, is_enabled: true }
+  // 后端 SQLite 返回 0/1 整数，el-switch 期望 true/false 布尔，必须转换
+  form.value = row
+    ? { ...row, is_enabled: !!row.is_enabled }
+    : { template_type: types.value[0] || '', mode: modes.value[0] || '', content: '', sort_order: 0, is_enabled: true }
   dialogVisible.value = true
 }
 
 async function save() {
   try {
+    // 提交时把布尔转回 0/1 整数，保持后端数据类型一致
+    const payload = { ...form.value, is_enabled: form.value.is_enabled ? 1 : 0 }
     if (form.value.id) {
-      await cmsTemplateApi.update(form.value.id, form.value)
+      await cmsTemplateApi.update(form.value.id, payload)
     } else {
-      await cmsTemplateApi.create(form.value)
+      await cmsTemplateApi.create(payload)
     }
     ElMessage.success('保存成功')
     dialogVisible.value = false

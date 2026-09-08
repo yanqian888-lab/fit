@@ -456,7 +456,9 @@ async function sendMessage(req, res) {
 
     // 检查是否需要调用 helperAgent（工具调用或兜底）
     const hasFood = containsAnyKeyword(content, FOOD_KEYWORDS);
-    const hasExercise = containsAnyKeyword(content, EXERCISE_KEYWORDS);
+    // "爬了6层/爬N层楼"不含"爬楼"连用词，用楼层正则补识别运动意图
+    const hasExercise = containsAnyKeyword(content, EXERCISE_KEYWORDS)
+      || /爬(?:了|过)?\s*\d+(?:\.\d+)?\s*层/.test(content);
     // 纯闲聊不调用 helper，也不走沉淀
     const needsHelper = !isCasual && (
       (agentResult.toolCalls && agentResult.toolCalls.some(t =>
@@ -546,17 +548,17 @@ async function sendMessage(req, res) {
       setTimeout(async () => {
         try {
           // 等待沉淀Agent完成，确保当前消息的饮食/运动记录已写入后再回答
-          // 沉淀涉及 LLM 调用，通常 3-10 秒，最多等 20 秒；超时仍继续调用 helperAgent
+          // 沉淀涉及 LLM 调用，通常 3-10 秒，最多等 20 秒；超时仍继续调用 helperAgent（helper 会按"结果未知"保守回复）
           const precipitationResult = await Promise.race([
             precipitationPromise,
             new Promise(r => setTimeout(r, 20000))
           ]);
-          if (!precipitationResult || precipitationResult.extracted === false) {
-            
-          }
 
-          
-          let helperAnswer = await helperAgent.callHelperAgent(helperQuestion, user, partner);
+          // 把沉淀结果透传给 helper：搭子必须基于真实沉淀结果反馈记录状态，
+          // 沉淀失败/未提取到时严禁对用户谎称"已经记录好"
+          let helperAnswer = await helperAgent.callHelperAgent(helperQuestion, user, partner, {
+            precipitation: precipitationResult
+          });
           let isUnhelpful = !helperAnswer || /没有思路|换个问法|我不太明白|不知道你在说什么/i.test(helperAnswer);
 
           // 兜底：helper 返回空/无用，但沉淀已成功提取数据时，用沉淀数据生成本地确认回复
@@ -629,12 +631,19 @@ async function sendMessage(req, res) {
     // 执行工具调用（helper / 跳转）- 同步模式
     // 纯闲聊跳过工具调用，避免 helper 继续返回专业数据
     if (!isCasual && agentResult.toolCalls && agentResult.toolCalls.length > 0) {
+      // 等待本轮沉淀结果：mainAgent 决策期间沉淀已在并行执行，此处通常已完成；
+      // 透传给 helper，使其只能基于真实沉淀结果反馈"是否已记录"，最多等 15 秒
+      const syncPrecipitationResult = await Promise.race([
+        precipitationPromise,
+        new Promise(r => setTimeout(r, 15000))
+      ]);
       const toolResults = await mainAgent.executeToolCalls(
         agentResult.toolCalls,
         userId,
         content,
         user,
-        partner
+        partner,
+        syncPrecipitationResult
       );
 
       for (const result of toolResults) {
@@ -652,7 +661,14 @@ async function sendMessage(req, res) {
     // 兜底：如果主Agent没有调用helper且用户问题明显是专业问题，强制调用
     if (!helperInfo && isProfessionalQuestion(content) && (!finalReply || finalReply === '嗯嗯，我在听～')) {
       try {
-        const helperAnswer = await helperAgent.callHelperAgent(content, user, partner);
+        // 同样等待沉淀结果后再调用，避免搭子在未沉淀成功时谎称已记录
+        const fallbackPrecipitationResult = await Promise.race([
+          precipitationPromise,
+          new Promise(r => setTimeout(r, 15000))
+        ]);
+        const helperAnswer = await helperAgent.callHelperAgent(content, user, partner, {
+          precipitation: fallbackPrecipitationResult
+        });
         if (helperAnswer) {
           helperInfo = helperAnswer;
           finalReply = helperAnswer;
@@ -970,14 +986,20 @@ function isMethodContent(content) {
 }
 
 /**
- * 根据沉淀结果生成本地兜底回复
- * 当 helperAgent 返回空/无用内容时，用沉淀数据直接告诉用户已记录什么
+ * 基于沉淀结果生成本地确认回复（helper 超时/无用时兜底）
+ * 仅当沉淀确实提取到数据（extracted_data 存在）时才允许说"已记录"；
+ * status=2 为待确认状态，措辞改为"先记下来、待确认"，不谎称已生效
+ * @param {object} precipitationResult callPrecipitationAgent 返回结果
+ * @returns {string|null} 确认回复文本；无有效沉淀数据时返回 null
  */
 function buildLocalHelperResponse(precipitationResult) {
   if (!precipitationResult || !precipitationResult.extracted_data) return null;
 
   const data = precipitationResult.extracted_data;
   const type = precipitationResult.type;
+  // status=2：低置信度待确认，记录尚未正式生效，措辞需保守
+  const pending = precipitationResult.status === 2;
+  const donePrefix = pending ? '我先帮你记下来了（点确认卡片核对后生效）' : '已帮你记录';
 
   if (type === 'diet_record') {
     const foods = Array.isArray(data.foods) ? data.foods : [];
@@ -985,14 +1007,18 @@ function buildLocalHelperResponse(precipitationResult) {
     const mealMap = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' };
     const mealName = mealMap[data.meal_time] || '饮食';
     const foodLines = foods.map(f => `${f.name || '食物'}约${Math.round(f.calorie || 0)}千卡`).join('、');
-    return `已帮你记录${mealName}：${foodLines}。`;
+    return pending
+      ? `${donePrefix}${mealName}：${foodLines}，你确认一下哦。`
+      : `${donePrefix}${mealName}：${foodLines}。`;
   }
 
   if (type === 'exercise_record') {
     const exercises = Array.isArray(data.exercises) ? data.exercises : [];
     if (exercises.length === 0) return null;
     const exLines = exercises.map(e => `${e.name || '运动'}${e.duration || 0}分钟约${Math.round(e.calorie || 0)}千卡`).join('、');
-    return `已帮你记录运动：${exLines}。`;
+    return pending
+      ? `${donePrefix}运动：${exLines}，你确认一下哦。`
+      : `${donePrefix}运动：${exLines}。`;
   }
 
   if (type === 'body_data') {
@@ -1003,7 +1029,9 @@ function buildLocalHelperResponse(precipitationResult) {
     if (items.length === 0) return null;
     const subMap = { weight: '体重', body_fat: '体脂率', waist: '腰围', hip: '臀围', chest: '胸围', arm: '手臂围', thigh: '大腿围', calf: '小腿围' };
     const lines = items.map(i => `${subMap[i.sub_type] || i.sub_type}${i.value}${i.unit || ''}`).join('、');
-    return `已帮你记录身体数据：${lines}。`;
+    return pending
+      ? `${donePrefix}身体数据：${lines}，你确认一下哦。`
+      : `${donePrefix}身体数据：${lines}。`;
   }
 
   if (type === 'habit') {

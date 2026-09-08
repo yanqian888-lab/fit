@@ -38,14 +38,30 @@ function rowToConfig(row) {
     role: row.role,
     sort_order: row.sort_order,
     is_enabled: row.is_enabled,
+    extra_params: row.extra_params || null,
     created_at: row.created_at,
     updated_at: row.updated_at
   };
 }
 
+/**
+ * 解析配置的 extra_params JSON 字段
+ * 返回对象；字段为空或解析失败时返回空对象（不中断调用）
+ */
+function parseExtraParams(cfg) {
+  if (!cfg || !cfg.extra_params) return {};
+  try {
+    const parsed = JSON.parse(cfg.extra_params);
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch (e) {
+    console.warn(`[aiConfigService] 配置 ${cfg.name || cfg.id} extra_params 解析失败，忽略: ${e.message}`);
+    return {};
+  }
+}
+
 function list() {
   const rows = db.prepare(`
-    SELECT id, name, provider, base_url, api_key, endpoint_id, temperature, max_tokens, timeout_ms, role, sort_order, is_enabled, created_at, updated_at
+    SELECT id, name, provider, base_url, api_key, endpoint_id, temperature, max_tokens, timeout_ms, role, sort_order, is_enabled, extra_params, created_at, updated_at
     FROM ai_configs
     ORDER BY role ASC, sort_order ASC, id ASC
   `).all();
@@ -59,7 +75,7 @@ function listForSelect() {
 
 function detail(id) {
   const row = db.prepare(`
-    SELECT id, name, provider, base_url, api_key, endpoint_id, temperature, max_tokens, timeout_ms, role, sort_order, is_enabled, created_at, updated_at
+    SELECT id, name, provider, base_url, api_key, endpoint_id, temperature, max_tokens, timeout_ms, role, sort_order, is_enabled, extra_params, created_at, updated_at
     FROM ai_configs WHERE id = ?
   `).get(id);
   return rowToConfig(row);
@@ -201,6 +217,15 @@ async function callWithPrompt(promptKey, messages, options = {}) {
     };
     if (options.response_format) {
       requestOptions.response_format = options.response_format;
+    }
+
+    // 合并配置的 extra_params（如豆包 seed-2.0 的 thinking:{type:'disabled'}）
+    // 调用方 options 显式传入的同名参数优先级更高
+    const extraParams = parseExtraParams(cfg);
+    for (const [k, v] of Object.entries(extraParams)) {
+      if (options[k] === undefined) {
+        requestOptions[k] = v;
+      }
     }
 
     // 腾讯云 Hy3/Hy4：根据 promptKey 自动注入 reasoning_effort

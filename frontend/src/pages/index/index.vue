@@ -1,5 +1,5 @@
 <template>
-  <view class="partner-page">
+  <view class="partner-page" @touchstart="onPageTouch">
     <!-- 系统状态栏占位 -->
     <view class="status-bar"></view>
 
@@ -9,7 +9,7 @@
         <image class="header-avatar" :src="resolveStaticUrl('/static/image/icon/liaoliao01@3x.png')" mode="aspectFit" />
         <view class="header-title-wrap">
           <text class="header-title">搭搭</text>
-          <text class="header-subtitle">👋 我是你的掉秤搭搭～</text>
+          <text class="header-subtitle">👋 我是你的减脂搭子～</text>
         </view>
         <view class="header-actions">
           <view class="header-setting" @click="goUser">
@@ -120,8 +120,12 @@
       <view id="msg-bottom-spacer" style="height: 20rpx;"></view>
     </scroll-view>
 
-    <!-- 底部输入区 -->
-    <view class="input-area">
+    <!-- 底部输入区：键盘弹起时通过 keyboardOffset 上浮到键盘上方，顶部 bar 保持置顶 -->
+    <view
+      class="input-area"
+      :class="{ 'keyboard-up': keyboardOffset > 0 }"
+      :style="{ bottom: keyboardOffset > 0 ? keyboardOffset + 'px' : TABBAR_BOTTOM }"
+    >
       <view class="input-bar">
         <input
           v-model="inputText"
@@ -129,7 +133,11 @@
           type="text"
           placeholder="和搭子聊聊今天吃了什么..."
           confirm-type="send"
+          :adjust-position="false"
+          :cursor-spacing="20"
           @confirm="sendMessage"
+          @focus="onInputFocus"
+          @blur="onInputBlur"
         />
         <view class="send-btn-wrap" @click="sendMessage">
           <image class="send-btn" :src="resolveStaticUrl('/static/image/icon/send@3x.png')" />
@@ -204,16 +212,17 @@
             <text class="form-label">{{ ex.name }}</text>
             <view class="exercise-row">
               <view class="exercise-field">
-                <text class="exercise-field-label">时长</text>
-                <input v-model="ex.duration" class="exercise-field-input" placeholder="分钟" type="digit" @input="onExerciseDurationInput(index)" />
-                <text class="exercise-field-unit">分钟</text>
+                <!-- 非时长单位条目（爬N层/做N个）显示"数量"，其余显示"时长" -->
+                <text class="exercise-field-label">{{ ex.unit ? '数量' : '时长' }}</text>
+                <input v-model="ex.duration" class="exercise-field-input" :placeholder="ex.unit || '分钟'" type="digit" @input="onExerciseDurationInput(index)" />
+                <text class="exercise-field-unit">{{ ex.unit || '分钟' }}</text>
               </view>
               <view class="exercise-field">
                 <text class="exercise-field-label">消耗</text>
                 <input v-model="ex.calorie" class="exercise-field-input" placeholder="千卡" type="digit" @input="onExerciseCalorieInput(index)" />
                 <text class="exercise-field-unit">千卡</text>
               </view>
-              <view class="exercise-field">
+              <view v-if="!ex.unit" class="exercise-field">
                 <text class="exercise-field-label">距离</text>
                 <input v-model="ex.distance" class="exercise-field-input" placeholder="公里" type="digit" />
                 <text class="exercise-field-unit">公里</text>
@@ -380,10 +389,10 @@
 
 <script setup>
 import { resolveStaticUrl } from '../../utils/environment.js';
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { onShow, onHide } from '@dcloudio/uni-app';
 import { useUserStore } from '../../store';
-import { chatApi, partnerApi, recordApi, precipitationApi, systemApi, voiceApi } from '../../api';
+import { chatApi, partnerApi, recordApi, precipitationApi, systemApi } from '../../api';
 import { showRewardToast } from '../../utils/rewardToast.js';
 import { formatDate } from '../../utils/date';
 import { checkPermission, reportCount } from '../../utils/trial.js';
@@ -393,6 +402,151 @@ import AnnouncementBar from '../../components/AnnouncementBar.vue';
 import AppModal from '../../components/AppModal.vue';
 
 const userStore = useUserStore();
+
+/*
+ * 键盘高度监听：配合 adjust-position=false，让输入框浮在键盘上方，
+ * 同时顶部 bar/sticky 不受键盘影响保持置顶。
+ * keyboardOffset 直接使用 px（键盘高度本身是 px，转 rpx 在不同屏宽会漂移）。
+ *
+ * 防悬浮残留（输入框飞起）与防键盘遮挡（输入框没抬起来被盖住）是两难：
+ *   - 旧方案用"焦点闸门"否决高度事件（防残留），但焦点事件与键盘高度事件
+ *     在部分机型/第三方输入法下时序不稳定，真实键盘弹起的高度事件被吞掉，
+ *     导致输入框停在底部被键盘盖住、看不到输入内容。
+ *   - 新方案：height>0 一律抬升（键盘是真实存在的硬证据），防残留改为
+ *     blur 归零 + 看门狗复核 + 触摸兜底 + 弹层开关清理 四重软兜底；
+ *     聚焦时用 lastKeyboardHeight 恢复（键盘已弹着但不会再派发高度事件的场景）。
+ */
+const keyboardOffset = ref(0);
+// 输入框焦点状态：作为看门狗/触摸兜底的判据之一
+const inputFocused = ref(false);
+// 最近一次键盘高度（px）：焦点事件在部分机型/第三方输入法下与键盘高度事件时序
+// 不稳定（如 hideKeyboard 未真正收起后重新聚焦，键盘已弹着但不会再派发高度事件），
+// 聚焦时用它做恢复，避免"键盘开着但输入框没抬升被盖住"
+let lastKeyboardHeight = 0;
+// 当前使用微信原生 tabBar（app.json custom:false）：页面视口底部即 tabBar 顶部，
+// fixed 元素 bottom:0 就是贴合 tabBar，不能再叠加 tabBar 高度/安全区（否则输入框悬空 ~84px）
+const TABBAR_BOTTOM = '0px';
+/*
+ * 原生 tabBar 占位总高度（px，含底部安全区）：
+ * tabBar 页面中 windowHeight 已扣除 tabBar，故 screenHeight - windowHeight 即 tabBar 高度；
+ * 键盘弹起时键盘从「屏幕底部」升起并盖住 tabBar，而 onKeyboardHeightChange 的 height
+ * 也是从屏幕底部算起；fixed 元素的 bottom 却从 webview 视口底部（tabBar 顶部）算起，
+ * 两者参照系相差一个 tabBar 高度，不扣除会导致输入框与键盘之间悬空一条缝（真机约 50~84px）。
+ */
+const sysInfo = uni.getSystemInfoSync();
+const TAB_BAR_GAP = Math.max(0, (sysInfo.screenHeight || 0) - (sysInfo.windowHeight || 0));
+
+/**
+ * 键盘高度变化回调（具名函数引用，注册/注销必须是同一个引用才能正确 off）
+ */
+function onKeyboardHeightChange(res) {
+  const height = Math.max(0, Number(res && res.height) || 0);
+  if (height <= 0) {
+    // 键盘收起：无条件归零
+    keyboardOffset.value = 0;
+    lastKeyboardHeight = 0;
+    clearKeyboardWatchdog();
+    return;
+  }
+  // height>0 说明键盘真实弹着——一律抬升输入框，不再被焦点状态否决。
+  // （旧方案用 if(!inputFocused) return 吞掉事件，导致输入框被键盘盖住。）
+  lastKeyboardHeight = height;
+  // 扣除 tabBar 占位，换算为相对 webview 视口底部的偏移
+  keyboardOffset.value = Math.max(0, height - TAB_BAR_GAP);
+  // 看门狗：顶起后短暂复核。若随后输入框已失焦（blur 与 height=0 事件双双
+  // 丢失的乱序场景），强制归零，避免输入框永久悬空。
+  startKeyboardWatchdog();
+  // 键盘弹起时，让 scroll-view 滚到底部，确保最后一条消息可见
+  nextTick(scrollToBottom);
+}
+
+// 看门狗定时器引用（键盘顶起后延迟复核用）
+let keyboardWatchdogTimer = null;
+
+/** 取消键盘看门狗定时器 */
+function clearKeyboardWatchdog() {
+  if (keyboardWatchdogTimer) {
+    clearTimeout(keyboardWatchdogTimer);
+    keyboardWatchdogTimer = null;
+  }
+}
+
+/** 启动键盘看门狗：1.5s 后若输入框已失焦但悬浮偏移仍残留，强制归零 */
+function startKeyboardWatchdog() {
+  clearKeyboardWatchdog();
+  keyboardWatchdogTimer = setTimeout(() => {
+    keyboardWatchdogTimer = null;
+    if (!inputFocused.value && keyboardOffset.value > 0) {
+      console.log('[keyboard] 看门狗复核：输入框已失焦但悬浮残留，强制归零');
+      keyboardOffset.value = 0;
+      lastKeyboardHeight = 0;
+    }
+  }, 1500);
+}
+
+/**
+ * 强制重置键盘悬浮状态（弹层开关等焦点交接场景调用）：
+ * 主动收起键盘 + 归零悬浮偏移 + 清除看门狗。
+ * 此后即使有迟到的 height>0 事件到达，因 inputFocused=false 会被看门狗兜底归零。
+ */
+function resetKeyboardState() {
+  try {
+    uni.hideKeyboard({ force: true });
+  } catch (e) { /* 部分平台不支持 force 参数，忽略 */ }
+  inputFocused.value = false;
+  keyboardOffset.value = 0;
+  lastKeyboardHeight = 0;
+  clearKeyboardWatchdog();
+}
+
+/**
+ * 页面触摸兜底：输入框悬浮残留（keyboardOffset>0）但输入框已失焦时，
+ * 用户任意触摸页面立即归零自愈。正常打字场景 inputFocused=true 不受影响，
+ * 长按输入框（粘贴/选词）时焦点仍在输入框上，同样不会误归零。
+ */
+function onPageTouch() {
+  if (keyboardOffset.value > 0 && !inputFocused.value) {
+    keyboardOffset.value = 0;
+    clearKeyboardWatchdog();
+  }
+}
+
+onMounted(() => {
+  uni.onKeyboardHeightChange(onKeyboardHeightChange);
+});
+
+/**
+ * 输入框聚焦：标记焦点态。若键盘已弹着（lastKeyboardHeight>0，常见于
+ * hideKeyboard 未真正收起后重新聚焦），直接恢复悬浮偏移——此时不会再有
+ * onKeyboardHeightChange 事件派发，不恢复的话输入框会被键盘盖住。
+ */
+function onInputFocus() {
+  inputFocused.value = true;
+  if (lastKeyboardHeight > 0 && keyboardOffset.value === 0) {
+    keyboardOffset.value = Math.max(0, lastKeyboardHeight - TAB_BAR_GAP);
+    nextTick(scrollToBottom);
+  }
+}
+
+/**
+ * 输入框失焦：归零悬浮偏移。兜底 onKeyboardHeightChange 归零事件丢失
+ * 导致的输入框悬空。注意：lastKeyboardHeight 不在此清零——若用户马上
+ * 重新聚焦输入框（如关闭弹层后），onInputFocus 需要它来恢复偏移。
+ * 看门狗会在 1.5s 后确认输入框是否仍失焦，是则彻底归零 lastKeyboardHeight。
+ */
+function onInputBlur() {
+  inputFocused.value = false;
+  keyboardOffset.value = 0;
+}
+
+onUnmounted(() => {
+  // 同一函数引用注销，避免监听堆积
+  uni.offKeyboardHeightChange(onKeyboardHeightChange);
+  clearKeyboardWatchdog();
+  inputFocused.value = false;
+  keyboardOffset.value = 0;
+  lastKeyboardHeight = 0;
+});
 
 // 已自动记录提示弹框
 const showAutoRecordedModal = ref(false);
@@ -404,7 +558,7 @@ const welcomeMessage = computed(() => {
   return {
     id: 'welcome',
     role: 'partner',
-    content: '你好呀，我是你的专属掉秤搭搭～\n从今天开始，我会陪你一起记录饮食、运动、体重，一起瘦下来！有什么想聊的，随时告诉我吧～',
+    content: '你好呀，我是你的专属减脂搭子～\n从今天开始，我会陪你一起记录饮食、运动、体重，一起瘦下来！有什么想聊的，随时告诉我吧～',
     precipitation_status: 0,
     precipitation_type: null
   };
@@ -476,13 +630,6 @@ const actionMenuY = ref(0);
 const hasMore = ref(true);
 const todayStats = ref({ intake: 0, burned: 0, remaining: 0, status: 'green' });
 const authPopupRef = ref(null);
-
-// 语音输入状态
-const recording = ref(false);
-const recordingSeconds = ref(0);
-let recorderManager = null;
-let voiceTimer = null;
-let voiceTempFilePath = '';
 
 // 编辑弹窗状态
 const showEditModal = ref(false);
@@ -944,6 +1091,9 @@ function stopAdvicePolling() {
 onHide(() => {
   // 离开聊聊页停止轮询，返回时 onShow 的增量同步会兜底补显
   stopAdvicePolling();
+  // 页面隐藏（跳页/切后台/切 tab）时键盘必被系统收起，强制归零，
+  // 防止返回页面时输入框仍悬空在半屏
+  resetKeyboardState();
 });
 
 /**
@@ -1308,9 +1458,15 @@ async function processOneMessage(content, tempId) {
   loadTodayStats();
   reportCount('ai_chat');
 
-  setTimeout(() => {
-    refreshMessages();
-  }, 3000);
+  /*
+   * 沉淀为后端异步完成（实测 3~6 秒落库），单次 3 秒刷新可能早于沉淀写库，
+   * 导致"已记录/待确认"标签一直不出现（直至重进页面）。
+   * 按 3s / 8s / 15s 多次重试全量刷新；refreshMessages 幂等且仅在状态变化时更新本地，
+   * 沉淀完成后任意一次刷新即可补上标签。
+   */
+  [3000, 8000, 15000].forEach(delay => {
+    setTimeout(() => refreshMessages(), delay);
+  });
 }
 
 /**
@@ -1472,86 +1628,6 @@ async function refreshMessages() {
   }
 }
 
-// 语音输入
-function initRecorder() {
-  try {
-    recorderManager = uni.getRecorderManager();
-    recorderManager.onStop((res) => {
-      voiceTempFilePath = res.tempFilePath;
-      if (recording.value) {
-        uploadVoice(voiceTempFilePath);
-      }
-      recording.value = false;
-      stopVoiceTimer();
-    });
-    recorderManager.onError((err) => {
-      console.error('录音失败:', err);
-      recording.value = false;
-      stopVoiceTimer();
-      uni.showToast({ title: '录音失败', icon: 'none' });
-    });
-  } catch (e) {
-    console.error('初始化录音失败:', e);
-  }
-}
-
-function startVoiceRecord() {
-  if (!recorderManager) initRecorder();
-  if (!recorderManager) {
-    uni.showToast({ title: '当前环境不支持录音', icon: 'none' });
-    return;
-  }
-  recording.value = true;
-  recordingSeconds.value = 0;
-  voiceTimer = setInterval(() => {
-    recordingSeconds.value++;
-    if (recordingSeconds.value >= 60) stopVoiceRecord();
-  }, 1000);
-  try {
-    recorderManager.start({ duration: 60000, format: 'mp3' });
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-function stopVoiceRecord() {
-  if (!recording.value) return;
-  if (recorderManager) {
-    try {
-      recorderManager.stop();
-    } catch (e) {
-      recording.value = false;
-      stopVoiceTimer();
-    }
-  }
-}
-
-function stopVoiceTimer() {
-  if (voiceTimer) {
-    clearInterval(voiceTimer);
-    voiceTimer = null;
-  }
-}
-
-async function uploadVoice(filePath) {
-  if (!filePath) return;
-  try {
-    uni.showLoading({ title: '识别中...' });
-    const res = await voiceApi.transcribe(filePath);
-    uni.hideLoading();
-    const text = res.data?.text || '';
-    if (text) {
-      inputText.value = text;
-      sendMessage();
-    } else {
-      uni.showToast({ title: '未识别到语音，请重试', icon: 'none' });
-    }
-  } catch (e) {
-    uni.hideLoading();
-    uni.showToast({ title: e.message || '识别失败', icon: 'none' });
-  }
-}
-
 // 跳转到记录页面
 function goToRecord(type) {
   const urls = {
@@ -1655,15 +1731,18 @@ function openEditModal(record, mode = 'edit', targetMsg = null) {
       break;
     }
     case 'exercise_record': {
+      // 非时长单位条目（爬N层/做N个）：duration 字段承载 count 数值，模板中按 unit 显示"数量+单位"
       editExercises.value = (data.exercises || []).map(e => ({
         name: e.name || '',
-        duration: String(e.duration || ''),
+        duration: String(e.count > 0 ? e.count : (e.duration || '')),
         intensity: e.intensity || 'moderate',
         calorie: String(e.calorie || ''),
-        distance: e.distance ? String(e.distance) : ''
+        distance: e.distance ? String(e.distance) : '',
+        count: e.count > 0 ? e.count : null,
+        unit: e.unit || ''
       }));
       if (editExercises.value.length === 0) {
-        editExercises.value.push({ name: '', duration: '', intensity: 'moderate', calorie: '', distance: '' });
+        editExercises.value.push({ name: '', duration: '', intensity: 'moderate', calorie: '', distance: '', count: null, unit: '' });
       }
       initExerciseCalorieRates();
       editRecordType.value = 'exercise';
@@ -1702,11 +1781,18 @@ function openEditModal(record, mode = 'edit', targetMsg = null) {
     }
   }
 
+  // 打开弹层前强制重置键盘状态：焦点即将转移到弹层，聊天输入框不应再持有
+  // 键盘（粘贴等异常聚焦态在此被清除，防止弹层交互期间键盘事件串扰）
+  resetKeyboardState();
   showEditModal.value = true;
 }
 
 // 关闭编辑弹窗
 function closeEditModal() {
+  // 弹层关闭是焦点交接点：粘贴等场景下聊天输入框可能处于"聚焦但键盘未弹起"
+  // 的异常态（blur 不派发、焦点闸门过期），弹层关闭触发系统恢复焦点时会把
+  // 键盘高度事件穿透闸门顶起输入框。强制重置键盘状态，杜绝输入框悬空飞起。
+  resetKeyboardState();
   showEditModal.value = false;
   editRecord.value = null;
   editMode.value = 'edit';
@@ -1815,11 +1901,12 @@ function removeFoodRow(index) {
   }
 }
 
-// 初始化每项运动的“每分钟热量”并同步一次热量显示
+// 初始化每项运动的"每分钟热量"并同步一次热量显示
 function initExerciseCalorieRates() {
   editExercises.value.forEach(ex => {
     const duration = parseFloat(ex.duration) || 0;
     const calorie = parseFloat(ex.calorie) || 0;
+    // 非时长单位条目（爬N层/做N个）按"每单位热量"联动
     ex._caloriePerMinute = duration > 0 ? calorie / duration : 0;
     if (duration > 0 && ex._caloriePerMinute) {
       ex.calorie = String(Math.round(duration * ex._caloriePerMinute));
@@ -1827,7 +1914,7 @@ function initExerciseCalorieRates() {
   });
 }
 
-// 时长变化时按分钟热量同步更新消耗
+// 时长/数量变化时按单价（每分钟或每单位热量）同步更新消耗
 function onExerciseDurationInput(index) {
   const ex = editExercises.value[index];
   const duration = parseFloat(ex.duration) || 0;
@@ -1836,7 +1923,7 @@ function onExerciseDurationInput(index) {
   }
 }
 
-// 用户手动修改热量时更新“每分钟热量”比例
+// 用户手动修改热量时更新单价（每分钟或每单位热量）比例
 function onExerciseCalorieInput(index) {
   const ex = editExercises.value[index];
   const duration = parseFloat(ex.duration) || 0;
@@ -1939,6 +2026,8 @@ async function saveEdit() {
             duration: parseFloat(e.duration) || 0,
             intensity: e.intensity || 'moderate',
             calorie: parseFloat(e.calorie) || 0,
+            // 非时长单位条目回传 count/unit，后端按单位换算重算
+            ...(e.unit ? { count: parseFloat(e.duration) || 0, unit: e.unit } : {}),
             ...(e.distance ? { distance: parseFloat(e.distance) } : {})
           }))
         };
@@ -2082,8 +2171,8 @@ async function onPendingTag(msg) {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  /* 统一页面背景为浅绿色，与 status-bar、header 保持一致 */
-  background: $green-light;
+  /* 统一页面背景为 #F7FBF4，与 message-list 一致，避免两种绿色拼接出现竖直分界线 */
+  background: #F7FBF4;
   overflow: hidden;
 }
 
@@ -2098,10 +2187,19 @@ async function onPendingTag(msg) {
   height: calc(var(--status-bar-height, 44px) + 88rpx);
   flex-shrink: 0;
   background: $green-light; /* 与 header 背景一致，形成统一顶部绿色背景 */
+  /* sticky 置顶：配合 header 一起固定在顶部 */
+  position: sticky;
+  top: 0;
+  z-index: 50;
 }
 
+/* 顶部搭子信息 —— sticky 置顶，确保键盘弹起时不被顶走 */
 .header {
   flex-shrink: 0;
+  /* sticky 置顶：在 flex 容器内配合 top:0，键盘弹起/列表滚动时始终固定在顶部 */
+  position: sticky;
+  top: 0;
+  z-index: 50;
   /* 与 status-bar 统一背景色，避免顶部出现分割线 */
   background: $green-light;
   /* 底部 padding 减少 8px（16rpx），让绿色底高度更紧凑 */
@@ -2172,11 +2270,12 @@ async function onPendingTag(msg) {
   min-height: 0;
   padding: 20rpx 40rpx;
   /*
-   * 底部预留空间：
-   * 仅保留 4px（8rpx）的浅绿色间距在输入框上方，最大化聊天记录展示区域。
-   * 额外叠加安全区高度，避免 iPhone Home 指示条遮挡内容。
+   * 底部预留空间：输入区为 fixed 定位浮在滚动区上方，
+   * 保证滚动到底时最后一条消息完整可见、贴近输入框不被遮挡
    */
-  padding-bottom: calc(8rpx + env(safe-area-inset-bottom));
+  /* 底部预留 = 输入框容器实高 58px（input 56rpx + 胶囊 padding 8rpx×2 + 区域 padding 12/16rpx）+ 8px 呼吸间距；
+     预留过大时滚到底会在输入框上方露出一条空白带 */
+  padding-bottom: 66px;
   box-sizing: border-box;
   background: #F7FBF4;
 }
@@ -2320,6 +2419,14 @@ async function onPendingTag(msg) {
   z-index: 10;
 }
 
+/*
+ * 键盘弹起态：bottom 已被抬高到键盘顶部（keyboardOffset px），
+ * 此时必须去掉容器底部内边距，否则输入条会被垫高、与键盘之间漏出一条缝
+ */
+.input-area.keyboard-up {
+  padding-bottom: 0;
+}
+
 .input-bar {
   display: flex;
   align-items: center;
@@ -2351,32 +2458,6 @@ async function onPendingTag(msg) {
 .send-btn {
   width: 40rpx;
   height: 40rpx;
-}
-
-.voice-btn {
-  width: 64rpx;
-  height: 64rpx;
-  margin-left: 8rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.voice-btn.recording {
-  background: #FEE2E2;
-}
-
-.voice-icon {
-  font-size: 36rpx;
-}
-
-.voice-recording-tip {
-  text-align: center;
-  margin-top: 12rpx;
-  font-size: 24rpx;
-  color: #8DBB77;
 }
 
 /* 编辑弹窗 */

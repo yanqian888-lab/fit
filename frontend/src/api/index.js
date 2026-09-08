@@ -1,4 +1,4 @@
-import { get, post, put, del, uploadFile } from '../utils/request';
+import { get, post, put, del } from '../utils/request';
 
 // 认证
 export const authApi = {
@@ -83,11 +83,6 @@ export const precipitationApi = {
   create: (data) => post('/precipitations', data),
   update: (id, data) => put(`/precipitations/${id}`, data),
   delete: (id) => del(`/precipitations/${id}`)
-};
-
-// 语音
-export const voiceApi = {
-  transcribe: (filePath) => uploadFile('/voice/transcribe', filePath, 'audio')
 };
 
 // AI P1 功能

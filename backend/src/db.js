@@ -5,7 +5,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const config = require('./config');
-const { DEFAULT_USER_AGREEMENT, DEFAULT_PRIVACY_POLICY, DEFAULT_ABOUT_US } = require('./config/policies');
+const { DEFAULT_USER_AGREEMENT, DEFAULT_PRIVACY_POLICY, DEFAULT_ABOUT_US, DEFAULT_DELETE_ACCOUNT_AGREEMENT } = require('./config/policies');
 const promptDefaults = require('./config/promptDefaults');
 const { safeJsonParse } = require('./utils/safeJson');
 
@@ -1214,6 +1214,17 @@ function migrateTables() {
   } catch (err) {
     // 列已存在时忽略
   }
+  // 为 food_db 补充别名/数据来源列（网络核实学习条目 source=web_learned 依赖）
+  try {
+    db.exec(`ALTER TABLE food_db ADD COLUMN aliases TEXT;`);
+  } catch (err) {
+    // 列已存在时忽略
+  }
+  try {
+    db.exec(`ALTER TABLE food_db ADD COLUMN source VARCHAR(32) DEFAULT 'builtin';`);
+  } catch (err) {
+    // 列已存在时忽略
+  }
   // 根据已有年龄回填出生日期（生日取当年同日）
   try {
     db.exec(`
@@ -1487,6 +1498,11 @@ function migrateTables() {
     addColumnIfNotExists('exercise_db', 'met_value', 'DECIMAL(5,2) DEFAULT 0');
     addColumnIfNotExists('exercise_db', 'calorie_per_hour', 'DECIMAL(8,2) DEFAULT 0');
     addColumnIfNotExists('exercise_db', 'remark', "VARCHAR(255) DEFAULT ''");
+    // 单位维度扩展：部分运动天然按"层/个/组/公里"计（爬楼梯、俯卧撑、骑车），
+    // 库条目缺单位数据时由网络学习闭环回填（unit_source='web_learned'）
+    addColumnIfNotExists('exercise_db', 'unit_name', "VARCHAR(16) DEFAULT NULL");
+    addColumnIfNotExists('exercise_db', 'calorie_per_unit', 'DECIMAL(8,2) DEFAULT 0');
+    addColumnIfNotExists('exercise_db', 'unit_source', "VARCHAR(16) DEFAULT NULL");
 
     const exerciseColumns = tableColumns('exercise_db');
     if (exerciseColumns.includes('name')) {
@@ -2138,6 +2154,298 @@ function migratePromptsAddSystemRuleConstraint() {
   }
 }
 
+/**
+ * 补全沉淀 Agent 的距离换算规则：已有"距离提取与时长换算"但缺少"严禁照抄示例数字"
+ * 防抖规则时，同步为当前默认 Prompt（修复"跑了3公里"被照抄示例记成 30 分钟的问题）
+ */
+function migratePromptsDistanceRule() {
+  const latest = db.prepare(`
+    SELECT id, content FROM ai_prompts
+    WHERE prompt_key = 'precipitation_agent' AND is_latest = 1
+    ORDER BY version DESC LIMIT 1
+  `).get();
+  if (!latest) return;
+  const content = latest.content || '';
+  if (!content.includes('距离提取与时长换算')) return; // 无该规则说明被运营深度定制，不覆盖
+  if (content.includes('严禁照抄示例中的 duration/calorie')) return; // 已是新规则
+  const newContent = promptDefaults['precipitation_agent'];
+  if (!newContent) return;
+  db.prepare(`
+    UPDATE ai_prompts SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(newContent, latest.id);
+  console.log('[Prompt 迁移] precipitation_agent 已补全距离换算防照抄规则');
+}
+
+/**
+ * 同步沉淀 Agent 的骑行强度分级规则
+ * 修复：骑行固定按 3min/km、不区分快速/休闲，导致"快速骑5.5公里"与普通骑记录口径一致
+ * 新规则：普通骑行 4min/km MET5 / 快速骑行 2.5min/km MET10 / 休闲慢骑 5min/km MET3.5
+ */
+function migratePromptsCyclingIntensityRule() {
+  const latest = db.prepare(`
+    SELECT id, content FROM ai_prompts
+    WHERE prompt_key = 'precipitation_agent' AND is_latest = 1
+    ORDER BY version DESC LIMIT 1
+  `).get();
+  if (!latest) return;
+  const content = latest.content || '';
+  if (!content.includes('距离提取与时长换算')) return; // 无该规则说明被运营深度定制，不覆盖
+  if (content.includes('快速骑行1km')) return; // 已是新规则
+  const newContent = promptDefaults['precipitation_agent'];
+  if (!newContent) return;
+  db.prepare(`
+    UPDATE ai_prompts SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(newContent, latest.id);
+  console.log('[Prompt 迁移] precipitation_agent 已同步骑行强度分级规则');
+}
+
+/**
+ * 同步沉淀 Agent 的「否定/节食表态不提取」规则
+ * 修复："哦买噶 这么多热量 我今晚不吃饭" 这类感叹/表态被误记为一条晚餐饮食记录的问题
+ * 新规则：否定/跳过/节食表态一律不提取 diet_record；foods.name 严禁填整句话术
+ */
+function migratePromptsNegativeDietRule() {
+  const latest = db.prepare(`
+    SELECT id, content FROM ai_prompts
+    WHERE prompt_key = 'precipitation_agent' AND is_latest = 1
+    ORDER BY version DESC LIMIT 1
+  `).get();
+  if (!latest) return;
+  const content = latest.content || '';
+  if (!content.includes('距离提取与时长换算')) return; // 无该规则说明被运营深度定制，不覆盖
+  if (content.includes('否定/跳过/节食表态')) return; // 已是新规则
+  const newContent = promptDefaults['precipitation_agent'];
+  if (!newContent) return;
+  db.prepare(`
+    UPDATE ai_prompts SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(newContent, latest.id);
+  console.log('[Prompt 迁移] precipitation_agent 已补全否定/节食表态不提取规则');
+}
+
+/**
+ * 隐私政策迁移：补登「友盟+ U-Mini 小程序统计 SDK」第三方 SDK 公示条款
+ * 仅当库中隐私政策未包含友盟标识时定点插入，避免整体覆盖 CMS 自定义内容；
+ * 同步将生效日期刷新为本次变更日期。幂等，已有条款时自动跳过。
+ */
+function migratePrivacyPolicyAddUmeng() {
+  const row = db.prepare(`SELECT config_value FROM app_configs WHERE config_key = 'privacy_policy'`).get();
+  if (!row || !row.config_value) return;
+  let content = row.config_value;
+  // 已包含友盟条款（提供方名称或隐私链接）则跳过，保证幂等
+  if (content.includes('友盟同欣') || content.includes('umeng.com')) return;
+
+  // 友盟 SDK 公示条款（与 policies.js 默认值保持一致）
+  const umengBlock = [
+    '（3）友盟+ U-Mini 小程序统计 SDK',
+    '提供方：友盟同欣（北京）科技有限公司',
+    '用途：小程序运营数据统计与分析，帮助我们了解页面访问与功能使用情况、崩溃与异常情况，以改进产品体验',
+    '涉及信息：设备型号、操作系统及版本、网络类型、IP 地址、应用版本、操作日志、页面访问记录等设备与日志信息，以及您的微信 OpenID（仅用于用户统计标识，不包含昵称、手机号等身份信息）',
+    '说明：其个人信息处理规则适用《友盟隐私政策》(https://www.umeng.com/page/policy)。'
+  ].join('\n');
+
+  // 锚点1：微信登录 SDK 段落末尾（《微信隐私政策》说明行之后），保证 SDK 编号顺序
+  const wxAnchor = '说明：其个人信息处理规则适用《微信隐私政策》。';
+  if (content.includes(wxAnchor)) {
+    content = content.replace(wxAnchor, wxAnchor + '\n' + umengBlock);
+  } else {
+    // 锚点2：5.3 小节标题之前插入
+    const sectionMatch = content.match(/5\.3[^\n]*/);
+    if (sectionMatch) {
+      content = content.replace(sectionMatch[0], umengBlock + '\n' + sectionMatch[0]);
+    } else {
+      // 兜底：文末追加
+      content = content.replace(/\s*$/, '\n') + umengBlock;
+    }
+  }
+
+  // 刷新生效日期为本次政策变更日期
+  content = content.replace(/生效日期：[^\n]*/, '生效日期：2026 年 9 月 6 日');
+
+  db.prepare(`
+    UPDATE app_configs SET config_value = ?, updated_at = CURRENT_TIMESTAMP WHERE config_key = 'privacy_policy'
+  `).run(content);
+  console.log('[隐私政策迁移] 已补充友盟+ U-Mini 统计 SDK 公示条款，生效日期更新为 2026 年 9 月 6 日');
+}
+
+/**
+ * 「关于我们」文案迁移：将旧版简短文案升级为内容全面的新版文案
+ * 仅当库中内容命中旧版默认文案标记句、且不含新版标记时才整体替换，
+ * 避免覆盖运营在 CMS 中自定义的内容。幂等，已是新版则跳过。
+ */
+function migrateAboutUsContent() {
+  const row = db.prepare(`SELECT config_value FROM app_configs WHERE config_key = 'about_us_content'`).get();
+  if (!row || !row.config_value) return;
+  const content = row.config_value;
+  // 新版标记句，命中说明已是新文案，跳过保证幂等
+  if (content.includes('不贩卖身材焦虑') || content.includes('慢慢变轻')) return;
+  // 旧版默认文案共有标记句（「减肥搭子」版与「掉秤搭搭」版均含此句）
+  const oldMarker = '时间轴和博物馆会见证你每一步微小的进步';
+  if (!content.includes(oldMarker)) return; // 运营自定义内容，不覆盖
+
+  db.prepare(`
+    UPDATE app_configs SET config_value = ?, updated_at = CURRENT_TIMESTAMP WHERE config_key = 'about_us_content'
+  `).run(DEFAULT_ABOUT_US);
+  console.log('[关于我们迁移] 已升级为内容全面的新版文案');
+}
+
+/**
+ * 食品库迁移：补充奶茶小料标准条目
+ * 背景：食品库缺失「煮珍珠/黑糖粉稞」等条目，导致
+ *  「珍珠」按名称模糊匹配误中「珍珠白蘑」（212kcal/100g，中西菜肴类）。
+ * 小料为标准化配料（木薯粉圆/椰果等），营养值稳定，统一以零食饮料类条目入库
+ * （含 JSON 别名，供 findBestFoodMatch 的 aliases 精确匹配），幂等：同名条目已存在则跳过。
+ * 注意：品牌成品奶茶（如四季奶青）糖度/规格差异大、硬编码单值不准，
+ * 已不再内置；改由 webSearchService.searchAndLearnFood 在用户询问时联网核实、
+ * 营养校验通过后以 source='web_learned' 自动入库（自学习闭环）。
+ */
+function migrateFoodDbDrinkItems() {
+  // 旧版表结构可能没有 aliases/source 列，按实际列动态拼装，避免 INSERT 报错
+  const cols = db.prepare('PRAGMA table_info(food_db)').all().map(c => c.name);
+  const hasAliases = cols.includes('aliases');
+  const hasSource = cols.includes('source');
+
+  // 幂等清理：旧版迁移曾内置品牌成品奶茶条目（9101 四季奶青 / 9102 奶茶三分糖），
+  // 其单值热量与实际糖度差异较大、用户反馈不准；删除后交由网络核实学习闭环重建。
+  // 仅清理 migrate_drink_items 来源的连锁饮品，奶茶小料与 web_learned 条目不受影响。
+  if (hasSource) {
+    const removed = db.prepare(
+      "DELETE FROM food_db WHERE source = 'migrate_drink_items' AND sub_category = '连锁饮品'"
+    ).run();
+    if (removed.changes > 0) {
+      console.log(`[食品库迁移] 已移除硬编码成品奶茶条目 ${removed.changes} 条（改由联网核实学习入库）`);
+    }
+  }
+
+  // 奶茶小料标准营养值（kcal/每100g，按熟重/带糖水重）
+  const items = [
+    {
+      food_id: 9103, category: '零食饮料类', sub_category: '奶茶小料',
+      food_name: '煮珍珠', calories: 150, protein: 0.8, carb: 34.0, fat: 0.2,
+      common_unit: '奶茶小料一份30-50g约45-75千卡（木薯粉圆煮熟重）',
+      aliases: ['珍珠', '小珍珠', '大珍珠', '粉圆', '波霸', '黑糖珍珠', '奶茶珍珠', '木薯粉圆']
+    },
+    {
+      food_id: 9104, category: '零食饮料类', sub_category: '奶茶小料',
+      food_name: '黑糖粉稞', calories: 180, protein: 0.2, carb: 42.0, fat: 0.1,
+      common_unit: '奶茶小料一份30-50g约55-90千卡',
+      aliases: ['粉稞', '粉粿', '黑糖粉粿', '粉稞小料', '黑糖粉稞小料']
+    },
+    {
+      food_id: 9105, category: '零食饮料类', sub_category: '奶茶小料',
+      food_name: '椰果', calories: 70, protein: 0.2, carb: 17.0, fat: 0,
+      common_unit: '奶茶小料一份30-50g约20-35千卡（糖水椰果）',
+      aliases: ['椰果粒', '椰果小料', '糖水椰果']
+    },
+    {
+      food_id: 9106, category: '零食饮料类', sub_category: '奶茶小料',
+      food_name: '芋圆', calories: 130, protein: 0.5, carb: 30.0, fat: 0.2,
+      common_unit: '奶茶小料一份40-60g约50-80千卡（熟重）',
+      aliases: ['芋圆小料', '熟芋圆', '芋头圆子']
+    }
+  ];
+
+  let inserted = 0;
+  for (const item of items) {
+    const exists = db.prepare('SELECT id FROM food_db WHERE food_name = ?').get(item.food_name);
+    if (exists) continue;
+    const columns = ['food_id', 'category', 'sub_category', 'food_name', 'calories_per_100g',
+      'common_unit', 'edible_rate', 'protein_per_100g', 'carb_per_100g', 'fat_per_100g'];
+    const values = [item.food_id, item.category, item.sub_category, item.food_name, item.calories,
+      item.common_unit, 1.0, item.protein, item.carb, item.fat];
+    if (hasAliases) { columns.push('aliases'); values.push(JSON.stringify(item.aliases)); }
+    if (hasSource) { columns.push('source'); values.push('migrate_drink_items'); }
+    db.prepare(`INSERT INTO food_db (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`).run(...values);
+    inserted += 1;
+  }
+  if (inserted > 0) console.log(`[食品库迁移] 已补充连锁饮品/奶茶小料标准条目 ${inserted} 条`);
+}
+
+/**
+ * 沉淀提示词迁移：餐别规则补「下午茶→加餐(snack)」、补连锁饮品杯型重量基准
+ * 仅当库中提示词含旧版餐别规则标记且不含新规则标记时才整体替换，
+ * 避免覆盖运营深度定制内容。幂等，已是新规则则跳过。
+ */
+function migratePromptsAfternoonTeaRule() {
+  const latest = db.prepare(`
+    SELECT id, content FROM ai_prompts
+    WHERE prompt_key = 'precipitation_agent' AND is_latest = 1
+    ORDER BY version DESC LIMIT 1
+  `).get();
+  if (!latest) return;
+  const content = latest.content || '';
+  if (content.includes('下午茶"一律归为加餐')) return; // 已是新规则
+  if (!content.includes('对应早餐/午餐/晚餐/加餐')) return; // 无旧规则标记，运营定制不覆盖
+  const newContent = promptDefaults['precipitation_agent'];
+  if (!newContent) return;
+  db.prepare(`
+    UPDATE ai_prompts SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(newContent, latest.id);
+  console.log('[Prompt 迁移] precipitation_agent 已补全下午茶归加餐与饮品杯型重量规则');
+}
+
+/**
+ * 沉淀提示词迁移：运动规则补「爬楼层数→时长换算」与「记录指令必须提取」
+ * 修复：用户说"爬了6层，你记录一下吧"时，LLM 因无分钟数、无楼层换算规则而漏提取运动
+ * 仅当库中提示词含标准运动规则标记且不含楼层规则标记时才整体替换，幂等。
+ */
+function migratePromptsStaircaseRule() {
+  const latest = db.prepare(`
+    SELECT id, content FROM ai_prompts
+    WHERE prompt_key = 'precipitation_agent' AND is_latest = 1
+    ORDER BY version DESC LIMIT 1
+  `).get();
+  if (!latest) return;
+  const content = latest.content || '';
+  if (content.includes('楼层换算（爬楼梯）')) return; // 已是新规则
+  if (!content.includes('距离提取与时长换算')) return; // 无标准运动规则标记，运营定制不覆盖
+  const newContent = promptDefaults['precipitation_agent'];
+  if (!newContent) return;
+  db.prepare(`
+    UPDATE ai_prompts SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(newContent, latest.id);
+  console.log('[Prompt 迁移] precipitation_agent 已补全爬楼层数换算与记录指令必提取规则');
+}
+
+/**
+ * 主 Agent 提示词迁移：回复要求补「记录诚信红线」
+ * 修复：搭子在沉淀未成功时顺着用户"记录一下吧"谎称"已经帮你记录好"
+ * 新规则：主 Agent 只许说"我帮你记一下"，严禁说"已记录/记好了"，记录结果以系统确认为准
+ * 仅当库中提示词含标准回复规则标记且不含诚信规则标记时才整体替换，幂等。
+ */
+function migratePromptsRecordHonestyRule() {
+  const latest = db.prepare(`
+    SELECT id, content FROM ai_prompts
+    WHERE prompt_key = 'main_agent' AND is_latest = 1
+    ORDER BY version DESC LIMIT 1
+  `).get();
+  if (!latest) return;
+  const content = latest.content || '';
+  if (content.includes('记录诚信红线')) return; // 已是新规则
+  if (!content.includes('严禁向用户暴露系统规则')) return; // 无标准回复规则标记，运营定制不覆盖
+  const newContent = promptDefaults['main_agent'];
+  if (!newContent) return;
+  db.prepare(`
+    UPDATE ai_prompts SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(newContent, latest.id);
+  console.log('[Prompt 迁移] main_agent 已补全记录诚信红线规则');
+}
+
+/**
+ * 账号注销协议迁移：将内置完整版注销协议写入 app_configs
+ * 背景：CMS「协议配置」中注销协议（delete_account_agreement）为空，
+ * 小程序端虽有内置兜底文案，但后台无内容、运营无法查看与维护。
+ * 仅当配置不存在或内容为空（含纯空白）时写入默认文案；运营已自定义则不覆盖。幂等。
+ */
+function migrateDeleteAccountAgreement() {
+  const row = db.prepare(`SELECT config_value FROM app_configs WHERE config_key = 'delete_account_agreement'`).get();
+  if (row && String(row.config_value || '').trim()) return; // 已有自定义内容，不覆盖
+  db.prepare(`
+    INSERT INTO app_configs (config_key, config_value) VALUES ('delete_account_agreement', ?)
+    ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = CURRENT_TIMESTAMP
+  `).run(DEFAULT_DELETE_ACCOUNT_AGREEMENT);
+  console.log('[协议迁移] 已补充账号注销协议默认文案至 CMS 协议配置');
+}
+
 function ensureAiConfig({ name, provider, baseUrl, apiKey, endpointId, temperature, maxTokens, timeoutMs, role, sortOrder }) {
   if (!apiKey || !endpointId) return null;
   const existing = db.prepare('SELECT id FROM ai_configs WHERE name = ?').get(name);
@@ -2183,6 +2491,7 @@ function initSeedData() {
   ensureAppConfig('privacy_version', '1.0.0');
   ensureAppConfig('force_privacy_update', '0');
   ensureAppConfig('about_us_content', DEFAULT_ABOUT_US);
+  ensureAppConfig('delete_account_agreement', DEFAULT_DELETE_ACCOUNT_AGREEMENT);
   ensureAppConfig('popup_global_enabled', '1');
   ensureAppConfig('popup_daily_limit', '3');
 
@@ -2585,6 +2894,36 @@ function initSeedData() {
 
   // 补全主/Helper Agent 的系统规则约束（promptDefaults.js 更新后自动同步）
   migratePromptsAddSystemRuleConstraint();
+
+  // 补全沉淀 Agent 的距离换算防照抄规则（修复"跑了3公里"被记成 30 分钟）
+  migratePromptsDistanceRule();
+
+  // 同步沉淀 Agent 的骑行强度分级规则（快速/普通/休闲骑行配速与 MET 分级）
+  migratePromptsCyclingIntensityRule();
+
+  // 补全沉淀 Agent 的否定/节食表态不提取规则（修复"今晚不吃饭"被误记为晚餐）
+  migratePromptsNegativeDietRule();
+
+  // 隐私政策补充友盟+ U-Mini 统计 SDK 公示条款（幂等，已有则跳过）
+  migratePrivacyPolicyAddUmeng();
+
+  // 「关于我们」升级为内容全面的新版文案（仅命中旧版默认文案时替换，幂等）
+  migrateAboutUsContent();
+
+  // 食品库补充连锁奶茶/小料标准条目（修复「珍珠」误配白蘑、奶茶热量兜底错误）
+  migrateFoodDbDrinkItems();
+
+  // 沉淀 Agent 补全「下午茶→加餐」餐别规则与连锁饮品杯型重量基准（幂等）
+  migratePromptsAfternoonTeaRule();
+
+  // 沉淀 Agent 补全「爬楼层数→时长换算」与记录指令必提取规则（幂等）
+  migratePromptsStaircaseRule();
+
+  // 主 Agent 补全「记录诚信红线」：未沉淀成功严禁谎称已记录（幂等）
+  migratePromptsRecordHonestyRule();
+
+  // 账号注销协议写入 CMS 协议配置（仅配置为空时补充，运营自定义不覆盖，幂等）
+  migrateDeleteAccountAgreement();
 
   // 初始化默认 AI 配置（首次或 Prompt 未绑定配置时）
   // 统一使用腾讯云 TokenHub Hy3，三角色通过 thinking_mode 参数区分能力（见 aiConfigService.js）

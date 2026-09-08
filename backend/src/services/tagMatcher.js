@@ -125,7 +125,9 @@ function hasDietMarker(text) {
 }
 
 function hasExerciseAction(text) {
-  return EXERCISE_ACTIONS.some(k => text.includes(k));
+  if (EXERCISE_ACTIONS.some(k => text.includes(k))) return true;
+  // "爬了6层/爬N层楼"不含"爬楼"连用词，用楼层正则补识别
+  return /爬(?:了|过)?\s*\d+(?:\.\d+)?\s*层/.test(text);
 }
 
 function hasBodyData(text) {

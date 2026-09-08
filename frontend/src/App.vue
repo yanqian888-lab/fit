@@ -17,6 +17,55 @@
   <!-- #endif -->
 </template>
 
+<script>
+// =====================================================================
+// 【友盟+ U-Mini 小程序统计埋点】文档：https://developer.umeng.com/docs/147615/detail/147619
+// SDK 原理：import 时即 hook 全局 App() 构造器，从 App() 参数对象上读取 umengConfig 完成初始化。
+// 因此 umengConfig 必须写在普通 <script> 的 export default 对象上（<script setup> 的顶层
+// 变量不会进入 App() 参数），随 App.vue 编译进产物 app.js，满足"app.js 顶部引入"的官方要求。
+//
+// 【uni-app Vue3 兼容补丁】uni-app 的 App 构造器 Mc(e) 内部会调用 gc(e) 转换配置对象，
+// gc() 只保留 uni-app 认识的属性（globalData/onLaunch 等），会丢弃 umengConfig；
+// 导致 SDK 的 App hook 第二次进入时拿到的是 gc(c)，ae.init(undefined) 报错
+// "请正确设置相关信息"。因此在 onLaunch 里手动调用 wx.uma.init(UMENG_CONFIG) 兜底，
+// SDK 自动 init 失败后 _inited 仍为 false，手动 init 可正常执行。
+// =====================================================================
+// 友盟统计配置（模块级常量，必须在 import 之前定义，供 import 后立即初始化使用）
+const UMENG_CONFIG = {
+  appKey: '6a9c080bd5481f0b42ee2c4c', // 友盟+分配的 AppKey
+  // 采用官方「方案3」：useOpenid 开启用户标识，但关闭友盟自动获取（autoGetOpenid:false），
+  // 由业务后端 code2session 拿到 openid 后，前端在登录/启动同步用户信息时
+  // 调用 wx.uma.setOpenid(openid) 上报（见 utils/umeng.js + store/index.js），
+  // 不依赖友盟后台 AppSecret 配置，链路更可控
+  useOpenid: true,
+  autoGetOpenid: false,
+  debug: process.env.NODE_ENV !== 'production', // 开发调试开启日志，生产构建自动关闭
+  uploadUserInfo: false // 不自动上报头像昵称，避免触发用户授权弹窗
+};
+
+// #ifdef MP-WEIXIN
+import 'umtrack-wx';
+// import 完成后 SDK 已把 ae 挂到全局 wx.uma，立即用正确配置初始化，
+// 让 SDK 内部 _inited 提前置 true；后续 uni-app gc() 触发的 App hook
+// 再调 ae.init(undefined) 时会被 _inited 拦截，避免"请正确设置相关信息"报错。
+try {
+  const __wx = (typeof globalThis !== 'undefined' && globalThis['wx']) || null;
+  const __uma = __wx && __wx.uma;
+  if (__uma && typeof __uma.init === 'function' && !__uma._inited) {
+    __uma.init(UMENG_CONFIG);
+  }
+} catch (e) {
+  console.warn('[umeng] import 阶段初始化失败，将在 onLaunch 重试', e);
+}
+// #endif
+
+export default {
+  // #ifdef MP-WEIXIN
+  umengConfig: UMENG_CONFIG
+  // #endif
+};
+</script>
+
 <script setup>
 import { onLaunch, onShow } from '@dcloudio/uni-app';
 import { useUserStore } from './store';
@@ -34,9 +83,30 @@ const noticeStore = useNoticeStore();
 
 onLaunch(async () => {
   // #ifdef MP-WEIXIN
+  // 【友盟兜底初始化】uni-app gc() 会丢弃 umengConfig，SDK 自动 init 可能失败，
+  // 此处手动传入正确配置；SDK 内部 _inited 标记会防止重复初始化。
+  try {
+    const g = typeof globalThis !== 'undefined' ? globalThis : null;
+    const nativeWx = g ? g['wx'] : null;
+    const uma = nativeWx && nativeWx.uma;
+    if (uma && typeof uma.init === 'function' && !uma._inited) {
+      uma.init(UMENG_CONFIG);
+    }
+  } catch (e) {
+    console.warn('[umeng] 手动初始化失败', e);
+  }
+
   // 隐藏原生 tabBar（只留自绘的 CustomTabBar 圆形凸起组件）
   // 临时注释 hideTabBar 验证：它会破坏原生 tabBar 状态机导致 switchTab 失败
   // uni.hideTabBar({ animation: false });
+
+  // 开启右上角菜单"转发给朋友"和"分享到朋友圈"入口
+  // 具体分享内容由 main.js 全局 mixin 的 onShareAppMessage / onShareTimeline 提供
+  try {
+    if (typeof wx !== 'undefined' && wx.showShareMenu) {
+      wx.showShareMenu({ menus: ['shareAppMessage', 'shareTimeline'] });
+    }
+  } catch (e) {}
   // #endif
   try {
     const sysInfo = getWindowInfoSafe();

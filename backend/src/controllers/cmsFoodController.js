@@ -27,20 +27,39 @@ function list(req, res) {
   const page = parseInt(req.query.page) || 1;
   const size = Math.min(100, Math.max(1, parseInt(req.query.size) || 20));
   const offset = (page - 1) * size;
-  const keyword = req.query.keyword || '';
+  const keyword = (req.query.keyword || '').trim();
   const category = req.query.category || '';
+
+  // 清除 LIKE 通配符，避免干扰匹配
+  const safeKeyword = keyword.replace(/[%_]/g, '');
 
   let where = 'WHERE 1=1';
   const params = [];
 
-  if (keyword) {
-    where += ' AND food_name LIKE ?';
-    params.push(`%${keyword}%`);
-  }
-
   if (category) {
     where += ' AND category = ?';
     params.push(category);
+  }
+
+  if (safeKeyword) {
+    // 第一阶段: 标准连续子串匹配（名称+别名）
+    const std = db.prepare(
+      `SELECT COUNT(*) as count FROM food_db ${where} AND (food_name LIKE ? OR aliases LIKE ?)`
+    ).get(...params, `%${safeKeyword}%`, `%${safeKeyword}%`).count;
+
+    const chars = [...safeKeyword].filter(c => c.trim());
+
+    if (std === 0 && chars.length >= 3) {
+      // 第二阶段: 逐字符 AND 匹配，覆盖词序颠倒场景（"特仑苏牛奶" → "牛奶特仑苏"）
+      const conds = chars.map(() => '(food_name LIKE ? OR aliases LIKE ?)').join(' AND ');
+      where += ` AND (${conds})`;
+      for (const c of chars) {
+        params.push(`%${c}%`, `%${c}%`);
+      }
+    } else {
+      where += ' AND (food_name LIKE ? OR aliases LIKE ?)';
+      params.push(`%${safeKeyword}%`, `%${safeKeyword}%`);
+    }
   }
 
   const total = db.prepare(`SELECT COUNT(*) as count FROM food_db ${where}`).get(...params).count;
@@ -48,7 +67,7 @@ function list(req, res) {
   const list = db.prepare(`
     SELECT id, food_id, category, sub_category, food_name, calories_per_100g,
            common_unit, edible_rate, remark,
-           protein_per_100g, carb_per_100g, fat_per_100g, created_at
+           protein_per_100g, carb_per_100g, fat_per_100g, source, aliases, created_at
     FROM food_db
     ${where}
     ORDER BY id DESC
@@ -93,16 +112,20 @@ function create(req, res) {
   const {
     food_name, category, sub_category = '', calories_per_100g = 0,
     common_unit = '', edible_rate = 1.0, remark = '',
-    protein_per_100g = 0, carb_per_100g = 0, fat_per_100g = 0
+    protein_per_100g = 0, carb_per_100g = 0, fat_per_100g = 0,
+    aliases
   } = req.body;
 
   const foodId = getNextFoodId();
+  const aliasStr = Array.isArray(aliases) && aliases.length
+    ? JSON.stringify([...new Set(aliases.filter(a => a && String(a).trim()))])
+    : null;
   const id = db.prepare(`
     INSERT INTO food_db (
       food_id, category, sub_category, food_name, calories_per_100g,
       common_unit, edible_rate, remark,
-      protein_per_100g, carb_per_100g, fat_per_100g
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      protein_per_100g, carb_per_100g, fat_per_100g, source, aliases
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'legacy', ?)
   `).run(
     foodId,
     category,
@@ -114,7 +137,8 @@ function create(req, res) {
     remark,
     toNumber(protein_per_100g),
     toNumber(carb_per_100g),
-    toNumber(fat_per_100g)
+    toNumber(fat_per_100g),
+    aliasStr
   ).lastInsertRowid;
 
   cmsLogService.log(req, 'food_lib:create', 'food', String(id), { food_id: foodId, food_name });
@@ -135,8 +159,16 @@ function update(req, res) {
   const {
     food_name, category, sub_category, calories_per_100g,
     common_unit, edible_rate, remark,
-    protein_per_100g, carb_per_100g, fat_per_100g
+    protein_per_100g, carb_per_100g, fat_per_100g,
+    aliases
   } = req.body;
+
+  let aliasStr = null;
+  if (aliases !== undefined) {
+    aliasStr = Array.isArray(aliases) && aliases.length
+      ? JSON.stringify([...new Set(aliases.filter(a => a && String(a).trim()))])
+      : null;
+  }
 
   db.prepare(`
     UPDATE food_db
@@ -149,7 +181,8 @@ function update(req, res) {
         remark = COALESCE(?, remark),
         protein_per_100g = COALESCE(?, protein_per_100g),
         carb_per_100g = COALESCE(?, carb_per_100g),
-        fat_per_100g = COALESCE(?, fat_per_100g)
+        fat_per_100g = COALESCE(?, fat_per_100g),
+        aliases = COALESCE(?, aliases)
     WHERE id = ?
   `).run(
     food_name !== undefined ? String(food_name).trim() : null,
@@ -162,6 +195,7 @@ function update(req, res) {
     protein_per_100g !== undefined ? toNumber(protein_per_100g) : null,
     carb_per_100g !== undefined ? toNumber(carb_per_100g) : null,
     fat_per_100g !== undefined ? toNumber(fat_per_100g) : null,
+    aliasStr,
     id
   );
 

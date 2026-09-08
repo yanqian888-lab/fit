@@ -40,11 +40,15 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { partnerApi } from '../../api';
+import { request } from '../../utils/request';
 import AppPage from '../../components/AppPage.vue';
 import { resolveStaticUrl } from '../../utils/environment.js';
 
 const partner = ref({});
 const currentMode = ref('gentle');
+
+/** storage 缓存 key（快速兜底，让页面毫秒级打开） */
+const PARTNER_CACHE_KEY = 'partner_settings_cache';
 
 /** 模式头像：改为远程 CDN 加载以减小小程序包体积 */
 const modeAvatarMap = {
@@ -70,20 +74,58 @@ const modeLabel = computed(() => {
 });
 
 onMounted(async () => {
+  /*
+   * 秒开策略：
+   * 1. 先读本地 storage 缓存（毫秒级），页面先渲染缓存数据
+   * 2. 再异步请求网络（关闭全局 loading 遮罩，不挡用户）
+   * 3. 网络返回后覆盖 ref，写回缓存
+   */
   try {
-    const res = await partnerApi.getPartner();
-    partner.value = res.data || {};
-    currentMode.value = partner.value.mode || 'gentle';
+    const cached = uni.getStorageSync(PARTNER_CACHE_KEY);
+    if (cached && typeof cached === 'object') {
+      partner.value = cached;
+      if (cached.mode) currentMode.value = cached.mode;
+    }
+  } catch (_) {}
+
+  try {
+    // 用 request 绕过 partnerApi.getPartner（后者不支持透传 loading:false）
+    // 不传 loading 选项 → 默认 true，但我们把 loadingMask 关掉，避免遮罩挡整页
+    const res = await request({
+      url: '/partners',
+      method: 'GET',
+      loading: false,
+      loadingMask: false
+    });
+    const data = res.data || {};
+    partner.value = data;
+    if (data.mode) currentMode.value = data.mode;
+    try { uni.setStorageSync(PARTNER_CACHE_KEY, data); } catch (_) {}
   } catch (err) {
-    console.error(err);
+    console.error('[partner/settings] getPartner 失败:', err?.message || err);
   }
 });
 
+/**
+ * 切换搭子模式
+ * 主动操作，保留轻量 loading 提示
+ */
 async function selectMode(mode) {
   if (mode === currentMode.value) return;
   try {
-    await partnerApi.switchMode(mode);
+    const res = await request({
+      url: '/partners/switch-mode',
+      method: 'POST',
+      data: { mode },
+      loading: '切换中...',
+      loadingMask: false
+    });
     currentMode.value = mode;
+    try {
+      const cached = uni.getStorageSync(PARTNER_CACHE_KEY) || {};
+      cached.mode = mode;
+      uni.setStorageSync(PARTNER_CACHE_KEY, cached);
+    } catch (_) {}
     uni.showToast({ title: '切换成功', icon: 'success' });
   } catch (err) {
     uni.showToast({ title: '切换失败', icon: 'none' });

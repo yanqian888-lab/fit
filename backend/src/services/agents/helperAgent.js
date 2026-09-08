@@ -13,9 +13,83 @@ const { safeJsonParse } = require('../../utils/safeJson');
 const { getChinaDateStr } = require('../../utils/chinaTime');
 
 /**
- * 调用全能助手 Agent
+ * 根据本轮沉淀结果构造给 helper 的系统上下文块
+ * 核心原则：搭子只能基于沉淀系统的真实结果反馈"记录状态"，
+ * 严禁在未沉淀成功时对用户谎称"已经记录好"（诚信红线）
+ * @param {object|null|undefined} precipitation callPrecipitationAgent 返回结果
+ *        成功：{ precipitation_id, type, sub_type, status(1=已落库/2=待确认), extracted_data }
+ *        失败：{ extracted:false, reason }；未知（超时）：null
+ * @returns {string} 注入给 LLM 的系统消息文本
  */
-async function callHelperAgent(question, userInfo = {}, partnerInfo = {}) {
+function buildPrecipitationContextBlock(precipitation) {
+  // 结果未知（沉淀超时/未等待）：无法确认是否记录成功，禁止声称完成
+  if (!precipitation) {
+    return `【沉淀结果通知】本轮消息的自动记录结果尚未返回（可能仍在处理中）。
+硬性规则：你此刻无法确认数据是否已经记录成功，因此严禁说"已经帮你记录/记好了/已记录到……"这类确认记录完成的话。
+若用户要求记录饮食/运动，请说"我在帮你记啦，稍等几秒可以在记录页核对一下；万一没记上，你补充下具体时长/份量我再帮你记"，不要虚构记录内容或热量数字。`;
+  }
+
+  // 沉淀失败：未提取到任何可记录内容
+  if (precipitation.extracted === false || !precipitation.type) {
+    return `【沉淀结果通知】系统未能从用户本轮消息中提取到可记录的饮食/运动/身体数据（原因：${precipitation.reason || '信息不足或无法识别'}），本轮没有生成任何记录。
+硬性规则：
+1. 严禁说"已经帮你记录/记好了/已记录"这类话——本轮实际上没有任何记录生成，谎称已记录是严重错误。
+2. 如实、轻松地告诉用户"这次我还没太记全"，并引导补充关键信息：运动需要时长、距离或楼层数（如"爬了几层/大概几分钟"），饮食需要食物名称和份量。
+3. 也可以提示用户直接去记录页手动添加。
+4. 不要编造热量数字；可以基于用户提供的信息做估算，但必须说明这只是估算、尚未记录。`;
+  }
+
+  // 沉淀成功：拼出实际记录内容摘要（数值以沉淀系统为准，helper 不得改写）
+  const lines = [];
+  const data = precipitation.extracted_data || {};
+  if (precipitation.type === 'diet_record') {
+    const foods = Array.isArray(data.foods) ? data.foods : [];
+    foods.forEach(f => {
+      const amount = f.weight ? `${f.weight}g` : (f.quantity ? `${f.quantity}${f.unit || ''}` : '');
+      lines.push(`- 饮食：${f.name}${amount ? ' ' + amount : ''}，约${Math.round(f.calorie || 0)}千卡`);
+    });
+    if (data.total_calorie != null) lines.push(`- 本餐合计约 ${Math.round(data.total_calorie)} 千卡`);
+  } else if (precipitation.type === 'exercise_record') {
+    const exercises = Array.isArray(data.exercises) ? data.exercises : [];
+    exercises.forEach(e => {
+      const dist = e.distance ? `、${e.distance}公里` : '';
+      lines.push(`- 运动：${e.name}${e.duration != null ? ' ' + e.duration + '分钟' : ''}${dist}，约${Math.round(e.calorie || 0)}千卡`);
+    });
+    if (data.total_calorie != null) lines.push(`- 运动合计约 ${Math.round(data.total_calorie)} 千卡`);
+  } else if (precipitation.type === 'body_data') {
+    const parts = [];
+    if (data.weight != null) parts.push(`体重${data.weight}kg`);
+    if (data.body_fat != null) parts.push(`体脂${data.body_fat}%`);
+    lines.push(`- 身体数据：${parts.join('、') || '已记录'}`);
+  }
+  const summary = lines.length ? lines.join('\n') : '- 记录已生成';
+
+  // status=2：低置信度，已生成待确认记录，用户点确认卡片后才正式落库
+  if (precipitation.status === 2) {
+    return `【沉淀结果通知】系统已从本轮消息提取到记录，但置信度较低，需要用户在确认卡片中核对后才正式生效：
+${summary}
+规则：
+1. 不要说"已经记录好/已保存"，应说"我先帮你记下来啦，你点一下确认卡片核对，确认后就正式生效"。
+2. 引用的内容与数值必须以上方摘要为准，禁止编造摘要之外的食物、运动或热量数字。`;
+  }
+
+  // status=1：已自动确认并正式落库
+  return `【沉淀结果通知】系统已成功从本轮消息提取记录并正式写入用户的记录数据：
+${summary}
+规则：
+1. 可以告诉用户"记好啦"，但记录内容与数值必须严格引用上方摘要，禁止编造摘要之外的食物、运动或热量数字（例如摘要里是爬楼梯6分钟约35千卡，就不许说成30千卡或其他数字）。
+2. 若摘要内容与用户口述可能有出入（如名称/份量不对），提醒用户可在记录页手动修改。`;
+}
+
+/**
+ * 调用全能助手 Agent
+ * @param {string} question 用户问题/对话内容
+ * @param {object} userInfo 用户信息
+ * @param {object} partnerInfo 搭子人设信息
+ * @param {object} [options] 额外选项
+ * @param {object|null} [options.precipitation] 本轮消息的沉淀结果，用于如实反馈记录状态，防止谎称已记录
+ */
+async function callHelperAgent(question, userInfo = {}, partnerInfo = {}, options = {}) {
   // 数据库表使用内部自增 id 作为 user_id，优先用 id（而不是对外 6 位 user_id）
   const userId = userInfo.id || userInfo.user_id;
 
@@ -109,21 +183,70 @@ async function callHelperAgent(question, userInfo = {}, partnerInfo = {}) {
         ? '【重要】今天仅记录了不到 2 个餐别，数据不完整，禁止判断“总摄入过低”或提醒用户热量不足，也禁止建议加餐/补充热量。只需回答用户当前问题即可。'
         : '【重要】今天已记录至少 2 个餐别，可以基于总摄入给出合理的饮食建议或热量提醒。';
 
-      // 如果用户提到的饮品/食品不在今日记录和食物库中，且明显在询问热量/含糖情况，尝试联网检索热量（区分有糖/无糖）
-      // 注意：联网搜索仅作为兜底，优先使用本地食物库；只有疑似包装饮品/品牌食品/带容量单位时才触发
-      let webSearchBlock = '';
-      const unknownFood = extractUnknownFoodQuery(question, todayFoods);
-      const asksCalorieOrSugar = /(热量|卡路里|千卡|大卡|含糖|无糖|有糖|低糖|能喝|能吃|可以喝|可以吃|多少卡|胖不胖|减肥|减脂|热量高)/.test(question);
-      if (unknownFood && asksCalorieOrSugar && shouldUseWebSearch(question, unknownFood)) {
-        try {
-          const searchQuery = `${question}（${unknownFood} 热量 含糖/无糖）`;
-          const webResult = await webSearchService.searchNutrition(searchQuery);
-          if (webResult) {
-            webSearchBlock = `\n【网络检索参考】用户提到的“${unknownFood}”不在今日记录和食物库中，已从公开网络/营养资料检索到以下参考信息：\n${webResult}\n`;
+      // ===== 食物数据源择优：高/中置信食品库 → 网络核实+学习入库 → 未校验网络原文兜底 =====
+      // 核心原则：食品库不再"强行匹配"——逐字符硬凑的低置信结果一律舍弃，
+      // 改走联网核实；网络数据经结构化+合理性校验后回流入库，后续消息即成为高置信库条目
+      let webSearchBlock = ''; // 未通过校验的网络原文（仅供 LLM 估算参考，禁止当作权威值）
+      let foodDbBlock = '';    // 可靠营养条目（食品库命中 + 网络核实后新收录）
+      try {
+        const asksCalorieOrSugar = /(热量|卡路里|千卡|大卡|含糖|无糖|有糖|低糖|能喝|能吃|可以喝|可以吃|多少卡|胖不胖|减肥|减脂|热量高|营养)/.test(question);
+
+        // 收集候选食物，排除今日已记录的
+        const candidates = collectFoodCandidates(question)
+          .filter(cleaned => !todayFoods.some(f => f.name && (f.name.includes(cleaned) || cleaned.includes(f.name))));
+
+        const dbRefs = [];
+        const webCandidates = [];
+        const seenDb = new Set();
+        for (const cleaned of candidates) {
+          // 仅采纳中置信以上的库匹配；低置信（逐字符硬凑）视为"库中无可靠条目"
+          const info = nutritionService.getFoodNutrition(cleaned, null, { minConfidence: 'medium' });
+          if (info && info.calorie_per_100g > 0) {
+            if (seenDb.has(info.food_name)) continue;
+            seenDb.add(info.food_name);
+            dbRefs.push({ name: cleaned, info });
+          } else if (asksCalorieOrSugar && shouldUseWebSearch(question, cleaned)) {
+            webCandidates.push(cleaned);
           }
-        } catch (e) {
-          console.error('[callHelperAgent] 网络检索失败:', e.message);
         }
+
+        // 网络核实+学习入库：检索 → 结构化 → 营养校验 → 校验通过回流入库；最多处理 2 个候选，控制延迟
+        const learnedRefs = [];
+        const webRawTexts = [];
+        await Promise.all(webCandidates.slice(0, 2).map(async (name) => {
+          try {
+            const r = await webSearchService.searchAndLearnFood(name, question);
+            if (r.validated && r.info) {
+              learnedRefs.push({ name, info: r.info, newlyLearned: !!r.learned });
+            } else if (r.webText) {
+              webRawTexts.push(`「${name}」网络参考资料：\n${r.webText}`);
+            }
+          } catch (e) {
+            console.error(`[callHelperAgent] 网络核实失败（${name}）:`, e.message);
+          }
+        }));
+
+        // 可靠条目：食品库中高置信命中 + 网络核实通过（含本次新收录）条目
+        const allReliableRefs = [
+          ...dbRefs.map(r => ({ ...r, newlyLearned: false })),
+          ...learnedRefs
+        ];
+        if (allReliableRefs.length) {
+          const lines = allReliableRefs.map(({ info, newlyLearned }) => {
+            const macro = `蛋白质${Number(info.protein_per_100g || 0)}g、碳水${Number(info.carb_per_100g || 0)}g、脂肪${Number(info.fat_per_100g || 0)}g`;
+            const unitTip = info.common_unit ? `；常见份量参考：${info.common_unit}` : '';
+            const tag = newlyLearned ? '（刚联网核实并收录进食物库）' : '';
+            return `- ${info.food_name}${tag}：${Math.round(info.calorie_per_100g)}千卡/100g（每100g含${macro}）${unitTip}`;
+          }).join('\n');
+          foodDbBlock = `\n【食物库参考】用户提到的以下食物有可靠营养数据（与饮食记录沉淀使用同一数据源）：\n${lines}\n计算这些食物的热量时，必须以每100g营养值×实际克数/份量计算并直接引用，禁止自行估算覆盖；标注"刚联网核实"的条目可顺带用自然语气告诉用户"这个食物我已经帮你记住啦，下次直接用这个数据"。\n`;
+        }
+
+        // 未通过校验的网络原文（数据矛盾/无法结构化）：仅可作为估算参考
+        if (webRawTexts.length) {
+          webSearchBlock = `\n【网络检索参考】以下食物本地食物库暂无可靠条目、网络数据也未通过校验，仅可作为粗略估算参考（引用时必须明确标注"估算值"，严禁说已记录/已收录/已记住）：\n${webRawTexts.join('\n\n')}\n`;
+        }
+      } catch (e) {
+        console.error('[callHelperAgent] 食物数据源择优处理失败:', e.message);
       }
 
       enhancedQuestion = `${question}
@@ -138,13 +261,14 @@ ${lowIntakeWarningRule}
 
 今天已记录的食物明细（食物名后面的 g/个 是该食物的重量/数量，冒号后是热量）：
 ${foodList}
-${webSearchBlock}
+${foodDbBlock}${webSearchBlock}
 请基于以上实际记录数据回答，并严格遵守以下规则：
 1. 总摄入热量的单位是千卡，不是克数，不要把总热量数字错当成某种食物的重量；也不要把用户说的重量（如"100克"）直接当成热量。
 2. 如果用户提到的食物已在上方记录中，必须直接引用记录里的热量，禁止自行改数。
-3. 如果不在记录中但上方附有【网络检索参考】，可基于检索参考给出估算热量（需区分有糖/无糖，并明确说明是估算）。
-4. 如果不在记录中且没有检索参考，必须基于你的营养学知识和公开营养资料给出合理估算，明确标注"估算值"及简要依据；禁止回答"不知道""无法给出""无权威数据""无法估算"。
-5. 同一条回复中严禁前后矛盾：禁止先说"无数据/无法估算"紧接着又给出具体热量数字。要么只给建议不给出数字，要么给出估算并明确标注估算。`;
+3. 如果上方附有【食物库参考】，其中食物的热量必须按每100g营养值×实际克数/份量计算并直接引用（食物库与饮食记录沉淀同源，含"刚联网核实并收录"的条目），禁止用其他估算覆盖。
+4. 如果附有【网络检索参考】（标注"未通过校验、仅可粗略估算"），只能基于其中数据给出估算并明确标注"估算值"，严禁把估算值说成已记录/已收录的确定数据。
+5. 如果不在记录中且没有任何参考，必须基于你的营养学知识和公开营养资料给出合理估算，明确标注"估算值"及简要依据；禁止回答"不知道""无法给出""无权威数据""无法估算"。
+6. 同一条回复中严禁前后矛盾：禁止先说"无数据/无法估算"紧接着又给出具体热量数字。要么只给建议不给出数字，要么给出估算并明确标注估算。`;
     }
   }
 
@@ -211,6 +335,8 @@ ${exerciseList}
             role: 'system',
             content: '补充规则：1）当用户询问的饮品/食品不在今日记录和食物库中时，优先使用用户消息中附带的【网络检索参考】数据给出估算热量，并区分有糖/无糖版本；如果没有附带检索参考，必须基于你的营养学知识和公开营养资料给出合理估算，明确标注"估算值"，禁止回答"不知道""无法给出""无数据"。2）同一条回复中严禁前后矛盾：禁止先说"无数据/无法估算"紧接着又给出具体热量数字；要么只给建议不给出数字，要么给出估算并明确标注估算。3）APP 目前没有睡眠、盐分摄入、水肿记录功能，回答中不要建议用户记录或分析睡眠、盐分、水肿相关内容。4）当前用户信息中已提供 BMR、TDEE、每日热量目标等数据时，请直接基于这些数据进行分析和建议，不要再要求用户补充性别、年龄、活动水平等基础信息。'
           },
+          // 本轮沉淀结果通知：搭子必须基于真实沉淀结果反馈记录状态，未沉淀成功严禁谎称已记录
+          { role: 'system', content: buildPrecipitationContextBlock(options.precipitation) },
           { role: 'user', content: enhancedQuestion }
         ],
         { temperature: 0.5, max_tokens: 8000 }
@@ -525,11 +651,13 @@ function shouldUseWebSearch(question, unknownFood) {
 }
 
 /**
- * 从用户问题中提取可能不在今日记录/食物库中的饮品/食品名称
- * 仅用于触发联网热量检索
+ * 从用户问题中收集可能的饮品/食品候选名称（已做量词/噪声清洗）
+ * 供"联网检索判断"与"食物库参考注入"两处复用，保证候选口径一致
+ * @param {string} question 原始用户消息
+ * @returns {string[]} 清洗后的候选食物名列表
  */
-function extractUnknownFoodQuery(question, todayFoods = []) {
-  if (!question) return null;
+function collectFoodCandidates(question) {
+  if (!question) return [];
   const normalized = question.replace(/[，。！？；、,.!?;]/g, ' ');
   const candidates = new Set();
 
@@ -540,34 +668,152 @@ function extractUnknownFoodQuery(question, todayFoods = []) {
   // 量词+名称（如：一大碗卤煮、一份黄焖鸡、一只烤鸡；注意不含数字）
   const portionRe = /(?:一|两|几|半|大|小|中)?\s*(?:份|碗|盘|个|只|杯|瓶|罐|袋|包|盒|根|条|片|块|勺)\s*([\u4e00-\u9fa5a-zA-Z]{2,})/g;
   // 常见饮品/食品关键词（无数量时也尝试）
-  const drinkRe = /([\u4e00-\u9fa5]{2,}(?:汁|饮|茶|奶|酸奶|咖啡|酒|水|汽水|苏打|气泡|美式|拿铁|摩卡|果汁|奶茶))/g;
+  // 后缀含"奶青"：一点点"四季奶青"以"青"结尾，不含品类字会被截断成"四季奶"
+  const drinkRe = /([\u4e00-\u9fa5]{2,}(?:汁|饮|茶|奶青|奶|酸奶|咖啡|酒|水|汽水|苏打|气泡|美式|拿铁|摩卡|果汁|奶茶))/g;
+  // 品牌+品名点单模式（如"霸王茶姬的伯牙绝弦""一点点四季奶青"）：
+  // 伯牙绝弦这类纯专名不含茶/奶品类字，drinkRe 无法覆盖，靠品牌前缀兜底捕获
+  const brandRe = /(?:一点点|1點點|1点点|霸王茶姬|霸王茶机|喜茶|奈雪的茶|奈雪|蜜雪冰城|蜜雪|茶百道|古茗|沪上阿姨|书亦烧仙草|书亦|益禾堂|瑞幸|星巴克|coco|CoCo|COCO)\s*的?\s*([\u4e00-\u9fa5a-zA-Z]{2,10})/g;
+  // 奶茶/糖水小料专名（无量词无数字时也能识别，如"加了小珍珠和黑糖粉稞小料"）
+  const toppingRe = /(小珍珠|大珍珠|黑糖珍珠|珍珠|波霸|粉圆|黑糖粉稞|黑糖粉粿|粉稞|粉粿|椰果粒|椰果|芋圆|仙草|布丁|脆啵啵|寒天|燕麦|红豆)/g;
 
   let m;
   while ((m = unitAfterRe.exec(normalized)) !== null) candidates.add(m[3]);
   while ((m = unitBeforeRe.exec(normalized)) !== null) candidates.add(m[1]);
   while ((m = portionRe.exec(normalized)) !== null) candidates.add(m[1]);
   while ((m = drinkRe.exec(normalized)) !== null) candidates.add(m[1]);
+  while ((m = brandRe.exec(normalized)) !== null) candidates.add(m[1]);
+  while ((m = toppingRe.exec(normalized)) !== null) candidates.add(m[1]);
 
   const stopWords = new Set([
     '今天','现在','这个','那个','这些','那些','多少','热量','卡路里','千卡','大卡',
     '含糖','无糖','有糖','糖分','蛋白质','脂肪','碳水','摄入','食物','饮品','饮料'
   ]);
-  const prefixNoise = /^(的|了|吗|呢|吧|啊|哦|嗯|喂|是|有|吃|喝|要|想|问|算|约|大概|大约|差不多|可能|应该|建议|推荐|怎么|如何|什么|多少|热量|卡路里|千卡|大卡|含糖|无糖|有糖|纯|鲜|现|一杯|一瓶|一碗|一份|一个|一包|一袋|一盒|一罐|一支|一根|一条|一片|一只)/;
-  const suffixNoise = /(的|了|吗|呢|吧|啊|哦|嗯|热量|卡路里|千卡|大卡|含糖|无糖|有糖|多少)$/;
+  // 候选内部连接词：一个正则片段里可能抓了"伯牙绝弦和珍珠奶茶"，按连接词拆成独立候选
+  const connectorSplit = /\s*(?:和|跟|与|还有|以及|或者|还是|加了?|外加|还有)\s*/;
+  // 前缀噪声：量词单字/杯型/品牌名/语气词等，允许连续剥离（如"中杯的一点点四季奶青"→"四季奶青"）
+  // "霸王茶"为品牌名"霸王茶姬"被饮品类后缀正则截断的残段，一并剥离
+  const prefixNoise = /^(?:的|了|吗|呢|吧|啊|哦|嗯|喂|是|有|吃|喝|要|想|问|算|约|大概|大约|差不多|可能|应该|建议|推荐|怎么|如何|什么|多少|热量|卡路里|千卡|大卡|含糖|无糖|有糖|纯|鲜|现|中杯|大杯|小杯|一杯|一瓶|一碗|一份|一个|一包|一袋|一盒|一罐|一支|一根|一条|一片|一只|一点点|1點點|1点点|霸王茶姬|霸王茶机|霸王茶|喜茶|奈雪的茶|奈雪|蜜雪冰城|蜜雪|茶百道|古茗|沪上阿姨|书亦烧仙草|书亦|益禾堂|瑞幸|星巴克|coco|CoCo|COCO|杯|碗|盘|个|只|瓶|罐|袋|包|盒|根|条|片|块|勺|的|了|是|有|喝|吃)+/;
+  // 后缀噪声：语气词/热量疑问词组（brandRe 品名捕获可能带入"热量高吗/含糖量高/会胖/多少卡"等尾巴）
+  const suffixNoise = /(的|了|吗|呢|吧|啊|哦|嗯|热量高吗|热量高不高|热量高|含糖量高吗|含糖量高|含糖量|卡路里|千卡|大卡|热量|含糖|无糖|有糖|多少卡|几卡|多少卡|多少钱|多少|哪个|哪种|会胖吗|会胖|好喝吗|好喝|好吃吗|一大杯|一中杯|一小杯|一杯|一瓶|一碗|一份|一个|一包|一袋|一盒|一罐|一大瓶|小料|配料|卡|杯|瓶|碗|份|袋|盒|罐)$/;
 
-  for (const raw of candidates) {
-    let cleaned = raw.replace(prefixNoise, '').replace(suffixNoise, '').trim();
-    if (!cleaned || cleaned.length < 2 || stopWords.has(cleaned) || /^\d+$/.test(cleaned)) continue;
+  const cleanedList = [];
+  const seen = new Set();
+  for (const raw0 of candidates) {
+    // 先按连接词拆分（"伯牙绝弦和珍珠奶茶" → 伯牙绝弦 / 珍珠奶茶）
+    for (const raw of String(raw0).split(connectorSplit).filter(Boolean)) {
+      // 连续剥离前缀噪声与后缀噪声，直到稳定
+      let cleaned = raw;
+      for (let i = 0; i < 6; i++) {
+        const next = cleaned.replace(prefixNoise, '').replace(suffixNoise, '').trim();
+        if (next === cleaned) break;
+        cleaned = next;
+      }
+      if (!cleaned || cleaned.length < 2 || stopWords.has(cleaned) || /^\d+$/.test(cleaned)) continue;
+      if (seen.has(cleaned)) continue;
+      seen.add(cleaned);
+      cleanedList.push(cleaned);
+    }
+  }
+  return cleanedList;
+}
 
-    // 是否已在今日记录中
-    const inToday = todayFoods.some(f => f.name && (f.name.includes(cleaned) || cleaned.includes(f.name)));
-    if (inToday) continue;
+/**
+ * 按运动类型获取配速（分钟/公里），与沉淀提示词的换算规则保持一致；
+ * 无配速规则的运动类型返回 0（不进入距离换算）。
+ * 注意：骑行/跑步/游泳的强度分级（快速/休闲）优先走 getDistanceTier，本表为兜底。
+ */
+function getPacePerKm(q) {
+  // 顺序即优先级：具体运动名在前，泛称在后（如"快走"须先于"走路"判断）
+  const paceRules = [
+    { keys: ['快跑', '冲刺跑', '短跑', '变速跑', '间歇跑'], pace: 5 },
+    { keys: ['爬坡跑'], pace: 7 },
+    { keys: ['超慢跑'], pace: 9 },
+    { keys: ['跑步', '慢跑', '夜跑', '晨跑', '长跑', '越野跑', '跑步机'], pace: 6 },
+    { keys: ['快走', '健走', '暴走'], pace: 10 },
+    { keys: ['徒步', '登山', '爬山'], pace: 18 },
+    { keys: ['走路', '慢走', '散步'], pace: 15 },
+    // 普通通勤骑行约 15km/h ≈ 4min/km；快速/休闲分级见 getDistanceTier
+    { keys: ['骑车', '骑行', '自行车', '单车'], pace: 4 },
+    { keys: ['游泳', '蛙泳', '自由泳', '仰泳', '蝶泳'], pace: 30 }
+  ];
+  for (const rule of paceRules) {
+    if (rule.keys.some(k => q.includes(k))) return rule.pace;
+  }
+  return 0;
+}
 
-    // 是否在食物库中
-    const inDb = nutritionService.getFoodNutrition(cleaned);
-    if (inDb) continue;
+/**
+ * 检测消息中的运动强度修饰词
+ * 注意：慢跑/慢走是运动专名（本身已在配速/MET 表中），不作为"低强度"信号；
+ * @param {string} q 归一化后的问题文本
+ * @returns {'fast'|'slow'|null} 强度档位
+ */
+function detectExerciseIntensity(q) {
+  // 高强度：快速骑/骑得很快/猛骑/竞速/全力/加速等（不含单字"快"，避免"快乐/痛快"类误判）
+  if (/(快速|飞快|很快|好快|猛骑|猛跑|猛游|使劲|竞速|全力|加速|极速|高速|快点|快骑|快游|冲刺)/.test(q)) {
+    return 'fast';
+  }
+  // 低强度：慢慢骑/休闲骑/骑车兜风/骑得慢等（慢跑/慢走专名不在此列）
+  if (/(慢速|很慢|慢点|慢慢|悠闲|休闲|兜风|慢悠悠|慢骑|慢游)/.test(q)) {
+    return 'slow';
+  }
+  return null;
+}
 
-    return cleaned;
+/**
+ * 距离型运动的配速 + MET 强度分级（用户给公里数时使用）。
+ * 数值依据《身体活动汇编》(Compendium of Physical Activities)：
+ *   骑行 <16km/h ≈ MET4、通勤约15km/h ≈ MET5、22-26km/h ≈ MET10；
+ *   跑步 12km/h ≈ MET10；快走 6km/h ≈ MET5；快速游泳 ≈ MET10。
+ * @param {string} q 归一化后的问题文本
+ * @param {'fast'|'slow'|null} intensity detectExerciseIntensity 的结果
+ * @returns {{pace:number, met:number, label:string|null}|null} 命中分级时返回配速(分钟/公里)、MET、展示名
+ */
+function getDistanceTier(q, intensity) {
+  // 骑行三档：快速骑行 / 普通通勤 / 休闲慢骑（动感单车等室内器械不在此列）
+  if (/骑车|骑行|自行车|单车|公路骑|山地骑/.test(q) && !/动感单车|磁控车|椭圆机|划船机/.test(q)) {
+    if (intensity === 'fast') return { pace: 2.5, met: 10.0, label: '快速骑行' };
+    if (intensity === 'slow') return { pace: 5, met: 3.5, label: '休闲骑行' };
+    return { pace: 4, met: 5.0, label: null };
+  }
+  // 跑步：泛称"跑步"加高难度词 → 快跑档（慢跑/超慢跑/爬坡跑等具体跑法已在配速表中，不覆盖）
+  if (intensity === 'fast' && /跑步|夜跑|晨跑|长跑|跑步机|越野跑/.test(q) && !/慢跑|超慢跑|爬坡跑/.test(q)) {
+    return { pace: 5, met: 10.0, label: '快速跑' };
+  }
+  // 步行：泛称"走路"加高难度词 → 快走档（慢走/散步/徒步等不覆盖）
+  if (intensity === 'fast' && /走路|步行|健走/.test(q) && !/慢走|散步|徒步|爬山|登山/.test(q)) {
+    return { pace: 10, met: 5.0, label: '快走' };
+  }
+  // 游泳：高难度词 → 快速档（蝶泳/自由泳等具体泳姿 MET 已更高，不覆盖）
+  if (intensity === 'fast' && /游泳|蛙泳|仰泳/.test(q) && !/蝶泳|自由泳/.test(q)) {
+    return { pace: 25, met: 10.0, label: '快速游泳' };
+  }
+  return null;
+}
+
+/**
+ * 按运动类别（骑/跑/游/走）查找今日最近一条同类运动记录。
+ * 用于强度修正类追问（如"我是快速骑哦"）：消息本身不含距离/时长，
+ * 从上文已沉淀的记录中取回距离/时长按新强度重算。
+ * @param {string} qNorm 归一化后的问题文本
+ * @param {Array} todayExercises 今日运动记录（含 name/duration/distance/calorie）
+ * @returns {object|null} 命中的今日记录
+ */
+function findTodayExerciseRecord(qNorm, todayExercises) {
+  if (!Array.isArray(todayExercises) || todayExercises.length === 0) return null;
+  // 顺序即优先级：骑行含"单车"但不含"跑/游/走"，注意骑行判断避开动感单车等器械无妨（同为骑行类）
+  const categories = [
+    /骑车|骑行|自行车|单车|公路骑|山地骑/,
+    /游泳|蛙泳|自由泳|仰泳|蝶泳|游泳/,
+    /跑步|慢跑|快跑|超慢跑|夜跑|晨跑|长跑|越野跑|跑步机|爬坡跑/,
+    /走路|快走|慢走|散步|健走|徒步|暴走|逛街/
+  ];
+  const cat = categories.find(re => re.test(qNorm));
+  if (!cat) return null;
+  // 取今天最后一条同类记录（最近一次对话的运动）
+  for (let i = todayExercises.length - 1; i >= 0; i--) {
+    const r = todayExercises[i];
+    if (cat.test(String(r.name || ''))) return r;
   }
   return null;
 }
@@ -647,9 +893,41 @@ function tryLocalCalculation(question, userInfo, todayExercises = []) {
     return null; // 跳过本地计算，让AI使用系统数据回答
   }
 
+  // 口语动词归一化（提前到触发判断之前，强度追问也要用）：
+  // 把"跑了/走了/游了/骑了"补全为标准运动名，
+  // 否则"刚才跑了3公里"既匹配不到配速表也匹配不到 MET 表，会退化成默认 30 分钟。
+  // 注意顺序：具体词（慢跑/快走等）先于泛称（跑/走），避免改写破坏原有匹配
+  let qNorm = q
+    .replace(/慢跑了/g, '慢跑')
+    .replace(/快走了/g, '快走')
+    .replace(/健走了/g, '健走')
+    .replace(/暴走了/g, '暴走')
+    .replace(/跑了/g, '跑步')
+    .replace(/游了/g, '游泳')
+    .replace(/骑了/g, '骑车')
+    .replace(/走了/g, '走路');
+  // 强度词 + 裸动词补全："快速骑"→"快速骑车"、"慢慢游"→"慢慢游泳"，
+  // 否则追问"我是快速骑哦"这类消息匹配不到运动名，强度分级也无法命中
+  qNorm = qNorm
+    // 高强度 + 骑/跑/游（负向断言避免"骑车/跑步/游泳"被重复替换）
+    .replace(/(快速|飞快|很快|好快|猛|使劲|竞速|全力|加速|极速|高速|快点|快)骑(?!车|行)/g, '$1骑车')
+    .replace(/(慢速|很慢|慢点|慢慢|悠闲|休闲|兜风|慢悠悠|慢)骑(?!车|行)/g, '$1骑车')
+    .replace(/(快速|飞快|很快|好快|猛|使劲|竞速|全力|加速|极速|高速)跑(?!步)/g, '$1跑步')
+    .replace(/(慢速|很慢|慢点|慢慢|悠闲|休闲|慢悠悠)跑(?!步)/g, '$1跑步')
+    .replace(/(快速|飞快|猛|使劲|竞速|全力|加速|极速)游(?!泳)/g, '$1游泳')
+    .replace(/(慢速|很慢|慢点|慢慢|悠闲|慢)游(?!泳)/g, '$1游泳');
+
+  // 强度档位（快速/休闲），影响配速与 MET 分级
+  const intensity = detectExerciseIntensity(qNorm);
+
   // 运动热量消耗计算（基于MET值，科学准确）
-  if ((q.includes('热量') || q.includes('消耗') || q.includes('卡路里') || q.includes('千卡')) && 
-      (q.includes('运动') || q.includes('跑') || q.includes('走') || q.includes('游') || q.includes('跳') || q.includes('骑') || q.includes('练') || q.includes('帕梅拉') || q.includes('周六野') || q.includes('刘畊宏'))) {
+  // "单车"覆盖动感单车/单车，"机"覆盖椭圆机/划船机/磁控车等器械（不含"骑"字）
+  const hasCalorieWord = q.includes('热量') || q.includes('消耗') || q.includes('卡路里') || q.includes('千卡');
+  const hasExerciseWord = q.includes('运动') || q.includes('跑') || q.includes('走') || q.includes('游') || q.includes('跳') || q.includes('骑') || q.includes('单车') || q.includes('机') || q.includes('练') || q.includes('帕梅拉') || q.includes('周六野') || q.includes('刘畊宏');
+  // 强度修正类追问（如"我是快速骑哦"）：不含热量词，但明显是针对上一条运动计算的强度纠正
+  const isIntensityCorrection = !!intensity && /骑|跑|游|走|单车/.test(qNorm);
+
+  if ((hasCalorieWord && hasExerciseWord) || isIntensityCorrection) {
     // 如果问题里同时提到饮食/食物，交给 LLM 统一回答，不要只算运动消耗
     const hasFood = /吃|喝|食物|早餐|午餐|晚餐|加餐|零食|饭|菜|肉|水果|鸡蛋|香蕉|酸奶|面包|米饭|面条|燕麦|牛奶|豆浆|咖啡|坚果|蔬菜|主食/.test(question);
     if (hasFood) return null;
@@ -666,25 +944,84 @@ function tryLocalCalculation(question, userInfo, todayExercises = []) {
         duration = num;
       }
     }
-    const qLower = q.toLowerCase();
 
-    // 1) 优先使用今天已记录的运动消耗，确保搭子回复和记录一致
-    if (todayExercises && todayExercises.length > 0) {
+    // 解析距离（公里）：用户只给公里数时按"强度配速"换算时长，回复以距离为主
+    // （修复：此前不解析公里，"跑了3公里"会落到默认 duration=30 被说成"跑步30分钟"；
+    //   且骑行固定 3min/km+MET5.5 不区分强度，"快速骑"重算结果与普通骑完全一样）
+    let distanceKm = 0;
+    let pacePerKm = 0;
+    let distanceTier = null; // 距离型运动的强度分级 {pace, met, label}
+    const distanceMatch = qNorm.match(/(\d+(?:\.\d+)?)\s*(公里|千米|km)/i);
+    if (distanceMatch && !durationMatch) {
+      const km = parseFloat(distanceMatch[1]);
+      if (km > 0) {
+        // 优先强度分级配速（骑行三档/快跑/快走/快游），无分级则走通用配速表
+        const tier = getDistanceTier(qNorm, intensity);
+        const pace = tier ? tier.pace : getPacePerKm(qNorm);
+        if (pace > 0) {
+          distanceKm = km;
+          pacePerKm = pace;
+          duration = Math.round(km * pace);
+          distanceTier = tier;
+        }
+      }
+    }
+
+    // 追问兜底：消息本身没有距离/时长（如"我是快速骑哦"），从今日同类运动记录补全，
+    // 按新强度重新配速/取 MET 重算；强度修正但今天根本没有同类记录时无法重算，交给 LLM
+    if (distanceKm === 0 && !durationMatch) {
+      const rec = findTodayExerciseRecord(qNorm, todayExercises);
+      if (rec) {
+        if (rec.distance > 0) {
+          const tier = getDistanceTier(qNorm, intensity);
+          const pace = tier ? tier.pace : getPacePerKm(qNorm);
+          if (pace > 0) {
+            distanceKm = rec.distance;
+            pacePerKm = pace;
+            duration = Math.round(rec.distance * pace);
+            distanceTier = tier;
+          }
+        } else if (rec.duration > 0) {
+          duration = rec.duration;
+        }
+      } else if (isIntensityCorrection) {
+        return null;
+      }
+    }
+
+    const qLower = qNorm.toLowerCase();
+
+    // 1) 优先使用今天已记录的运动消耗，确保搭子回复和记录一致；
+    //    但用户明确说"快速骑/慢慢骑"等强度修正时，属于要求按新强度重算，跳过记录值
+    if (todayExercises && todayExercises.length > 0 && !intensity) {
       const recorded = todayExercises.find(e => {
         const name = String(e.name || '').toLowerCase();
         return name && (qLower.includes(name) || name.includes(qLower)) && Math.abs((e.duration || 0) - duration) <= 5;
       });
       if (recorded) {
-        return `${recorded.name}${recorded.duration}分钟消耗 ${Math.round(recorded.calorie)} 千卡（与你今天的运动记录一致）。`;
+        return distanceKm > 0
+          ? `${recorded.name}${distanceKm}公里消耗 ${Math.round(recorded.calorie)} 千卡（与你今天的运动记录一致）。`
+          : `${recorded.name}${recorded.duration}分钟消耗 ${Math.round(recorded.calorie)} 千卡（与你今天的运动记录一致）。`;
       }
     }
 
     // 2) 查询运动库 exercise_db，有数据就按库里 MET 计算
-    const dbExercise = getExerciseFromDb(question);
+    const dbExercise = getExerciseFromDb(qNorm);
     if (dbExercise && dbExercise.met_value) {
-      const met = parseFloat(dbExercise.met_value);
+      let met = parseFloat(dbExercise.met_value);
+      // 强度分级覆盖：距离型用 distanceTier（配速与 MET 必须配套）；
+      // 时长型仅在明确强度档（label 非空，如快速骑行）时覆盖，普通档保留运动库数值
+      const tier = distanceKm > 0 ? distanceTier : getDistanceTier(qNorm, intensity);
+      const applyTier = distanceKm > 0 ? !!tier : !!(tier && tier.label);
+      if (applyTier && tier.met) met = tier.met;
+      const displayName = (applyTier && tier.label) || dbExercise.exercise_name;
       const totalCalorie = Math.round(met * weight * (duration / 60) * 1.05);
-      return `${dbExercise.exercise_name}${duration}分钟大约消耗 ${totalCalorie} 千卡（按运动库数据，MET值${met}计算）。`;
+      const paceText = tier && tier.label
+        ? `按${tier.label}配速约${pacePerKm}分钟/公里`
+        : `按配速约${pacePerKm}分钟/公里`;
+      return distanceKm > 0
+        ? `${displayName}${distanceKm}公里大约消耗 ${totalCalorie} 千卡（${paceText}≈${duration}分钟、你当前体重 ${weight}kg，MET值${met}计算）。`
+        : `${displayName}${duration}分钟大约消耗 ${totalCalorie} 千卡（按运动库数据，MET值${met}计算）。`;
     }
     
     // 3) 兜底：本地MET值参考表
@@ -701,7 +1038,8 @@ function tryLocalCalculation(question, userInfo, todayExercises = []) {
       
       // 中等强度有氧
       '快走': 5.0, '健走': 5.5, '徒步': 5.0, '暴走': 5.5,
-      '骑车': 5.5, '骑行': 5.5, '自行车': 5.0, '动感单车': 6.0,
+      // 普通通勤骑行约 15km/h ≈ MET5（快速/休闲分级由 getDistanceTier/getIntensityMet 处理）
+      '骑车': 5.0, '骑行': 5.0, '自行车': 5.0, '动感单车': 6.0,
       '椭圆机': 5.5, '划船机': 6.0, '磁控车': 4.5,
       '跳舞': 5.0, '广场舞': 4.5, '健身操': 5.0, '有氧操': 5.5,
       '搏击操': 6.0, '尊巴': 5.5, '街舞': 5.5, '拉丁舞': 5.0,
@@ -866,16 +1204,27 @@ function tryLocalCalculation(question, userInfo, todayExercises = []) {
     let met = 0;
     let bestMatch = '';
     for (const [exercise, value] of Object.entries(metValues)) {
-      if (q.includes(exercise.toLowerCase()) && exercise.length > bestMatch.length) {
+      if (qNorm.includes(exercise.toLowerCase()) && exercise.length > bestMatch.length) {
         met = value;
         bestMatch = exercise;
       }
     }
     
     if (bestMatch) {
+      // 强度分级覆盖：距离型用 distanceTier（配速与 MET 配套）；
+      // 时长型仅在明确强度档（label 非空，如快速骑行）时覆盖，普通档保留参考表数值
+      const tier = distanceKm > 0 ? distanceTier : getDistanceTier(qNorm, intensity);
+      const applyTier = distanceKm > 0 ? !!tier : !!(tier && tier.label);
+      if (applyTier && tier.met) met = tier.met;
+      const displayName = (applyTier && tier.label) || bestMatch;
       const durationHour = duration / 60;
       const totalCalorie = Math.round(met * weight * durationHour * 1.05);
-      return `${bestMatch}${duration}分钟大约消耗 ${totalCalorie} 千卡（按你当前体重 ${weight}kg，MET值${met}计算）。`;
+      const paceText = tier && tier.label
+        ? `按${tier.label}配速约${pacePerKm}分钟/公里`
+        : `按配速约${pacePerKm}分钟/公里`;
+      return distanceKm > 0
+        ? `${displayName}${distanceKm}公里大约消耗 ${totalCalorie} 千卡（${paceText}≈${duration}分钟、你当前体重 ${weight}kg，MET值${met}计算）。`
+        : `${displayName}${duration}分钟大约消耗 ${totalCalorie} 千卡（按你当前体重 ${weight}kg，MET值${met}计算）。`;
     }
   }
 
@@ -936,7 +1285,9 @@ function getTodayExercises(userId) {
           name: ex.name,
           duration: ex.duration || 0,
           intensity: ex.intensity || 'moderate',
-          calorie: ex.calorie || 0
+          calorie: ex.calorie || 0,
+          // distance 由沉淀 Agent 提取（公里），强度修正类追问重算时需要用
+          distance: parseFloat(ex.distance) || 0
         });
       }
     }
@@ -1087,5 +1438,6 @@ ${habitLines}
 module.exports = {
   callHelperAgent,
   getTodayNutrition,
-  getRecentBodyContext
+  getRecentBodyContext,
+  tryLocalCalculation
 };

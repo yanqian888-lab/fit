@@ -103,7 +103,9 @@ export function resolveStaticUrl(url) {
   
   // 已是其他完整URL（非localhost），直接返回
   if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
+    // 兜底：后端个别接口可能返回 http:// 绝对地址，微信小程序真机禁止加载 http 图片（显示空白），
+    // 统一升级为 https（本服务生产域名固定启用 HTTPS）
+    return url.replace(/^http:\/\//i, 'https://');
   }
   
   // 相对路径，拼接服务器地址

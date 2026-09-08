@@ -8,8 +8,8 @@
     "build:h5:local": "VITE_H5_BASE=/ uni build --mode test -p h5 && rm -rf dist/build/h5/static && cp -r static dist/build/h5/static",
     "build:h5:test": "UNI_H5_BASE=/test-h5/ VITE_H5_BASE=/test-h5/ uni build --mode test -p h5 && rm -rf dist/build/h5/static && cp -r static dist/build/h5/static",
     "build:h5:prod": "UNI_H5_BASE=/h5/ VITE_H5_BASE=/h5/ uni build --mode production -p h5 && rm -rf dist/build/h5/static && cp -r static dist/build/h5/static",
-    "build:mp-weixin:test": "uni build --mode test -p mp-weixin && mkdir -p dist/build/mp-weixin/static && cp -r static/* dist/build/mp-weixin/static/ && rm -rf dist/build/mp-weixin/custom-tab-bar && mkdir -p dist/build/mp-weixin/custom-tab-bar && cp src/custom-tab-bar/index.{js,json,wxml,wxss} dist/build/mp-weixin/custom-tab-bar/",
-    "build:mp-weixin:prod": "uni build --mode production -p mp-weixin && mkdir -p dist/build/mp-weixin/static && cp -r static/* dist/build/mp-weixin/static/ && rm -rf dist/build/mp-weixin/custom-tab-bar && mkdir -p dist/build/mp-weixin/custom-tab-bar && cp src/custom-tab-bar/index.{js,json,wxml,wxss} dist/build/mp-weixin/custom-tab-bar/",
+    "build:mp-weixin:test": "uni build --mode test -p mp-weixin && mkdir -p dist/build/mp-weixin/static && cp -r static/* dist/build/mp-weixin/static/",
+    "build:mp-weixin:prod": "uni build --mode production -p mp-weixin && mkdir -p dist/build/mp-weixin/static && cp -r static/* dist/build/mp-weixin/static/",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -19,6 +19,7 @@
     "@dcloudio/uni-h5": "3.0.0-alpha-5020520260821001",
     "@dcloudio/uni-mp-weixin": "3.0.0-alpha-5020520260821001",
     "pinia": "^2.1.7",
+    "umtrack-wx": "^2.8.0",
     "uview-plus": "^3.2.24",
     "vue": "^3.4.21",
     "vue-i18n": "^9.10.2"

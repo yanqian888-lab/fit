@@ -1,25 +1,66 @@
 /**
  * 清理食物名称中的常见前缀/后缀填充词，并判断是否为有效食物名
  */
-const FOOD_NAME_PREFIX_FILLERS = /^(?:早上|上午|中午|下午|晚上|今天|今早|今晚|昨天|明天|刚才|刚刚|之前|后来|现在|早餐|午餐|晚餐|加餐|吃|吃了|喝了|还吃|又吃|刚吃|又吃了|还吃了|刚吃了|吃了个|吃了一个|那个|这个|刚才的|的|是|为|有|还有|我又|我又要|我又没|就|只是|不过|但是|而且|了|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中)+/;
-const FOOD_NAME_SUFFIX_FILLERS = /(?:一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中|的|了|吃|喝|还有|不过|但是|而且)$/;
-const FOOD_NAME_STOP_ONLY = /^(?:早上|上午|中午|下午|晚上|今天|今早|今晚|昨天|明天|刚才|刚刚|之前|后来|现在|早餐|午餐|晚餐|加餐|吃|吃了|喝了|还吃|又吃|刚吃|又吃了|还吃了|刚吃了|吃了个|吃了一个|那个|这个|刚才的|的|是|为|有|还有|我又|我又要|我又没|就|只是|不过|但是|而且|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|大|小|中)+$/;
+const FOOD_NAME_PREFIX_FILLERS = /^(?:好|我喝了|我吃了|我又喝了|我又吃了|我刚喝了|我刚吃了|早上|上午|中午|下午|晚上|今天|今早|今晚|昨天|明天|刚才|刚刚|之前|后来|现在|早餐|午餐|晚餐|加餐|吃了个|吃了一个|吃了|吃|又吃了|还吃了|刚吃了|又吃|刚吃|还吃|喝了|喝|来了|来个|来份|来点|来|点了|点个|点份|点|要了|要个|要份|要|那个|这个|刚才的|的|是|为|有|还有|我又|我又要|我又没|就|只是|不过|但是|而且|了|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|个|份|多|少)+/;
+// 大/小/中 规格修饰 + 量词的组合（如"大杯奶茶""小碗粥"），仅在非语义保护名时剥除
+// 注意不含"大半/小半"——它们是数量词（半个同类），由 stripLeadingQuantity 的 halfWholePattern 处理
+const FOOD_NAME_SIZE_PREFIX = /^(?:大杯|小杯|大份|小份|中份|大碗|小碗|大盘|小盘|大个|小个)+/;
+// 以大/小/中/数字开头但属于食物名本身的常见词条——剥除前优先保护，
+// 避免"大闸蟹"被误剥成"闸蟹"、"三杯鸡"被误剥成"鸡"
+const SIZE_PREFIX_FOOD_NAMES = new Set([
+  '大闸蟹', '大虾', '大虾米', '大排', '大排骨', '大葱', '大蒜', '大豆', '大枣', '大麦', '大麦茶', '大白菜', '大头菜', '大豆油', '大列巴', '大红袍', '大黄鱼', '大米', '大米粥', '大骨汤', '大果粒', '大馄饨', '大饼', '大鸡腿', '大鸡排', '大福',
+  '小笼包', '小馄饨', '小龙虾', '小番茄', '小米', '小米粥', '小白菜', '小酥肉', '小排', '小排骨', '小香肠', '小油菜', '小葱', '小笼', '小馕', '小蛋糕', '小饼干', '小面包', '小丸子', '小酥饼', '小鱼干', '小虾米', '小笼饺', '小汤圆',
+  '中翅', '中翅根', '大盘鸡',
+  '三杯鸡', '四喜丸子', '八宝粥', '九转大肠', '二锅头', '五仁月饼', '七喜', '六安瓜片', '三鲜豆皮', '点心', '早点'
+]);
+/**
+ * 语义保护判断：判断名字是否为以大/小/中开头的有效食物名（而非量词修饰）
+ * 优先查食品库（库中存在的名字即有效食物名），再查常见词典；都未命中返回 false
+ * @param {string} name 待判断的食物名
+ * @returns {boolean} true=是食物名本体，应保护不剥除
+ */
+function isProtectedFoodName(name) {
+  if (!name || name.length < 2) return false;
+  if (SIZE_PREFIX_FOOD_NAMES.has(name)) return true;
+  try {
+    const row = getFoodNutrition(name, null, { minConfidence: 'medium' });
+    if (row && row.food_name) return true;
+  } catch (e) { /* 库查询失败按未保护处理 */ }
+  return false;
+}
+const FOOD_NAME_SUFFIX_FILLERS = /(?:一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少|的|了|吃|喝|还有|不过|但是|而且)$/;
+const FOOD_NAME_STOP_ONLY = /^(?:早上|上午|中午|下午|晚上|今天|今早|今晚|昨天|明天|刚才|刚刚|之前|后来|现在|早餐|午餐|晚餐|加餐|吃|吃了|喝了|还吃|又吃|刚吃|又吃了|还吃了|刚吃了|吃了个|吃了一个|那个|这个|刚才的|的|是|为|有|还有|我又|我又要|我又没|就|只是|不过|但是|而且|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|多|少)+$/;
 
 /**
  * 进一步去掉数字+单位、动词+数量等残留前缀
- * 例如 "15克油面筋" → "油面筋"、"还喝了一杯黑咖啡" → "黑咖啡"
+ * 例如 "15克油面筋" → "油面筋"、"还喝了一杯黑咖啡" → "黑咖啡"、
+ * "2两大闸蟹" → "大闸蟹"（数字量词无条件剥除，与大小修饰的语义保护无关）
  */
 function stripLeadingQuantity(name) {
   if (!name) return '';
-  const qtyUnitPattern = /^\d+(?:\.\d+)?\s*(?:毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺|包|袋)\s*/i;
-  const halfWholePattern = /^(?:半|大半|小半|整)(?:包|袋|碗|杯|盒|瓶|根|片|块|个|只|口|勺|份)\s*/;
-  const actionQtyPattern = /^(?:又|还|刚|先|然后|接着|再|也就|只|顺便)?(?:吃|喝)(?:了|过)?(?:一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|半包|半袋|半碗|半杯|大半|小半|整包|整袋|整碗|整杯|盘|碟)?\s*/;
+  // 数字+单位：覆盖传统计量（两/斤/千克）与水果颗粒量词（颗/粒/瓣/串）等
+  const qtyUnitPattern = /^\d+(?:\.\d+)?\s*(?:毫升|ml|ML|克|g|千克|公斤|kg|斤|两|颗|粒|瓣|串|条|支|张|枚|打|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺|包|袋)\s*/i;
+  // 中文数字+量词（如"十颗草莓""三斤樱桃""两个香蕉"）
+  // 剥后不足2字则回退：防"三杯鸡"（数字+量词字+真食物名）被误剥成"鸡"
+  const cnQtyPattern = /^[一二三四五六七八九十百两几]+(?:毫升|克|千克|公斤|斤|两|颗|粒|瓣|串|条|支|张|枚|打|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺|包|袋)\s*/;
+  const halfWholePattern = /^(?:半|大半|小半|整)(?:包|袋|碗|杯|盒|瓶|根|片|块|个|只|口|勺|份|斤|两|颗|粒|瓣|串)\s*/;
+  const actionQtyPattern = /^(?:好[，,]\s*)?(?:我)?(?:又|还|刚|先|然后|接着|再|也就|只|顺便)?(?:吃|喝)(?:了|过)?(?:一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|一口|一点|一些|少量|适量|半包|半袋|半碗|半杯|大半|小半|整包|整袋|整碗|整杯|盘|碟)?\s*/;
+  // 烹饪/点单动词+量词（如"烤个烤榴莲酥"→"烤榴莲酥"）：量词必选，
+  // 避免误伤"烤鸭""煮鸡蛋""点心""蒸碗糕"等含动词字的食物名
+  const cookActionPattern = /^(?:烤|蒸|煮|炒|炸|煎|炖|烫|涮|点|打包)(?:了)?(?:个|一个|一份|一块|一杯|一碗|一勺|一根|一条|一袋|一盒|一瓶|一片|一只|半份|半碗|半杯|大盘|小盘)\s*/;
+  // 烹饪动词+了+无量词（如"炖了大骨汤"→"大骨汤"），含"点了外卖"→"外卖"
+  const cookDonePattern = /^(?:烤|蒸|煮|炒|炸|煎|炖|烫|涮|点|打包|点了)了\s*/;
   let cleaned = name.trim();
+  // 中文数字量词单独处理：剥后不足2字则回退原名（保护"三杯鸡"类真食物名）
+  const afterCn = cleaned.replace(cnQtyPattern, '').trim();
+  if (afterCn !== cleaned && afterCn.length >= 2) cleaned = afterCn;
   while (true) {
     const next = cleaned
       .replace(qtyUnitPattern, '')
       .replace(halfWholePattern, '')
       .replace(actionQtyPattern, '')
+      .replace(cookActionPattern, '')
+      .replace(cookDonePattern, '')
       .trim();
     if (next === cleaned) break;
     cleaned = next;
@@ -30,13 +71,42 @@ function stripLeadingQuantity(name) {
 function cleanFoodName(name) {
   if (!name) return '';
   let cleaned = name.trim();
-  // 循环去除前缀，直到没有变化
+  // --- 前置清理：剥离所有标点符号 ---
+  // 去掉中英文标点（逗号、句号、感叹、问号、分号、顿号、引号、括号等），
+  // 让后续 FOOD_NAME_PREFIX_FILLERS / FOOD_NAME_SUFFIX_FILLERS 的循环能顺畅匹配和剥离填充词。
+  // 典型案例："好，我喝了一杯低脂牛奶，180ml" 原来因逗号阻断 prefix 正则，
+  // 只剥离了开头的 "好"，余下 "，我喝了一杯低脂牛奶，180ml" 无法继续清理。
+  cleaned = cleaned.replace(/[，。！？；：、"'""''（）\[\]{}\(\)…—,.;:!?'"()\[\]{}]/g, ' ');
+  // 去掉末尾数字+单位（如 "180ml" "250g" "西瓜5斤"）
+  cleaned = cleaned.replace(/\d+(?:\.\d+)?\s*(?:毫升|ml|ML|克|g|千克|公斤|kg|斤|两|颗|粒|瓣|串|条|支|张|枚|打|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺|包|袋)\s*$/i, '');
+  // 多空格合并为单空格
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  // 循环去除前缀填充词，直到没有变化；一旦剥出受保护的食物名（词典/库命中，
+  // 如"点心""大闸蟹"）立即停止，语义优先，避免"点心"被裸动词"点"误剥成"心"
   while (true) {
+    if (isProtectedFoodName(cleaned)) break;
     const next = cleaned.replace(FOOD_NAME_PREFIX_FILLERS, '').trim();
     if (next === cleaned) break;
     cleaned = next;
   }
   cleaned = cleaned.replace(FOOD_NAME_SUFFIX_FILLERS, '').trim();
+  // 语义判断剥除大小修饰：剥完口语词后，若剩余名字本身是有效食物名
+  // （词典/食品库命中，如"大闸蟹"），则保留大小前缀不剥；仅对量词修饰
+  // （如"大杯奶茶""小碗粥"）剥除，避免一刀切破坏食物名
+  if (!isProtectedFoodName(cleaned)) {
+    let sizeStripped = cleaned.replace(FOOD_NAME_SIZE_PREFIX, '').trim();
+    if (sizeStripped !== cleaned) {
+      cleaned = sizeStripped;
+      // 大小词剥除后可能残留"的/了"等口语连接，再循环剥一次前缀
+      while (true) {
+        const next = cleaned.replace(FOOD_NAME_PREFIX_FILLERS, '').trim();
+        if (next === cleaned) break;
+        cleaned = next;
+      }
+      cleaned = cleaned.replace(FOOD_NAME_SUFFIX_FILLERS, '').trim();
+    }
+  }
   // 额外去掉数字+单位、动词+数量等残留前缀
   cleaned = stripLeadingQuantity(cleaned);
   return cleaned;
@@ -44,7 +114,16 @@ function cleanFoodName(name) {
 
 function isInvalidFoodName(name) {
   if (!name || name.length < 2) return true;
-  return FOOD_NAME_STOP_ONLY.test(name);
+  if (FOOD_NAME_STOP_ONLY.test(name)) return true;
+  // 整句话被误当食物名的拦截：LLM 偶尔把"哦买噶 这么多热量 我今晚不吃饭"这类
+  // 聊天话术整体填进 name。特征：过长、含人称/语气/感叹词、含讨论性词汇（热量/千卡）。
+  // 正常食物名一般 2~10 个汉字（如"零糖零脂希腊酸奶"7字、"西红柿炒鸡蛋"6字）。
+  if (name.length > 12) return true;
+  if (/[我你他她它们吗呢吧啊呀哦嗯哈嘛呗哎唉哇呜诶]/.test(name)) return true;
+  if (/(热量|千卡|大卡|千焦|卡路里|这么多|怎么办|决定|发誓|以后|再也|不[吃喝]|没[吃喝])/.test(name)) return true;
+  // 常见闲聊名词拦截："今天天气不错"被兜底拆出「天气不错」当食物入库的真实案例
+  if (/(天气|心情|压力|加班|上班|公司|会议|电影|游戏|手机|电视|考试|老板|同事|客户|周末|股票)/.test(name)) return true;
+  return false;
 }
 
 /**
@@ -233,13 +312,40 @@ function normalizeHalfQuantities(content, data) {
 }
 
 /**
- * 判断原消息中是否明确给出了某食物的克数
+ * 判断原消息中是否明确给出了某食物的重量或体积（ml/ml 等）
+ * 体积单位（ml/ml）按 1:1 克近似处理（水/奶/饮料密度≈1g/ml，误差在合理范围内）
+ * 返回 { found: boolean, value: number, unit: string } 便于上层换算
+ */
+function hasExplicitWeight(content, foodName) {
+  if (!content || !foodName) return { found: false };
+  const escaped = foodName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 克/千克/公斤/斤/毫克（千 仅在非"千卡/千焦"时才算重量单位，避免"350千卡"被误读成350千克）
+  const gramRegex = new RegExp(escaped + '[^\\n]*?(\\d+(?:\\.\\d+)?)\\s*([公斤克千mg]+)(?![卡焦])(?!\\w)', 'i');
+  const gramMatch = content.match(gramRegex);
+  if (gramMatch) {
+    let v = parseFloat(gramMatch[1]);
+    const u = gramMatch[2].toLowerCase();
+    if (u.includes('千') || u.includes('公')) v *= 1000;  // 千克/公斤→克
+    else if (u.includes('斤')) v *= 500;                  // 斤→克（1斤=500g）
+    else if (u.includes('m')) v = v / 1000;               // mg→g（极小，基本不会出现）
+    return { found: true, value: v, unit: 'g' };
+  }
+  // ml / mL / 毫升
+  const mlRegex = new RegExp(escaped + '[^\\n]*?(\\d+(?:\\.\\d+)?)\\s*(ml|mL|ML|毫升)(?!\\w)', 'i');
+  const mlMatch = content.match(mlRegex);
+  if (mlMatch) {
+    const v = parseFloat(mlMatch[1]);
+    // 体积 1ml ≈ 1g（对牛奶/水/饮料足够近似）
+    return { found: true, value: v, unit: 'ml' };
+  }
+  return { found: false };
+}
+
+/**
+ * 兼容旧接口名，保留 hasExplicitGramWeight 但内部已扩展为克+体积
  */
 function hasExplicitGramWeight(content, foodName) {
-  if (!content || !foodName) return false;
-  const escaped = foodName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(escaped + '[^，,、；;。\\n]*?(\\d+(?:\\.\\d+)?)\\s*[克g](?!\\w)', 'i');
-  return regex.test(content);
+  return hasExplicitWeight(content, foodName).found;
 }
 
 /**
@@ -268,19 +374,45 @@ function inferCountFromContent(content, foodName) {
 function sanitizeFoodWeights(content, data) {
   if (!content || !Array.isArray(data.foods)) return data;
   for (const food of data.foods) {
-    const name = food.name || '';
+    // --- 第一步：强制把食物名清洗成干净实体 ---
+    // LLM 常输出整句话如 "好，我喝了一杯低脂牛奶，180ml"，
+    // cleanFoodName 会剥离填充词/标点/数字单位得到 "低脂牛奶"。
+    // 如果名字被替换了，AI 基于脏名字估的 calorie/营养素大概率是幻觉，清掉让后端从食物库重算。
+    const rawName = food.name || '';
+    const name = cleanFoodName(rawName);
+    if (name && name !== rawName) {
+      food.name = name;
+      food.calorie = 0;
+      food.protein = 0;
+      food.carb = 0;
+      food.fat = 0;
+    }
+
     let unit = food.unit || 'g';
     let quantity = parseFloat(food.quantity);
     if (isNaN(quantity) || quantity <= 0) quantity = 1;
     const currentWeight = parseFloat(food.weight) || 0;
 
-    // 用户明确写了克数，直接信任
-    if (hasExplicitGramWeight(content, name)) continue;
+    // --- 用户明确给了重量（g/千克）或体积（ml/ml），直接信任并换算 ---
+    // 体积按 1ml ≈ 1g 处理（水/奶/饮料密度≈1，误差在合理范围）
+    const explicit = hasExplicitWeight(content, name);
+    if (explicit.found && explicit.value > 0) {
+      const actualWeight = explicit.value;        // ml 已近似为 g
+      const weightChanged = Math.abs(currentWeight - actualWeight) > 0.5;
+      if (weightChanged || currentWeight <= 0) {
+        food.weight = actualWeight;
+        food.unit = 'g';
+        food.quantity = 1;
+        // 用户给了真实重量，清掉 AI 幻觉的 calorie/营养素让 computeFoodNutrition 从食物库重算
+        food.calorie = 0;
+        food.protein = 0;
+        food.carb = 0;
+        food.fat = 0;
+      }
+      continue;
+    }
 
-    // 如果只有热量没有重量（如“黄彩椒160千卡”），不碰重量
-    if (currentWeight <= 0 && (food.calorie || 0) > 0) continue;
-
-    // 若 LLM 把计数食物填成了 g，尝试从原文推断计数
+    // --- 用户没给重量但有 AI 估的 calorie + weight，校验 AI 给的 unit/weight 是否合理 ---
     let expectedUnit = unit;
     let expectedQty = quantity;
     if ((unit === 'g' || unit === '克') && currentWeight > 0) {
@@ -297,23 +429,22 @@ function sanitizeFoodWeights(content, data) {
     if (!typicalPerUnit) continue;
 
     const expectedWeight = expectedQty * typicalPerUnit;
-    // 阈值：超过期望 1.5 倍，或超过单份典型重量 3 倍
     const threshold = Math.max(expectedWeight * 1.5, typicalPerUnit * 3);
 
     if (currentWeight <= 0 || currentWeight > threshold) {
       food.weight = expectedWeight;
       food.unit = expectedUnit;
       food.quantity = expectedQty;
-      // 清空 AI 估算的营养素，让 computeFoodNutrition 按修正后的重量重新计算
+      // 重量被修正了，清掉 AI 幻觉的 calorie/营养素
       food.calorie = 0;
       food.protein = 0;
       food.carb = 0;
       food.fat = 0;
-      
     }
   }
   return data;
 }
+
 
 /**
  * 兜底：聊天记录里明确写了「已知运动 + 时长」，但 LLM 没有提取成 exercise_record 时，
@@ -334,6 +465,256 @@ function extractExerciseNamesAroundKeyword(content, kw, startIdx) {
   return cleanExerciseName(content.slice(start, end));
 }
 
+/**
+ * 爬楼层数兜底：用户说"爬了N层/爬N层楼"时没有分钟数，LLM 常因无法换算时长而漏提取
+ * （或输出 duration=0 被有效性校验过滤）。
+ * 单位语义保留：输出 {count, unit:'层'}，热量与时长换算由保存侧按运动库/联网核实数据计算，
+ * 严禁把"N层"硬凑成"N分钟"（用户反馈过"爬6层楼梯记录成6分钟"的问题）。
+ * @param {string} content 用户消息原文
+ * @param {Array} rawItems LLM 提取的沉淀条目数组（原地补全或追加）
+ * @param {Set<string>} [seenNames] 已提取运动名集合，避免重复追加
+ */
+function enrichStaircaseExercise(content, rawItems, seenNames) {
+  if (!content || !Array.isArray(rawItems)) return;
+  // 匹配"爬了6层""爬6层楼""爬过10层"等表述
+  const floorMatch = content.match(/爬(?:了|过)?\s*(\d+(?:\.\d+)?)\s*层/);
+  if (!floorMatch) return;
+  const floors = parseFloat(floorMatch[1]);
+  if (!(floors > 0)) return;
+
+  // 1) 已提取的爬楼类运动：打上单位语义
+  //    - LLM 常把"爬了20层"误提取为 duration=20（层数当分钟）：duration 数值恰等于层数时纠正
+  //    - duration 与层数不等（如"20层花了15分钟"）：保留用户给的独立时长，同时补单位数量
+  let patched = false;
+  for (const item of rawItems) {
+    if (item.type !== 'exercise_record' || !item.extracted_data || !Array.isArray(item.extracted_data.exercises)) continue;
+    for (const e of item.extracted_data.exercises) {
+      if (!/爬楼|楼梯/.test(e.name || '') || parseFloat(e.count) > 0) continue;
+      const dur = parseFloat(e.duration) || 0;
+      e.count = floors;
+      e.unit = '层';
+      // 时长恰等于层数 → 判定为"层数误当分钟"，清除时长交由单位换算
+      // 时长与层数不同且有效 → 用户同时给了分钟数，保留
+      if (!(dur > 0) || Math.abs(dur - floors) < 0.001) {
+        e.duration = 0;
+      }
+      e.calorie = 0;
+      patched = true;
+    }
+  }
+
+  // 2) LLM 完全漏提取 → 兜底追加一条带单位数量的爬楼梯运动记录
+  const alreadyHasStair = (seenNames ? [...seenNames] : []).some(n => /爬楼|楼梯/.test(n));
+  if (!patched && !alreadyHasStair) {
+    rawItems.push({
+      extracted: true,
+      type: 'exercise_record',
+      confidence: 0.9,
+      extracted_data: {
+        exercises: [{ name: '爬楼梯', count: floors, unit: '层', duration: 0, intensity: 'moderate', calorie: 0 }],
+        total_duration: 0,
+        total_calorie: 0
+      },
+      tags: ['运动']
+    });
+    if (seenNames) seenNames.add('爬楼梯');
+  }
+}
+
+/**
+ * 通用"非时长单位"运动兜底：N个俯卧撑/深蹲/仰卧起坐、跳绳N下等。
+ * 与爬楼梯兜底同理：保留 count/unit 原始语义，时长与热量交由保存侧按库/联网核实数据换算。
+ * 骑行/跑步的公里数走 distance 字段机制（有配速可估时长），不在此处理。
+ * @param {string} content 用户消息原文
+ * @param {Array} rawItems LLM 提取的沉淀条目数组（原地补全或追加）
+ * @param {Set<string>} seenNames 已提取运动名集合
+ */
+function enrichUnitBasedExercises(content, rawItems, seenNames) {
+  if (!content || !Array.isArray(rawItems)) return;
+  // 自重/跳跃类动作按"个/下"计：做了30个俯卧撑、跳绳1000下、50个深蹲
+  // 两种语序：数量在前（"30个俯卧撑"）/ 数量在后（"俯卧撑30个"）
+  const patterns = [
+    /(\d+(?:\.\d+)?)\s*(?:个|下|次)\s*(俯卧撑|深蹲|徒手深蹲|仰卧起坐|卷腹|开合跳|波比跳|引体向上|臀桥|跳绳)/g,
+    /(俯卧撑|深蹲|徒手深蹲|仰卧起坐|卷腹|开合跳|波比跳|引体向上|臀桥|跳绳)\s*(\d+(?:\.\d+)?)\s*(?:个|下|次)/g
+  ];
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(content)) !== null) {
+      // 模式1：m[1]=数量 m[2]=动作名；模式2：m[1]=动作名 m[2]=数量
+      const count = parseFloat(re === patterns[0] ? m[1] : m[2]);
+      const rawName = (re === patterns[0] ? m[2] : m[1]).trim();
+      if (!(count > 0) || !rawName) continue;
+      const already = [...seenNames].some(n => n === rawName || n.includes(rawName) || rawName.includes(n));
+      // 已提取条目缺 count/unit → 原地补全；LLM 误把"30个"当 duration=30 时纠正
+      let patched = false;
+      for (const item of rawItems) {
+        if (item.type !== 'exercise_record' || !item.extracted_data || !Array.isArray(item.extracted_data.exercises)) continue;
+        for (const e of item.extracted_data.exercises) {
+          if (parseFloat(e.count) > 0) continue;
+          if (e.name === rawName || (e.name || '').includes(rawName) || rawName.includes(e.name || '')) {
+            const dur = parseFloat(e.duration) || 0;
+            e.count = count;
+            e.unit = '个';
+            // 时长恰等于个数 → "个数误当分钟"，清除时长交由单位换算；否则保留独立时长
+            if (!(dur > 0) || Math.abs(dur - count) < 0.001) {
+              e.duration = 0;
+            }
+            e.calorie = 0;
+            patched = true;
+          }
+        }
+      }
+      if (!patched && !already) {
+        rawItems.push({
+          extracted: true,
+          type: 'exercise_record',
+          confidence: 0.85,
+          extracted_data: {
+            exercises: [{ name: rawName, count, unit: '个', duration: 0, intensity: 'moderate', calorie: 0 }],
+            total_duration: 0,
+            total_calorie: 0
+          },
+          tags: ['运动']
+        });
+        seenNames.add(rawName);
+      }
+    }
+  }
+}
+
+/**
+ * 运动关键词表：用于检测 LLM 是否把运动误判为饮食记录
+ * 当 diet_record 的 food_name 含这些关键词时，应转为 exercise_record
+ */
+const EXERCISE_KEYWORDS = [
+  '俯卧撑', '深蹲', '徒手深蹲', '仰卧起坐', '卷腹', '开合跳', '波比跳',
+  '引体向上', '臀桥', '跳绳', '平板支撑', '爬楼梯', '爬楼', '登山跑',
+  '高抬腿', '弓步蹲', '硬拉', '卧推', '划船', '推举', '弯举',
+  '哑铃', '杠铃', '壶铃', '弹力带',
+  '跑步', '慢跑', '快跑', '超慢跑', '走路', '快走', '散步',
+  '游泳', '骑车', '骑行', '瑜伽', '太极', '拳击', '跆拳道',
+  '篮球', '足球', '羽毛球', '乒乓球', '网球',
+  'HIIT', 'Tabata', '有氧', '力量训练'
+];
+
+/**
+ * 后处理纠正：LLM 把运动误判为饮食记录的情况
+ * 如"做了30个俯卧撑"→diet_record(food_name="做了30个俯卧撑")
+ * 检测 food_name 含运动关键词时，将 diet_record 转为 exercise_record，
+ * 并从原文提取 count/unit/duration 等运动字段
+ * @param {string} content 原文
+ * @param {Array} rawItems LLM 提取的条目数组
+ * @returns {Array} 纠正后的条目数组
+ */
+function convertMisclassifiedExercises(content, rawItems) {
+  if (!Array.isArray(rawItems)) return rawItems;
+  const result = [];
+  for (const item of rawItems) {
+    if (item.type !== 'diet_record' || !item.extracted_data?.foods) {
+      result.push(item);
+      continue;
+    }
+    // 检查是否有食物名含运动关键词
+    const exerciseFoods = [];
+    const realFoods = [];
+    for (const food of item.extracted_data.foods) {
+      const name = String(food.name || '');
+      const isExercise = EXERCISE_KEYWORDS.some(kw => name.includes(kw));
+      if (isExercise) {
+        exerciseFoods.push(food);
+      } else {
+        realFoods.push(food);
+      }
+    }
+    if (exerciseFoods.length === 0) {
+      result.push(item);
+      continue;
+    }
+    // 有误判食物：提取运动信息并转为 exercise_record
+    const exercises = exerciseFoods.map(f => {
+      const name = String(f.name || '');
+      // 找匹配的运动关键词
+      const matchedKw = EXERCISE_KEYWORDS.find(kw => name.includes(kw)) || name;
+      // 从原文提取数量
+      const countMatch = content.match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*(?:个|下|次|组)\\s*' + matchedKw)) 
+        || content.match(new RegExp(matchedKw + '\\s*(\\d+(?:\\.\\d+)?)\\s*(?:个|下|次|组)'));
+      const count = countMatch ? parseFloat(countMatch[1]) : (parseFloat(f.quantity) || 0);
+      const unit = countMatch ? (countMatch[0].includes('个') ? '个' : countMatch[0].includes('下') ? '下' : countMatch[0].includes('次') ? '次' : '个') : '个';
+      // 从原文提取时长
+      const durMatch = content.match(/(\d+(?:\.\d+)?)\s*分钟/);
+      const duration = durMatch ? parseFloat(durMatch[1]) : 0;
+      return {
+        name: matchedKw,
+        count: count > 0 ? count : undefined,
+        unit: count > 0 ? unit : undefined,
+        duration,
+        intensity: 'moderate',
+        calorie: 0
+      };
+    });
+    // 如果还有真实食物，保留修正后的 diet_record
+    if (realFoods.length > 0) {
+      result.push({
+        ...item,
+        extracted_data: { ...item.extracted_data, foods: realFoods }
+      });
+    }
+    // 添加转换后的 exercise_record
+    result.push({
+      extracted: true,
+      type: 'exercise_record',
+      confidence: 0.85,
+      extracted_data: {
+        exercises,
+        total_duration: exercises.reduce((s, e) => s + (parseFloat(e.duration) || 0), 0),
+        total_calorie: 0
+      },
+      tags: ['运动']
+    });
+    console.log(`[沉淀] 检测到运动被误判为饮食，已纠正：${exercises.map(e => e.name).join(', ')}`);
+  }
+  return result;
+}
+
+/**
+ * 防御：LLM 把闲聊/情绪语句误判为饮食记录（如"心情不太好"→diet_record）
+ * 检查食物名是否为整句/含情绪词，是则丢弃该食物条目
+ * @param {string} content 原文
+ * @param {Array} rawItems LLM 提取的条目数组
+ * @returns {Array} 清理后的条目数组
+ */
+function sanitizeSuspiciousFoodNames(content, rawItems) {
+  if (!Array.isArray(rawItems)) return rawItems;
+  // 情绪/闲聊关键词
+  const emotionKeywords = ['心情', '累', '烦', '开心', '难过', '焦虑', '崩溃', '无语',
+    '兴奋', '激动', '失落', '沮丧', '生气', '委屈', '疲惫', '困', '饿', '馋', '饱',
+    '睡不着', '压力大', '不想', 'emo', '今天', '最近', '感觉', '有点'];
+  for (const item of rawItems) {
+    if (item.type !== 'diet_record' || !item.extracted_data?.foods) continue;
+    item.extracted_data.foods = item.extracted_data.foods.filter(food => {
+      const name = String(food.name || '').trim();
+      if (!name) return false;
+      // 食物名=整句（长度>10且与原文相似度高）→ 丢弃
+      if (name.length > 10 && content.includes(name)) {
+        console.log(`[沉淀] 可疑食物名(整句)已丢弃: "${name.substring(0, 20)}"`);
+        return false;
+      }
+      // 食物名含情绪词且不含实质食物名 → 丢弃
+      const hasEmotion = emotionKeywords.some(kw => name.includes(kw));
+      const realFoodKeywords = ['蛋', '奶', '米饭', '面条', '面包', '馒头', '粥', '汤',
+        '肉', '鱼', '鸡', '牛', '猪', '羊', '菜', '果', '瓜', '茶', '咖啡', '水',
+        '豆腐', '粉', '饼', '饺', '包子', '沙拉', '酸奶', '豆浆'];
+      const hasRealFood = realFoodKeywords.some(kw => name.includes(kw));
+      if (hasEmotion && !hasRealFood) {
+        console.log(`[沉淀] 可疑食物名(情绪词)已丢弃: "${name}"`);
+        return false;
+      }
+      return true;
+    });
+  }
+  return rawItems;
+}
+
 function recoverMissedExercises(content, rawItems) {
   if (!content || !Array.isArray(rawItems)) return rawItems;
 
@@ -347,6 +728,11 @@ function recoverMissedExercises(content, rawItems) {
       if (e.name) seenNames.add(e.name);
     }
   }
+
+  // 爬楼层数兜底："爬了6层"无分钟数时保留层数单位，交由保存侧联网核实换算
+  enrichStaircaseExercise(content, rawItems, seenNames);
+  // 通用单位兜底："30个俯卧撑""跳绳1000下"等按个计的运动
+  enrichUnitBasedExercises(content, rawItems, seenNames);
 
   for (const kw of knownExercises) {
     if (!content.includes(kw)) continue;
@@ -400,8 +786,21 @@ const promptService = require('../promptService');
 const tagMatcher = require('../tagMatcher');
 const rewardService = require('../rewardService');
 const exerciseMergeService = require('../exerciseMergeService');
-const { isQuestionContent, hasNegativeRecordIntent, hasSelfReportMarker, hasFutureOrIntentionIntent } = require('../../utils/intent');
+const { isQuestionContent, hasNegativeRecordIntent, hasSelfReportMarker, hasFutureOrIntentionIntent, hasAffirmativeActionMarker } = require('../../utils/intent');
 const { safeJsonParse } = require('../../utils/safeJson');
+
+/**
+ * 沉淀 LLM 调用串行队列：防止连续快速发送消息时多个 LLM 调用并发导致超时
+ * 每条消息的沉淀 LLM 调用排队执行，前一个完成（或超时）后才执行下一个
+ */
+let precipitationQueue = Promise.resolve();
+function enqueuePrecipitationLLM(task) {
+  const run = precipitationQueue.then(task, (e) => { console.log('[沉淀队列] 前一个任务异常:', e.message); return task(); });
+  precipitationQueue = run.catch(() => {});
+  // 队列自动清理：10秒后重置，避免异常残留导致永久阻塞
+  setTimeout(() => { if (precipitationQueue === run.catch(() => {})) precipitationQueue = Promise.resolve(); }, 10000);
+  return run;
+}
 const { getChinaDateStr, getChinaHour, getChinaDateTimeStr } = require('../../utils/chinaTime');
 
 
@@ -523,7 +922,8 @@ function isValidPrecipitationItem(item) {
           if (num(e.duration) <= 0) e.duration = Math.max(1, Math.round(steps / 100)); // 走路约 100 步/分钟
           if (num(e.calorie) <= 0) e.calorie = Math.round(steps * 0.04); // 约 0.04 千卡/步
         }
-        const hasValue = [e.duration, e.calorie, e.steps, e.distance].some(v => num(v) > 0);
+        // 非时长单位条目（爬N层/做N个）：有 count 数量即视为有效，热量由保存侧换算
+        const hasValue = [e.duration, e.calorie, e.steps, e.distance, e.count].some(v => num(v) > 0);
         if (hasValue) meaningful.push(e);
       }
       if (meaningful.length === 0) {
@@ -1093,7 +1493,7 @@ function getExerciseFromDb(name) {
   if (!name) return null;
   const input = String(name).toLowerCase();
   try {
-    const rows = db.prepare(`SELECT exercise_name, met_value, calorie_per_hour, intensity_desc FROM exercise_db`).all();
+    const rows = db.prepare(`SELECT exercise_name, met_value, calorie_per_hour, intensity_desc, unit_name, calorie_per_unit FROM exercise_db`).all();
     let best = null;
     let bestScore = 0;
     for (const row of rows) {
@@ -1110,6 +1510,161 @@ function getExerciseFromDb(name) {
     console.error('[getExerciseFromDb] 查询运动库失败:', e.message);
     return null;
   }
+}
+
+/**
+ * 常见"非时长单位"运动的本地估算表（60kg 基准，联网学习前的兜底）
+ * perUnit=每单位千卡；minutesPerUnit=每单位约合分钟；met 用于估算自洽对账
+ * 估算值会在后台联网核实后回写修正，并把精确单位数据沉淀进运动库
+ */
+const UNIT_FALLBACK_ESTIMATES = [
+  { keys: ['爬楼梯', '爬楼', '楼梯'], unit: '层', perUnit: 6.0, minutesPerUnit: 1.0, met: 6.0 },
+  { keys: ['俯卧撑'], unit: '个', perUnit: 0.4, minutesPerUnit: 0.05, met: 8.0 },
+  { keys: ['深蹲'], unit: '个', perUnit: 0.32, minutesPerUnit: 0.045, met: 7.0 },
+  { keys: ['仰卧起坐'], unit: '个', perUnit: 0.3, minutesPerUnit: 0.04, met: 7.5 },
+  { keys: ['卷腹'], unit: '个', perUnit: 0.25, minutesPerUnit: 0.04, met: 6.5 },
+  { keys: ['开合跳'], unit: '个', perUnit: 0.07, minutesPerUnit: 0.008, met: 8.0 },
+  { keys: ['波比跳'], unit: '个', perUnit: 0.5, minutesPerUnit: 0.05, met: 10.0 },
+  { keys: ['引体向上'], unit: '个', perUnit: 0.8, minutesPerUnit: 0.1, met: 8.0 },
+  { keys: ['臀桥'], unit: '个', perUnit: 0.25, minutesPerUnit: 0.05, met: 5.0 },
+  { keys: ['跳绳'], unit: '个', perUnit: 0.11, minutesPerUnit: 0.01, met: 11.0 }
+];
+
+/**
+ * 按非时长单位（层/个/下）估算运动热量与换算时长
+ * 优先运动库已学到的单位数据（unit_name/calorie_per_unit），否则查本地估算表，
+ * 都没有时按 MET 5.0 × 每单位1分钟 保守估算
+ * @param {string} exerciseName 运动名
+ * @param {number} count 数量
+ * @param {string} unit 单位（层/个/下/次）
+ * @param {number} weight 用户体重kg
+ * @returns {{calorie:number, duration:number, perUnit:number, minutesPerUnit:number}}
+ */
+function estimateUnitExercise(exerciseName, count, unit, weight = 60) {
+  const name = String(exerciseName || '').toLowerCase();
+
+  // 1) 运动库已学到的同单位数据（web_learned 回流）优先；时长用本地估算表近似
+  const dbExercise = getExerciseFromDb(exerciseName);
+  if (dbExercise && dbExercise.unit_name === unit && Number(dbExercise.calorie_per_unit) > 0) {
+    const perUnit = Number(dbExercise.calorie_per_unit);
+    const estHit = UNIT_FALLBACK_ESTIMATES.find(est => est.keys.some(k => name.includes(k.toLowerCase()) || k.includes(name)));
+    const minutesPerUnit = estHit ? estHit.minutesPerUnit : 0;
+    return {
+      calorie: Math.round(perUnit * count),
+      duration: minutesPerUnit > 0 ? Math.max(Math.round(minutesPerUnit * count), 1) : 0,
+      perUnit,
+      minutesPerUnit
+    };
+  }
+
+  // 2) 本地估算表
+  const hit = UNIT_FALLBACK_ESTIMATES.find(est => est.keys.some(k => name.includes(k.toLowerCase()) || k.includes(name)));
+  if (hit) {
+    // 体重修正：默认按 60kg 基准线性缩放
+    const perUnit = Math.round(hit.perUnit * (weight / 60) * 100) / 100;
+    return {
+      calorie: Math.max(Math.round(perUnit * count), 1),
+      duration: Math.max(Math.round(hit.minutesPerUnit * count), 1),
+      perUnit,
+      minutesPerUnit: hit.minutesPerUnit
+    };
+  }
+
+  // 3) 未知运动兜底：按 MET 5.0、每单位约 1 分钟保守估算
+  const perUnit = Math.round(5.0 * weight * (1 / 60) * 1.05 * 100) / 100;
+  return { calorie: Math.max(Math.round(perUnit * count), 1), duration: Math.max(Math.round(count), 1), perUnit, minutesPerUnit: 1 };
+}
+
+/**
+ * 后台联网核实运动单位换算并回写修正记录（"先估算后修正"模式）
+ * 流程：searchAndLearnExercise 联网学习（校验通过自动回流运动库）→ 用学到的
+ * 每单位热量重算 → 记录热量未被用户改动的前提下回写 exercise_records 与
+ * precipitation_records.extracted_data，保证记录最终与运动库同源
+ * @param {number} userId 用户ID
+ * {number} precipitationId 沉淀记录ID（定位对应运动记录行）
+ * @param {string} recordDate 记录日期
+ * @param {Array<{name:string,count:number,unit:string,estCalorie:number}>} jobs 待学习任务
+ */
+function learnUnitExercisesInBackground(userId, precipitationId, recordDate, jobs) {
+  if (!Array.isArray(jobs) || jobs.length === 0) return;
+
+  // 惰性 require 放入异步任务内：学习失败不能影响沉淀保存主链路
+  (async () => {
+    let searchAndLearnExercise;
+    try {
+      ({ searchAndLearnExercise } = require('../webSearchService'));
+    } catch (e) {
+      console.warn('[沉淀] 运动单位学习模块加载失败（保留估算值）:', e.message);
+      return;
+    }
+    for (const job of jobs) {
+      try {
+        // 传入 60kg 基准估算值交叉验证，拦截 LLM 知识兜底的离谱数据
+        const learned = await searchAndLearnExercise(job.name, job.unit, job.estPerUnit60 || null);
+        if (!learned || !(learned.perUnit > 0)) continue;
+        // 库里已有同单位数据或学习成功 → 用每单位热量重算
+        const calorie = Math.max(Math.round(learned.perUnit * job.count), 1);
+        if (calorie === job.estCalorie) continue; // 与估算一致，无需回写
+
+        // 读取当前运动记录行，找到匹配条目且热量仍为估算值（未被用户编辑过）才回写
+        const rows = db.prepare(
+          'SELECT id, exercises, total_calorie, total_duration FROM exercise_records WHERE user_id = ? AND precipitation_id = ? ORDER BY id ASC'
+        ).all(userId, precipitationId);
+        for (const row of rows) {
+          let list;
+          try { list = JSON.parse(row.exercises || '[]'); } catch (e) { continue; }
+          if (!Array.isArray(list)) continue;
+          let changed = false;
+          let deltaCal = 0;
+          let deltaDur = 0;
+          for (const e of list) {
+            const isTarget = (e.name || '').includes(job.name) || job.name.includes(e.name || '');
+            if (isTarget && parseFloat(e.count) === job.count && e.unit === job.unit
+                && Math.round(parseFloat(e.calorie) || 0) === job.estCalorie) {
+              deltaCal = calorie - (parseFloat(e.calorie) || 0);
+              deltaDur = (learned.minutesPerUnit > 0 ? Math.max(Math.round(learned.minutesPerUnit * job.count), 1) : 0) - (parseFloat(e.duration) || 0);
+              e.calorie = calorie;
+              if (learned.minutesPerUnit > 0) e.duration = Math.max(Math.round(learned.minutesPerUnit * job.count), 1);
+              changed = true;
+            }
+          }
+          if (!changed) continue;
+          db.prepare('UPDATE exercise_records SET exercises = ?, total_calorie = ?, total_duration = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+            .run(JSON.stringify(list), Math.max((row.total_calorie || 0) + deltaCal, 0), Math.max((row.total_duration || 0) + deltaDur, 0), row.id);
+          // 同步沉淀记录的 extracted_data，聊天弹层再次打开时显示修正后的值
+          const pr = db.prepare('SELECT extracted_data FROM precipitation_records WHERE id = ?').get(precipitationId);
+          if (pr && pr.extracted_data) {
+            try {
+              const exData = JSON.parse(pr.extracted_data);
+              if (Array.isArray(exData.exercises)) {
+                let prChanged = false;
+                for (const e of exData.exercises) {
+                  const isTarget = (e.name || '').includes(job.name) || job.name.includes(e.name || '');
+                  if (isTarget && parseFloat(e.count) === job.count && e.unit === job.unit
+                      && Math.round(parseFloat(e.calorie) || 0) === job.estCalorie) {
+                    e.calorie = calorie;
+                    if (learned.minutesPerUnit > 0) e.duration = Math.max(Math.round(learned.minutesPerUnit * job.count), 1);
+                    prChanged = true;
+                  }
+                }
+                if (prChanged) {
+                  if (Array.isArray(exData.exercises)) {
+                    exData.total_calorie = exData.exercises.reduce((s, e) => s + (parseFloat(e.calorie) || 0), 0);
+                    exData.total_duration = exData.exercises.reduce((s, e) => s + (parseFloat(e.duration) || 0), 0);
+                  }
+                  db.prepare('UPDATE precipitation_records SET extracted_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                    .run(JSON.stringify(exData), precipitationId);
+                }
+              }
+            } catch (e) { /* extracted_data 解析失败忽略 */ }
+          }
+          console.log(`[沉淀] 运动单位换算已按联网核实数据修正：${job.name} ${job.count}${job.unit} → ${calorie}千卡（估算 ${job.estCalorie}）`);
+        }
+      } catch (e) {
+        console.warn('[沉淀] 运动单位联网学习失败（保留估算值）:', job.name, e.message);
+      }
+    }
+  })();
 }
 
 function calculateExerciseCalorie(exerciseName, duration, intensity = 'moderate', weight = 60) {
@@ -1155,8 +1710,17 @@ const MEAL_TIME_MAP = {
   '早餐': 'breakfast', '早饭': 'breakfast', '早上': 'breakfast',
   '午餐': 'lunch', '午饭': 'lunch', '中午': 'lunch',
   '晚餐': 'dinner', '晚饭': 'dinner', '晚上': 'dinner',
-  '加餐': 'snack', '下午': 'snack', '夜宵': 'snack'
+  '加餐': 'snack', '下午茶': 'snack', '下午': 'snack', '夜宵': 'snack'
 };
+
+// 餐别关键词：snack 的「下午茶/下午」必须先于 lunch 的「午」判断，
+// 否则「下午茶」中的「午」字会被裸「午」正则误判为午餐
+const MEAL_PATTERNS = [
+  { meal: 'snack', re: /下午茶|加餐|夜宵|宵夜|下午|午后/ },
+  { meal: 'breakfast', re: /早餐|早饭|早上|今早|早晨|清晨/ },
+  { meal: 'lunch', re: /午餐|午饭|中午|正午|午间/ },
+  { meal: 'dinner', re: /晚餐|晚饭|晚上|今晚|夜里|深夜/ }
+];
 
 function inferMealTimeByContent(content, foods = []) {
   if (!content) return null;
@@ -1170,18 +1734,16 @@ function inferMealTimeByContent(content, foods = []) {
     const segments = before.split(/[，,。！？；~]/);
     for (let i = segments.length - 1; i >= 0; i--) {
       const seg = segments[i];
-      if (/早|早餐|早饭|早上/.test(seg)) return 'breakfast';
-      if (/午|午餐|午饭|中午/.test(seg)) return 'lunch';
-      if (/晚|晚餐|晚饭|晚上/.test(seg)) return 'dinner';
-      if (/加餐|夜宵|下午/.test(seg)) return 'snack';
+      for (const { meal, re } of MEAL_PATTERNS) {
+        if (re.test(seg)) return meal;
+      }
     }
   }
 
-  // fallback：按整句第一次出现的餐别词判断
-  if (/早|早餐|早饭|早上/.test(content)) return 'breakfast';
-  if (/午|午餐|午饭|中午/.test(content)) return 'lunch';
-  if (/晚|晚餐|晚饭|晚上/.test(content)) return 'dinner';
-  if (/加餐|夜宵|下午/.test(content)) return 'snack';
+  // fallback：按整句扫描，snack 词优先（「下午茶」含「午」字，不能让午餐规则抢先）
+  for (const { meal, re } of MEAL_PATTERNS) {
+    if (re.test(content)) return meal;
+  }
   return null;
 }
 
@@ -1559,11 +2121,13 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
         for (const food of duplicateCheck.newFoodsToAdd) {
           const correctedFood = computeFoodNutrition(food);
           const foodArray = [correctedFood];
-          insertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(foodArray), 
+          const info = insertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(foodArray),
             correctedFood.calorie || 0, correctedFood.protein || 0, correctedFood.carb || 0, correctedFood.fat || 0);
+          // 后台异步兜底：0千卡食物 LLM 估算后回写，不阻塞保存链路
+          scheduleZeroCalorieBackfill(userId, info.lastInsertRowid, foodArray);
         }
       }
-      
+
       return { skipped: false, updated: true, recordId: duplicateCheck.foodsToMerge[0]?.recordId };
     }
     
@@ -1580,31 +2144,36 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
           carb: newFood.carb || existingFood.carb,
           fat: newFood.fat || existingFood.fat
         });
+        const correctedArray = [correctedFood];
         
         db.prepare(`
-          UPDATE diet_records 
-          SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, precipitation_id = COALESCE(precipitation_id, ?), updated_at = CURRENT_TIMESTAMP 
+          UPDATE diet_records
+          SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, precipitation_id = COALESCE(precipitation_id, ?), updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
-        `).run(JSON.stringify([correctedFood]), correctedFood.calorie, correctedFood.protein, correctedFood.carb, correctedFood.fat, precipitationId, recordId);
-        
-        
+        `).run(JSON.stringify(correctedArray), correctedFood.calorie, correctedFood.protein, correctedFood.carb, correctedFood.fat, precipitationId, recordId);
+        // 后台异步兜底：0千卡食物 LLM 估算后回写，不阻塞保存链路
+        scheduleZeroCalorieBackfill(userId, recordId, correctedArray);
+
+
       }
-      
+
       // 处理全新的食物（如果有）
       if (duplicateCheck.newFoodsToAdd && duplicateCheck.newFoodsToAdd.length > 0) {
         const insertDiet = db.prepare(`
           INSERT INTO diet_records (user_id, precipitation_id, record_date, meal_time, foods, total_calorie, total_protein, total_carb, total_fat, status)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         `);
-        
+
         for (const food of duplicateCheck.newFoodsToAdd) {
           const correctedFood = computeFoodNutrition(food);
           const foodArray = [correctedFood];
-          insertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(foodArray), 
+          const info = insertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(foodArray),
             correctedFood.calorie || 0, correctedFood.protein || 0, correctedFood.carb || 0, correctedFood.fat || 0);
+          // 后台异步兜底：0千卡食物 LLM 估算后回写，不阻塞保存链路
+          scheduleZeroCalorieBackfill(userId, info.lastInsertRowid, foodArray);
         }
       }
-      
+
       return { skipped: false, updated: true, recordId: duplicateCheck.foodsToUpdate[0]?.recordId };
     }
     
@@ -1670,6 +2239,8 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
             SET record_date = ?, meal_time = ?, foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, status = 1, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
           `).run(today, mealTime, JSON.stringify(foods), totals.calorie, totals.protein, totals.carb, totals.fat, keepId);
+          // 后台异步兜底：0千卡食物 LLM 估算后回写，不阻塞保存链路
+          scheduleZeroCalorieBackfill(userId, keepId, foods);
 
           for (let i = 1; i < existingRows.length; i++) {
             db.prepare('DELETE FROM diet_records WHERE id = ? AND user_id = ?').run(existingRows[i].id, userId);
@@ -1734,7 +2305,9 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
             updated_at = CURRENT_TIMESTAMP
         `);
         const result = upsertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(unmergedFoods), totals.calorie, totals.protein, totals.carb, totals.fat);
-        
+        // 后台异步兜底：0千卡食物 LLM 估算后回写，不阻塞保存链路
+        scheduleZeroCalorieBackfill(userId, result.lastInsertRowid, unmergedFoods);
+
         // 同步更新 precipitation_records.extracted_data
         syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
         return { skipped: false, updated: result.changes === 1, recordId: null };
@@ -1782,7 +2355,9 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
       `);
       const result = insertDiet.run(userId, precipitationId, today, mealTime, JSON.stringify(unmergedFoods), totals.calorie, totals.protein, totals.carb, totals.fat);
-      
+      // 后台异步兜底：0千卡食物 LLM 估算后回写，不阻塞保存链路
+      scheduleZeroCalorieBackfill(userId, result.lastInsertRowid, unmergedFoods);
+
       // 同步更新 precipitation_records.extracted_data
       syncDietExtractedDataToPrecipitation(userId, precipitationId, mealTime);
       return { skipped: false, recordId: result.lastInsertRowid };
@@ -1802,20 +2377,58 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
         // 使用默认体重
       }
 
-      // 计算/校验每项运动的热量（优先按运动库/MET计算，不再使用LLM估算值，确保和搭子回复一致）
-      exercises = exercises.map(e => {
-        const duration = parseFloat(e.duration) || 0;
-        const intensity = e.intensity || 'moderate';
-        const calorie = calculateExerciseCalorie(e.name, duration, intensity, userWeight);
+  // 计算/校验每项运动的热量（优先按运动库/MET计算，不再使用LLM估算值，确保和搭子回复一致）
+  const unitLearnJobs = []; // 需要联网核实单位换算的运动（后台学习后回写修正）
+  exercises = exercises.map(e => {
+    const duration = parseFloat(e.duration) || 0;
+    const intensity = e.intensity || 'moderate';
+    const count = parseFloat(e.count) || 0;
+    const unit = e.unit || null;
+
+    // 非时长单位条目（爬N层/做N个/跳绳N下）：按"库单位数据 → 本地估算"出热量与换算时长，
+    // 不把 count 硬凑成 duration；联网核实由后台学习任务完成后回写修正
+    if (count > 0 && unit) {
+      // 用户同时给了独立有效时长（如"爬20层花了15分钟"，duration≠count）：
+      // 时长是用户实测、最可靠，直接按时长精确计算，单位仅作展示标注
+      const independentDuration = duration > 0 && Math.abs(duration - count) >= 0.001;
+      if (independentDuration) {
         return {
           name: e.name,
-          duration: duration,
-          intensity: intensity,
-          calorie: calorie,
-          // 保留用户报告的距离（公里），不随白名单丢弃
-          ...(e.distance ? { distance: parseFloat(e.distance) || 0 } : {})
+          count,
+          unit,
+          duration,
+          intensity,
+          calorie: calculateExerciseCalorie(e.name, duration, intensity, userWeight)
         };
-      });
+      }
+      const est = estimateUnitExercise(e.name, count, unit, userWeight);
+      // estPerUnit60：换回 60kg 基准的每单位热量，供网络学习结果交叉验证
+      unitLearnJobs.push({ name: e.name, count, unit, estCalorie: est.calorie, estPerUnit60: userWeight > 0 ? Math.round((est.perUnit / (userWeight / 60)) * 100) / 100 : est.perUnit });
+      return {
+        name: e.name,
+        count,
+        unit,
+        duration: est.duration,
+        intensity,
+        calorie: est.calorie
+      };
+    }
+
+    const calorie = calculateExerciseCalorie(e.name, duration, intensity, userWeight);
+    return {
+      name: e.name,
+      duration: duration,
+      intensity: intensity,
+      calorie: calorie,
+      // 保留用户报告的距离（公里），不随白名单丢弃
+      ...(e.distance ? { distance: parseFloat(e.distance) || 0 } : {})
+    };
+  });
+
+  // 后台联网核实单位换算并回写修正（不阻塞沉淀保存；最多 2 个/条消息，防止延迟累积）
+  if (unitLearnJobs.length > 0 && precipitationId && !isUserEdit) {
+    learnUnitExercisesInBackground(userId, precipitationId, today, unitLearnJobs.slice(0, 2));
+  }
 
       const totalDur = exercises.reduce((sum, e) => sum + (e.duration || 0), 0);
       const totalCal = exercises.reduce((sum, e) => sum + (e.calorie || 0), 0);
@@ -2022,32 +2635,36 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
 }
 
 /**
+ * 本地意图闸门：疑问句 / 否定犹豫 / 未来计划，且不含用户自我报告标记时，
+ * 跳过一切沉淀（LLM 提取与规则兜底都不执行），避免"我今晚不吃饭"这类
+ * 感叹/表态被误记为饮食。与 callPrecipitationAgent 主流程、规则兜底共用同一口径。
+ */
+function shouldSkipByIntent(content) {
+  if (isQuestionContent(content) && !hasSelfReportMarker(content)) return true;
+  if (hasNegativeRecordIntent(content) && !hasSelfReportMarker(content)) return true;
+  if (hasFutureOrIntentionIntent(content) && !hasSelfReportMarker(content)) return true;
+  return false;
+}
+
+/**
  * 调用信息沉淀 Agent
  */
 async function callPrecipitationAgent(content, userId, chatId = null, recordDate = null) {
   if (!content || !content.trim()) {
     return { extracted: false, reason: '内容为空' };
   }
-  
+
   // 本地过滤：不包含沉淀关键词的消息直接跳过
   if (!shouldPrecipitate(content)) {
     return { extracted: false, reason: '不包含沉淀内容' };
   }
 
-  // 疑问句/咨询句，且不含用户自身记录标记，直接跳过
-  // 避免把"黄瓜...可以吗？"这类问题错误沉淀为 recipe/method
-  if (isQuestionContent(content) && !hasSelfReportMarker(content)) {
-    return { extracted: false, reason: '疑问句不沉淀' };
-  }
-
-  // 否定/犹豫/未发生意图：如"不想吃了/不吃了/没吃/不要吃/吃不下/懒得动"，不沉淀行为记录
-  if (hasNegativeRecordIntent(content) && !hasSelfReportMarker(content)) {
-    return { extracted: false, reason: '否定或犹豫意图不沉淀' };
-  }
-
-  // 未来计划、愿望、假设：如"那我明天液断"、"想喝个奶茶呢"，不沉淀为已发生行为
-  if (hasFutureOrIntentionIntent(content) && !hasSelfReportMarker(content)) {
-    return { extracted: false, reason: '未来计划或意向不沉淀' };
+  // 疑问句/否定犹豫/未来计划且无自我报告标记，直接跳过
+  // 避免把"黄瓜...可以吗？"、"我今晚不吃饭"、"明天再练"这类消息错误沉淀
+  // 但混合句"今晚不吃饭了，吃了一个苹果"含肯定动作，不应整条跳过——
+  // 交给 LLM 提取肯定部分（LLM 提示词已有规则只提取肯定部分）
+  if (shouldSkipByIntent(content) && !hasAffirmativeActionMarker(content)) {
+    return { extracted: false, reason: '疑问/否定/未来意图不沉淀' };
   }
 
   const today = recordDate || getChinaDateStr();
@@ -2061,14 +2678,14 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
     // 导致饮食/运动沉淀全部失败。改为在 systemPrompt 中强制要求 JSON 输出，不传递 response_format。
     // 另外：沉淀是异步流程，若 LLM 长时间无响应（>15s），直接走规则兜底，避免用户等待几十秒仍无沉淀。
     const response = await Promise.race([
-      callWithPrompt(
+      enqueuePrecipitationLLM(() => callWithPrompt(
         'precipitation_agent',
         [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: content }
         ],
         { temperature: 0.1, max_tokens: 2500 }
-      ),
+      )),
       new Promise((_, reject) => setTimeout(() => reject(new Error('PRECIPITATION_TIMEOUT')), 15000))
     ]);
 
@@ -2108,10 +2725,26 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
       }
     }
 
+    // 后处理纠正：LLM 把运动误判为饮食记录（如"做了30个俯卧撑"→diet_record），
+    // 检查食物名是否含运动关键词，是则转为 exercise_record，避免运动被当成食物记录
+    rawItems = convertMisclassifiedExercises(content, rawItems);
+
+    // 防御：LLM 把闲聊/情绪语句误判为饮食（如"心情不太好"→diet_record），
+    // 食物名含情绪词或=整句时丢弃该食物条目
+    rawItems = sanitizeSuspiciousFoodNames(content, rawItems);
+
     // 兜底：LLM 漏提取的运动（如"然后哑铃臀腿40分钟"），按已知运动关键词补回
     rawItems = recoverMissedExercises(content, rawItems);
 
     items = rawItems.filter(item => isValidPrecipitationItem(item));
+
+    // 按正确顺序补全营养：清洗名称 → 查库 → 库未命中且热量<=0 的用 LLM 估算填充
+    // 确保入库前每个食物都有热量（computeFoodNutrition 查库命中会用库值覆盖估算值）
+    for (const item of items) {
+      if (item.type === 'diet_record' && item.extracted_data) {
+        await fillMissingNutritionFromLLM(item.extracted_data);
+      }
+    }
 
     // 兜底：LLM 把牛奶/咖啡/果汁等饮品误判为喝水习惯时，转成 diet_record
     for (const item of items) {
@@ -2138,13 +2771,31 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
 
   // 兜底：当 LLM 没有提取到有效内容或调用超时，但内容明显是饮食/运动陈述句时，
   // 使用规则化方法强制生成沉淀记录，避免简单记录消息漏掉
-  // 疑问句/咨询句（"奶茶热量高吗"）不兜底，避免把提问误记为饮食
-  if (items.length === 0 && !isQuestionContent(content) && shouldPrecipitate(content)) {
+  // 疑问句/咨询句（"奶茶热量高吗"）、否定/犹豫/未来计划（"我今晚不吃饭"）不兜底，避免误记
+  if (items.length === 0 && !shouldSkipByIntent(content) && shouldPrecipitate(content)) {
     console.log(`[沉淀兜底] LLM 未提取到有效内容，尝试规则化兜底提取`);
     const fallbackItem = await fallbackExtractDietRecord(content, userId, recordDate);
     if (fallbackItem) {
-      items.push(fallbackItem);
-      
+      // 对兜底生成的条目也跑后处理纠正：
+      // 1. 运动误判为饮食时纠正（如"做了30个俯卧撑"→diet_record→exercise_record）
+      // 2. 闲聊/情绪误判为饮食时丢弃（如"心情不太好"→diet_record→过滤）
+      const corrected = convertMisclassifiedExercises(content, [fallbackItem]);
+      sanitizeSuspiciousFoodNames(content, corrected);
+      const validCorrected = corrected.filter(item => isValidPrecipitationItem(item));
+      if (validCorrected.length) {
+        items.push(...validCorrected);
+      }
+    }
+    // 运动规则兜底：LLM 超时/失败时饮食兜底不覆盖运动，
+    // 复用 recoverMissedExercises（含"爬了N层"楼层兜底）从原文规则化提取运动
+    if (!items.some(i => i.type === 'exercise_record')) {
+      const exerciseItems = [];
+      recoverMissedExercises(content, exerciseItems);
+      const validExercises = exerciseItems.filter(item => isValidPrecipitationItem(item));
+      if (validExercises.length) {
+        console.log(`[沉淀兜底] 规则化提取到运动记录 ${validExercises.length} 条`);
+        items.push(...validExercises);
+      }
     }
   }
 
@@ -2315,6 +2966,92 @@ function parseStepsFromContent(content) {
 }
 
 /**
+ * 按正确顺序补全营养：名称清洗（sanitizeFoodWeights）可能清零热量，
+ * 此处用清洗后的干净名字先查食品库（中置信），库未命中且热量<=0 时
+ * 调用 LLM 按经验估算填充。后续 computeFoodNutrition 查库命中会用库值
+ * 覆盖（库更准），未命中则保留此估算值——确保沉淀入库即时有值不留 0
+ * @param {Object} data 沉淀 extracted_data（foods 数组原地修改）
+ * @returns {Promise<Object>} 补全后的 data
+ */
+async function fillMissingNutritionFromLLM(data) {
+  if (!data || !Array.isArray(data.foods)) return data;
+  const targets = data.foods.filter(f => f && f.name && !(parseFloat(f.calorie) > 0));
+  await Promise.all(targets.map(async f => {
+    // 先查库（中置信）：库有则交给 computeFoodNutrition 计算，无需估算
+    let dbFood = null;
+    try { dbFood = getFoodNutrition(f.name, f.category, { minConfidence: 'medium' }); } catch (e) { /* 库异常走 LLM */ }
+    if (dbFood) return;
+    // 库没有 → LLM 按经验估算（每个调用内置 15s 超时，并发执行）
+    try {
+      // 重量兜底为100g：负数/0/缺失一律按100g估算，防止负比例算出负热量
+      const estWeight = parseFloat(f.weight) > 0 ? parseFloat(f.weight) : 100;
+      const est = await estimateNutritionWithLLM(f.name, estWeight);
+      if (est && parseFloat(est.calorie_per_100g) > 0) {
+        const ratio = estWeight / 100;
+        f.calorie = Math.round(est.calorie_per_100g * ratio);
+        f.protein = Math.round((parseFloat(est.protein_per_100g) || 0) * ratio * 10) / 10;
+        f.carb = Math.round((parseFloat(est.carb_per_100g) || 0) * ratio * 10) / 10;
+        f.fat = Math.round((parseFloat(est.fat_per_100g) || 0) * ratio * 10) / 10;
+        f.nutrition_source = 'llm_estimate';
+        console.log(`[营养顺序补全] "${f.name}" 库未命中，LLM按每100g ${est.calorie_per_100g}千卡估算 → ${f.calorie}千卡`);
+      }
+    } catch (e) {
+      console.warn(`[营养顺序补全] "${f.name}" LLM估算失败: ${e.message}`);
+    }
+  }));
+  return data;
+}
+
+/**
+ * 后台异步兜底：对刚入库饮食记录中热量为 0 的食物（名称清洗/重量修正清零后
+ * 食物库未命中），调用 LLM 按名字重新估算营养并回写数据库。
+ * 与运动学习的后台修正同模式，不阻塞保存链路（fillMissingNutritionFromLLM
+ * 已在入库前按顺序补全，此函数仅作为遗漏路径的最后保险）
+ * @param {number} userId 用户ID
+ * @param {number} recordId diet_records 记录ID
+ * @param {Array} foods 该记录的 foods 数组（原地修改后回写）
+ */
+function scheduleZeroCalorieBackfill(userId, recordId, foods) {
+  if (!recordId || !Array.isArray(foods) || foods.length === 0) return;
+  const zeroFoods = foods.filter(f => f && !(parseFloat(f.calorie) > 0));
+  if (zeroFoods.length === 0) return;
+  Promise.all(zeroFoods.map(async f => {
+    try {
+      // 重量兜底为100g：负数/0/缺失一律按100g估算，防止负比例算出负热量
+      const estWeight = parseFloat(f.weight) > 0 ? parseFloat(f.weight) : 100;
+      const est = await estimateNutritionWithLLM(f.name, estWeight);
+      if (est && parseFloat(est.calorie_per_100g) > 0) {
+        const ratio = estWeight / 100;
+        f.calorie = Math.round(est.calorie_per_100g * ratio);
+        f.protein = Math.round((parseFloat(est.protein_per_100g) || 0) * ratio * 10) / 10;
+        f.carb = Math.round((parseFloat(est.carb_per_100g) || 0) * ratio * 10) / 10;
+        f.fat = Math.round((parseFloat(est.fat_per_100g) || 0) * ratio * 10) / 10;
+        console.log(`[营养兜底] "${f.name}" 热量为0，已用LLM按每100g ${est.calorie_per_100g}千卡回填 → ${f.calorie}千卡`);
+        return f;
+      }
+    } catch (e) {
+      console.warn(`[营养兜底] "${f.name}" LLM估算失败: ${e.message}`);
+    }
+    return null;
+  })).then(filled => {
+    if (!filled.filter(Boolean).length) return;
+    // 重算总计并回写数据库
+    const totals = calculateFoodTotals(foods);
+    db.prepare(`
+      UPDATE diet_records
+      SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).run(JSON.stringify(foods), totals.calorie, totals.protein, totals.carb, totals.fat, recordId, userId);
+    // 同步更新沉淀记录的 extracted_data，保证各显示路径一致
+    const precip = db.prepare('SELECT precipitation_id, meal_time FROM diet_records WHERE id = ?').get(recordId);
+    if (precip && precip.precipitation_id) {
+      try { syncDietExtractedDataToPrecipitation(userId, precip.precipitation_id, precip.meal_time); } catch (e) { /* 非阻塞 */ }
+    }
+    console.log(`[营养兜底] 记录#${recordId} 已回填 ${filled.filter(Boolean).length} 个0千卡食物，总计${totals.calorie}千卡`);
+  }).catch(err => console.warn('[营养兜底] 回写失败:', err.message));
+}
+
+/**
  * 当食品库中找不到对应食物时，调用 LLM 进行真实营养估算。
  * 返回 { calorie_per_100g, protein_per_100g, carb_per_100g, fat_per_100g } 或 null。
  */
@@ -2351,12 +3088,16 @@ async function estimateNutritionWithLLM(foodName, weight = 100) {
     const objects = extractJsonObjects(text);
     for (const objText of objects) {
       const parsed = safeJsonParse(objText, null);
-      if (parsed && typeof parsed.calorie_per_100g === 'number') {
+      // 兼容 LLM 把数字输出成字符串（如 "180"）：统一 parseFloat 强转；
+      // 并做合理性校验：每百克热量必须 >0 且 ≤1000（纯油脂约900，超过即为幻觉值），
+      // 非食物名/负值/荒谬值一律返回 null 交由上层兜底处理
+      const per100 = parseFloat(parsed && parsed.calorie_per_100g);
+      if (Number.isFinite(per100) && per100 > 0 && per100 <= 1000) {
         return {
-          calorie_per_100g: parsed.calorie_per_100g,
-          protein_per_100g: Number(parsed.protein_per_100g) || 0,
-          carb_per_100g: Number(parsed.carb_per_100g) || 0,
-          fat_per_100g: Number(parsed.fat_per_100g) || 0
+          calorie_per_100g: per100,
+          protein_per_100g: parseFloat(parsed.protein_per_100g) || 0,
+          carb_per_100g: parseFloat(parsed.carb_per_100g) || 0,
+          fat_per_100g: parseFloat(parsed.fat_per_100g) || 0
         };
       }
     }
@@ -2371,142 +3112,184 @@ async function estimateNutritionWithLLM(foodName, weight = 100) {
  * 规则化兜底提取一条饮食记录
  * 用于 LLM 未提取成功，但消息明显是饮食陈述句时
  */
+/**
+ * 按连接词拆分用户消息为多个食物段
+ * 如"番茄炒蛋和一份米饭还有一小块红烧肉" → ["番茄炒蛋", "一份米饭", "一小块红烧肉"]
+ * @param {string} text 原文
+ * @returns {string[]} 拆分后的食物段数组
+ */
+function splitFoodSegments(text) {
+  if (!text) return [];
+  // 先去掉口语前缀（"我吃了""早上吃了""中午吃了"等）
+  let cleaned = text.replace(/^[^，。、，]*?(?:我|今天)?(?:早上|中午|下午|晚上|夜宵|加餐|刚才|刚刚|刚|今天)?(?:吃了|喝了|吃|喝|加餐吃了?|来[了一]?个?|整[了一]?个?|搞[了一]?个?)\s*/,'');
+  // 按连接词拆分：和/还有/加了/配/跟/加/以及/然后/接着/再来
+  const segments = cleaned.split(/(?:和|还有|加了?|配|跟|加|以及|然后|接着|再来(?:一个)?|，|。)/);
+  // 清理每段的首尾空白和残留前缀（"一小块""一份""两个""十颗""半斤"等量词前缀）
+  // 量词覆盖：水果论颗/粒/瓣/串，饮品论杯/瓶/罐/盒，主食论碗/份/盘/碟，称重论斤/两/克
+  const result = segments
+    .map(s => s.trim())
+    .map(s => s.replace(/^(?:[一二三四五六七八九十百两半几多大小]+(?:份|个|只|片|根|块|碗|杯|袋|包|斤|两|克|盘|碟|颗|粒|瓣|串|条|盒|瓶|罐|把|勺|卷|支|张|屉|枚|打)|半斤|几两)\s*/, '').trim())
+    .filter(s => s.length > 0 && s.length <= 20);
+  // 如果拆分后只有1段或0段，返回原文清理后的结果
+  if (result.length <= 1) {
+    return [cleaned.trim()].filter(s => s.length > 0);
+  }
+  return result;
+}
+
+/**
+ * 兜底提取饮食记录：当 LLM 超时或失败时，用正则规则从原文提取食物
+ * 支持多食物拆分（按"和/还有/加了/配"等连接词拆分）
+ * @param {string} content 用户消息原文
+ * @param {number} userId 用户ID
+ * @param {string} recordDate 记录日期
+ * @returns {Promise<Object|null>} diet_record 条目
+ */
 async function fallbackExtractDietRecord(content, userId, recordDate) {
   const text = String(content || '').trim();
   if (!text) return null;
 
-  // 用统一的食物名清洗逻辑提取食物名，避免"我又吃了一个卤鸡蛋"变成"我卤鸡蛋"
-  let foodName = cleanFoodName(text);
-  if (!foodName || isInvalidFoodName(foodName)) {
-    // 若清洗后为空，尝试更宽松地去掉数字+单位后的剩余部分
-    const withoutQty = text.replace(/\d+(?:\.\d+)?\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/gi, '');
-    foodName = cleanFoodName(withoutQty);
-    if (!foodName || isInvalidFoodName(foodName)) return null;
-  }
+  // 多食物拆分：按连接词把原文拆成多个食物段
+  const segments = splitFoodSegments(text);
+  console.log(`[沉淀兜底] 食物拆分: "${text.substring(0, 30)}" → ${segments.length} 段: ${JSON.stringify(segments)}`);
 
-  // 进一步去掉开头残留的数量+单位（如"15克油面筋"→"油面筋"），避免把数量词带入食物名
-  const leadingQtyPattern = /^\d+(?:\.\d+)?\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/i;
-  const strippedName = foodName.replace(leadingQtyPattern, '').trim();
-  if (strippedName && !isInvalidFoodName(strippedName)) {
-    foodName = cleanFoodName(strippedName);
-  }
+  const foods = [];
+  // 运动关键词：fallback 拆分后如果某段是运动（如"跑了3公里"），不应当作食物
+  const exerciseKw = ['跑', '走', '爬', '骑', '游', '跳', '瑜伽', '哑铃', '杠铃', '深蹲', '俯卧撑', '引体', '卷腹', '平板', '拉伸', '太极', '拳击', '篮球', '足球', '羽毛球', '乒乓球', '网球', 'HIIT', 'Tabata', '帕梅拉', '刘畊宏', '骑行', '骑车', '散步', '快走', '慢跑', '超慢跑'];
 
-  // 优先用 nutritionService 查食品库，获取准确营养和标准化名称
-  let caloriePer100g = 0;
-  let proteinPer100g = 0;
-  let carbPer100g = 0;
-  let fatPer100g = 0;
-  let displayName = foodName;
+  for (const seg of segments) {
+    // 检测该段是否为运动描述（如"跑了3公里""做了30个深蹲"），是则跳过不当作食物
+    if (exerciseKw.some(kw => seg.includes(kw)) && /(跑了|走了|爬了|骑了|游了|跳了|做了|练了|打)/.test(seg)) {
+      console.log(`[沉淀兜底] 跳过运动段（不应作为食物）: "${seg}"`);
+      continue;
+    }
+    // 逐段提取食物名
+    let foodName = cleanFoodName(seg);
+    if (!foodName || isInvalidFoodName(foodName)) {
+      const withoutQty = seg.replace(/\d+(?:\.\d+)?\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/gi, '');
+      foodName = cleanFoodName(withoutQty);
+      if (!foodName || isInvalidFoodName(foodName)) continue;
+    }
+    // 去掉开头残留的数量+单位
+    const leadingQtyPattern = /^\d+(?:\.\d+)?\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/i;
+    const strippedName = foodName.replace(leadingQtyPattern, '').trim();
+    if (strippedName && !isInvalidFoodName(strippedName)) {
+      foodName = cleanFoodName(strippedName);
+    }
 
-  let nutrition = getFoodNutrition(foodName);
-  if (nutrition) {
-    caloriePer100g = Number(nutrition.calorie_per_100g) || 0;
-    proteinPer100g = Number(nutrition.protein_per_100g) || 0;
-    carbPer100g = Number(nutrition.carb_per_100g) || 0;
-    fatPer100g = Number(nutrition.fat_per_100g) || 0;
-    displayName = nutrition.food_name || foodName;
-  } else {
-    // 食品库未命中时，让 LLM 做真实估算，不再使用固定默认值
-    console.log(`[沉淀兜底] 食品库未命中「${foodName}」，请求 LLM 估算营养`);
-    const estimated = await estimateNutritionWithLLM(foodName);
-    if (estimated && estimated.calorie_per_100g > 0) {
-      caloriePer100g = estimated.calorie_per_100g;
-      proteinPer100g = estimated.protein_per_100g;
-      carbPer100g = estimated.carb_per_100g;
-      fatPer100g = estimated.fat_per_100g;
+    // 查营养数据
+    let caloriePer100g = 0, proteinPer100g = 0, carbPer100g = 0, fatPer100g = 0;
+    let displayName = foodName;
+    let nutrition = getFoodNutrition(foodName);
+    if (nutrition) {
+      caloriePer100g = Number(nutrition.calorie_per_100g) || 0;
+      proteinPer100g = Number(nutrition.protein_per_100g) || 0;
+      carbPer100g = Number(nutrition.carb_per_100g) || 0;
+      fatPer100g = Number(nutrition.fat_per_100g) || 0;
+      displayName = nutrition.food_name || foodName;
     } else {
-      // LLM 估算失败时的保守规则兜底：避免「油炸豆泡」被估成 100 kcal/100g 这种离谱值
-      if (/发面饼|烙饼|煎饼|油饼|手抓饼|大饼|烧饼|馅饼/.test(foodName)) {
-        // 烤/烙/煎制的面食能量密度明显高于水煮面条
-        caloriePer100g = 250;
-      } else if (/面|粉|米线|拉面|板面|刀削面|炸酱面|拌面|炒面|热干面|螺蛳粉|酸辣粉|米粉|河粉|凉皮|面皮/.test(foodName)) {
-        caloriePer100g = 140;
-      } else if (/饭|炒饭|盖饭|拌饭|焖饭|焗饭|烩饭|煲仔饭|粥|稀饭|燕麦粥|小米粥/.test(foodName)) {
-        caloriePer100g = /粥|稀饭/.test(foodName) ? 50 : 130;
-      } else if (/包|馒头|花卷|饺子|馄饨|抄手|小笼包|生煎|锅贴|馅饼|包子|烧麦|春卷|油条|煎饼|烧饼|烙饼|面包|蛋糕|饼干|甜点|甜品/.test(foodName)) {
-        caloriePer100g = /面包|蛋糕|饼干|甜点|甜品/.test(foodName) ? 300 : 200;
-      } else if (/肉|鸡|牛|猪|羊|鱼|虾|蛋|豆腐|豆干|豆皮|腐竹|千张|素鸡/.test(foodName)) {
-        caloriePer100g = 150;
-      } else if (/水果|苹果|香蕉|橙子|葡萄|西瓜|草莓|蓝莓|猕猴桃|梨|桃|李子|樱桃|芒果|菠萝|柚子|橘子|柠檬|火龙果|哈密瓜|木瓜|百香果|杨梅|荔枝|龙眼|榴莲|山竹|椰子|甘蔗|柿子|枣|山楂|桑葚|无花果|牛油果|圣女果|黄瓜|西红柿|胡萝卜|生菜|菠菜|芹菜|西兰花|花菜|卷心菜|白菜|洋葱|大蒜|葱|姜|辣椒|茄子|豆角|豌豆|玉米|土豆|红薯|紫薯|南瓜|冬瓜|丝瓜|苦瓜|芦笋|竹笋|香菇|蘑菇|木耳|海带|紫菜/.test(foodName)) {
-        caloriePer100g = 60;
-      } else if (/奶|酸奶|牛奶|豆浆|奶茶|果汁|可乐|雪碧|饮料/.test(foodName)) {
-        caloriePer100g = 50;
-      } else if (/黑咖啡|美式咖啡|冰美式|热美式|清咖啡|纯咖啡/.test(foodName)) {
-        // 纯黑咖啡/美式几乎无热量；避免 fallback 到 50 导致 250g 杯子变成 125 千卡
-        caloriePer100g = 0;
-      } else if (/拿铁|卡布奇诺|摩卡|玛奇朵|燕麦拿铁|生椰拿铁|澳白|flat white|咖啡/.test(foodName)) {
-        // 含奶/含糖咖啡按 50 估算；黑咖啡/美式已在上一条处理
-        caloriePer100g = 50;
-      } else if (/茶|水/.test(foodName)) {
-        caloriePer100g = 1;
-      } else if (/油豆泡|油豆腐|炸豆腐|炸豆皮|油炸|炸鸡|炸猪|炸鱼|炸虾|薯条|油条|麻花|春卷|煎/.test(foodName)) {
-        // 油炸类食物能量密度高，单独给一个更合理的兜底
-        caloriePer100g = 280;
+      console.log(`[沉淀兜底] 食品库未命中「${foodName}」，请求 LLM 估算营养`);
+      const estimated = await estimateNutritionWithLLM(foodName);
+      if (estimated && estimated.calorie_per_100g > 0) {
+        caloriePer100g = estimated.calorie_per_100g;
+        proteinPer100g = estimated.protein_per_100g;
+        carbPer100g = estimated.carb_per_100g;
+        fatPer100g = estimated.fat_per_100g;
       } else {
-        caloriePer100g = 100;
+        // LLM 估算失败时的保守规则兜底
+        if (/发面饼|烙饼|煎饼|油饼|手抓饼|大饼|烧饼|馅饼/.test(foodName)) {
+          caloriePer100g = 250;
+        } else if (/面|粉|米线|拉面|板面|刀削面|炸酱面|拌面|炒面|热干面|螺蛳粉|酸辣粉|米粉|河粉|凉皮|面皮/.test(foodName)) {
+          caloriePer100g = 140;
+        } else if (/饭|炒饭|盖饭|拌饭|焖饭|焗饭|烩饭|煲仔饭|粥|稀饭|燕麦粥|小米粥/.test(foodName)) {
+          caloriePer100g = /粥|稀饭/.test(foodName) ? 50 : 130;
+        } else if (/包|馒头|花卷|饺子|馄饨|抄手|小笼包|生煎|锅贴|馅饼|包子|烧麦|春卷|油条|煎饼|烧饼|烙饼|面包|蛋糕|饼干|甜点|甜品/.test(foodName)) {
+          caloriePer100g = /面包|蛋糕|饼干|甜点|甜品/.test(foodName) ? 300 : 200;
+        } else if (/肉|鸡|牛|猪|羊|鱼|虾|蛋|豆腐|豆干|豆皮|腐竹|千张|素鸡/.test(foodName)) {
+          caloriePer100g = 150;
+        } else if (/水果|苹果|香蕉|橙子|葡萄|西瓜|草莓|蓝莓|猕猴桃|梨|桃|李子|樱桃|芒果|菠萝|柚子|橘子|柠檬|火龙果|哈密瓜|木瓜|百香果|杨梅|荔枝|龙眼|榴莲|山竹|椰子|甘蔗|柿子|枣|山楂|桑葚|无花果|牛油果|圣女果|黄瓜|西红柿|胡萝卜|生菜|菠菜|芹菜|西兰花|花菜|卷心菜|白菜|洋葱|大蒜|葱|姜|辣椒|茄子|豆角|豌豆|玉米|土豆|红薯|紫薯|南瓜|冬瓜|丝瓜|苦瓜|芦笋|竹笋|香菇|蘑菇|木耳|海带|紫菜/.test(foodName)) {
+          caloriePer100g = 60;
+        } else if (/奶|酸奶|牛奶|豆浆|奶茶|果汁|可乐|雪碧|饮料/.test(foodName)) {
+          caloriePer100g = 50;
+        } else if (/黑咖啡|美式咖啡|冰美式|热美式|清咖啡|纯咖啡/.test(foodName)) {
+          caloriePer100g = 0;
+        } else if (/拿铁|卡布奇诺|摩卡|玛奇朵|燕麦拿铁|生椰拿铁|澳白|flat white|咖啡/.test(foodName)) {
+          caloriePer100g = 50;
+        } else if (/茶|水/.test(foodName)) {
+          caloriePer100g = 1;
+        } else if (/油豆泡|油豆腐|炸豆腐|炸豆皮|油炸|炸鸡|炸猪|炸鱼|炸虾|薯条|油条|麻花|春卷|煎/.test(foodName)) {
+          caloriePer100g = 280;
+        } else {
+          caloriePer100g = 100;
+        }
       }
     }
-  }
 
-  // 估算重量：优先用 nutritionService 的典型重量，避免鸭蛋/鹅蛋都被估算成80g或200g
-  let weight = 100;
-  let quantity = 1;
-  let unit = 'g';
-  // 支持阿拉伯数字和中文数字（一~十、两、几、半）
-  const qtyMatch = text.match(/(\d+(?:\.\d+)?|一|二|三|四|五|六|七|八|九|十|两|几|半)\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/i);
-  if (qtyMatch) {
-    const rawQty = qtyMatch[1];
-    const chineseNums = { '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10, '几': 2, '半': 0.5 };
-    quantity = chineseNums[rawQty] || parseFloat(rawQty) || 1;
-    unit = qtyMatch[2].toLowerCase();
-    if (['克', 'g'].includes(unit)) {
-      weight = quantity;
-    } else if (['毫升', 'ml'].includes(unit)) {
-      weight = quantity;
-    } else {
-      const typical = getTypicalWeight(displayName, unit) || getTypicalWeight(foodName, unit);
-      if (typical) {
-        weight = quantity * typical;
+    // 估算重量（从该段提取数量+单位）
+    let weight = 100, quantity = 1, unit = 'g';
+    const qtyMatch = seg.match(/(\d+(?:\.\d+)?|一|二|三|四|五|六|七|八|九|十|两|几|半)\s*(毫升|ml|克|g|杯|瓶|盒|罐|碗|个|份|片|根|只|块|勺)/i);
+    if (qtyMatch) {
+      const rawQty = qtyMatch[1];
+      const chineseNums = { '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10, '几': 2, '半': 0.5 };
+      quantity = chineseNums[rawQty] || parseFloat(rawQty) || 1;
+      unit = qtyMatch[2].toLowerCase();
+      if (['克', 'g'].includes(unit)) {
+        weight = quantity;
+      } else if (['毫升', 'ml'].includes(unit)) {
+        weight = quantity;
       } else {
-        // 无典型重量时，使用更保守的默认值
-        const unitWeights = {
-          '杯': 250, '瓶': 500, '盒': 200, '罐': 330, '碗': 400,
-          '个': 80, '份': 300, '片': 30, '根': 100, '只': 50, '块': 50, '勺': 15
-        };
-        weight = quantity * (unitWeights[unit] || 100);
+        const typical = getTypicalWeight(displayName, unit) || getTypicalWeight(foodName, unit);
+        if (typical) {
+          weight = quantity * typical;
+        } else {
+          const unitWeights = {
+            '杯': 250, '瓶': 500, '盒': 200, '罐': 330, '碗': 400,
+            '个': 80, '份': 300, '片': 30, '根': 100, '只': 50, '块': 50, '勺': 15
+          };
+          weight = quantity * (unitWeights[unit] || 100);
+        }
       }
+    } else if (/一碗|一大碗/.test(seg)) {
+      weight = 400;
+    } else if (/一大盘/.test(seg)) {
+      weight = 350;
+    } else if (/一杯/.test(seg)) {
+      weight = 250;
     }
-  } else if (/一碗|一大碗|一份|一大盘|一杯/.test(text)) {
-    if (/一碗|一大碗/.test(text)) weight = 400;
-    else if (/一大盘/.test(text)) weight = 350;
-    else if (/一杯/.test(text)) weight = 250;
+
+    // 宏量素自洽
+    if (!(proteinPer100g > 0)) proteinPer100g = (caloriePer100g * 0.10) / 4;
+    if (!(carbPer100g > 0)) carbPer100g = (caloriePer100g * 0.65) / 4;
+    if (!(fatPer100g > 0)) fatPer100g = (caloriePer100g * 0.25) / 9;
+
+    const ratio = weight / 100;
+    foods.push({
+      name: displayName,
+      weight: Math.round(weight),
+      quantity,
+      unit,
+      calorie: Math.round(caloriePer100g * ratio),
+      protein: Math.round(proteinPer100g * ratio * 10) / 10,
+      carb: Math.round(carbPer100g * ratio * 10) / 10,
+      fat: Math.round(fatPer100g * ratio * 10) / 10
+    });
   }
 
-  // 若数据库未提供宏量素，按热量估算合理比例（蛋白10%/碳水65%/脂肪25%），保证数值自洽
-  if (!(proteinPer100g > 0)) proteinPer100g = (caloriePer100g * 0.10) / 4;
-  if (!(carbPer100g > 0)) carbPer100g = (caloriePer100g * 0.65) / 4;
-  if (!(fatPer100g > 0)) fatPer100g = (caloriePer100g * 0.25) / 9;
+  if (foods.length === 0) return null;
 
-  const ratio = weight / 100;
-  const food = {
-    name: displayName,
-    weight: Math.round(weight),
-    quantity,
-    unit,
-    calorie: Math.round(caloriePer100g * ratio),
-    protein: Math.round(proteinPer100g * ratio * 10) / 10,
-    carb: Math.round(carbPer100g * ratio * 10) / 10,
-    fat: Math.round(fatPer100g * ratio * 10) / 10
-  };
+  const totalCalorie = foods.reduce((s, f) => s + (f.calorie || 0), 0);
+  const totalProtein = foods.reduce((s, f) => s + (f.protein || 0), 0);
+  const totalCarb = foods.reduce((s, f) => s + (f.carb || 0), 0);
+  const totalFat = foods.reduce((s, f) => s + (f.fat || 0), 0);
 
   return {
     type: 'diet_record',
     extracted_data: {
-      foods: [food],
-      total_calorie: food.calorie,
-      total_protein: food.protein,
-      total_carb: food.carb,
-      total_fat: food.fat,
+      foods,
+      total_calorie: totalCalorie,
+      total_protein: Math.round(totalProtein * 10) / 10,
+      total_carb: Math.round(totalCarb * 10) / 10,
+      total_fat: Math.round(totalFat * 10) / 10,
       meal_time: inferMealTimeByContent(text) || normalizeMealTime(null, text, [], [])
     },
     confidence: 0.9

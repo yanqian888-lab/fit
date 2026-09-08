@@ -372,9 +372,16 @@ function isInternalInstruction(reply) {
 }
 
 /**
- * 执行工具调用
+ * 执行 mainAgent 决策出的工具调用（helper 问答 / 页面跳转）
+ * @param {Array} toolCalls 工具调用列表
+ * @param {number} userId 用户内部 id
+ * @param {string} userMessage 用户原始消息
+ * @param {object} userInfo 用户信息
+ * @param {object} [partnerInfo] 搭子人设信息
+ * @param {object|null} [precipitationResult] 本轮消息沉淀结果，透传给 helper 如实反馈记录状态
+ * @returns {Promise<Array>} 各工具调用的执行结果
  */
-async function executeToolCalls(toolCalls, userId, userMessage, userInfo, partnerInfo = {}) {
+async function executeToolCalls(toolCalls, userId, userMessage, userInfo, partnerInfo = {}, precipitationResult = null) {
   const results = [];
   for (const call of toolCalls) {
     try {
@@ -391,7 +398,8 @@ async function executeToolCalls(toolCalls, userId, userMessage, userInfo, partne
         const question = call.parameters?.question || call.parameters?.query || userMessage;
         console.log(`[executeToolCalls] 调用helperAgent，问题: ${question.substring(0, 50)}...`);
         const answer = await Promise.race([
-          helperAgent.callHelperAgent(question, userInfo, partnerInfo),
+          // 透传本轮沉淀结果：helper 只能基于真实沉淀结果反馈记录状态，未沉淀成功严禁谎称已记录
+          helperAgent.callHelperAgent(question, userInfo, partnerInfo, { precipitation: precipitationResult }),
           new Promise((resolve) => setTimeout(() => {
             console.log('[executeToolCalls] helperAgent调用超时，返回兜底回复');
             resolve('这个问题有点复杂，我慢慢算一下，你先忙别的～');

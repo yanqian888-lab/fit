@@ -50,6 +50,8 @@ import { resolveStaticUrl } from '../../utils/environment.js';
 
 const userStore = useUserStore();
 const selected = ref('gentle');
+/* 提交按钮 loading 状态（防止重复提交） */
+const loading = ref(false);
 
 /** 模式头像：改为远程 CDN 加载以减小小程序包体积 */
 const modeAvatarMap = {

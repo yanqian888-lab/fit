@@ -1,5 +1,5 @@
 <template>
-  <AppPage :showHeader="true" title="货币明细">
+  <AppPage :showHeader="true" :fixed="true" title="货币明细">
   <view class="currency-page">
     <!-- 余额卡片 -->
     <view class="balance-row">
@@ -131,10 +131,14 @@ function loadMore() {
 </script>
 
 <style lang="scss" scoped>
+/*
+ * 页面容器：AppPage fixed 模式下 app-page 已锁定 100vh（flex 列布局），
+ * 此处用 flex:1 + min-height:0 占满自绘导航以外的剩余高度并允许内部 tx-scroll 独立滚动，
+ * 标题 bar（status-bar + page-header）固定在顶部不随内容滚动
+ */
 .currency-page {
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;

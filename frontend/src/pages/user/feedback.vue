@@ -1,5 +1,5 @@
 <template>
-  <AppPage :showHeader="true" title="意见反馈">
+  <AppPage :showHeader="true" :fixed="true" title="意见反馈">
     <view class="feedback-page">
       <view class="tab-bar">
         <view
@@ -13,7 +13,9 @@
         </view>
       </view>
 
-      <view class="form-card">
+      <!-- 表单与反馈历史：独立滚动区，tab 吸顶不随内容滚走 -->
+      <scroll-view class="feedback-scroll" scroll-y>
+        <view class="form-card">
         <text class="card-title">反馈类型</text>
         <view class="type-list">
           <text v-for="t in currentTypes" :key="t.value" class="type-item" :class="{ active: form.type === t.value }" @click="form.type = t.value">{{ t.label }}</text>
@@ -71,6 +73,7 @@
         </view>
         <AppEmpty v-if="history.length === 0" text="暂无反馈记录" icon="📝" />
       </view>
+      </scroll-view>
     </view>
   </AppPage>
 </template>
@@ -229,19 +232,36 @@ async function submit() {
 </script>
 
 <style lang="scss" scoped>
+/*
+ * 页面容器：AppPage fixed 模式锁定 100vh（flex 列布局），
+ * 此处 flex:1 占自绘导航以下剩余高度；tab-bar 常驻顶部，表单/历史在 feedback-scroll 内独立滚动
+ */
 .feedback-page {
   position: relative;
   z-index: 1;
-  padding-top: $spacing-md;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .tab-bar {
   display: flex;
-  margin: 0 $spacing-md $spacing-md;
+  margin: $spacing-md $spacing-md 0;
   background: $bg-card;
   border-radius: $radius-lg;
   box-shadow: $shadow-card;
   overflow: hidden;
+  flex-shrink: 0; /* 吸顶：不随内容滚动，也不被压缩 */
+}
+
+/* 表单 + 反馈历史独立滚动区 */
+.feedback-scroll {
+  flex: 1;
+  min-height: 0;
+  height: 0; /* scroll-view 需要确定高度约束，配合 flex:1 生效 */
+  padding-top: $spacing-md;
+  box-sizing: border-box;
 }
 
 .tab-item {

@@ -93,12 +93,30 @@ const emptyCondition = () => ({ action: '', count: 1 })
 const form = ref({ name: '', type: 'daily', description: '', condition_json: emptyCondition(), reward_berries: 0, reward_flowers: 0, jump_page: '', sort_order: 0, start_time: '', end_time: '', status: true })
 
 // 任务触发行为（与后端 taskService 的进度 key 对应），允许手动输入自定义值
+// 从数据库 tasks.condition_json 统计的全部 action key，确保下拉选项完整
 const actionLabels = {
-  checkin: '每日签到', record_diet: '记录饮食', record_exercise: '记录运动',
-  record_body: '记录体重', record_water: '记录饮水', chat: '聊天',
+  checkin: '每日签到',
+  record_diet: '记录饮食',
+  record_exercise: '记录运动',
+  record_body: '记录体重',
+  record_water: '记录饮水',
+  record_habit: '习惯打卡',
+  record_fasting_complete: '完成轻断食',
+  record_defecation: '记录排便',
+  record_mood: '记录情绪',
+  record_sleep: '记录睡眠',
+  drink_water_goal: '饮水达标',
+  chat: '聊天',
   feed: '喂食搭搭',
-  explore_complete: '外出归来', generate_analysis: '生成分析', complete_profile: '完善资料',
-  save_event_image: '保存事件图'
+  explore_complete: '外出归来',
+  generate_analysis: '生成分析',
+  complete_profile: '完善资料',
+  save_event_image: '保存事件图',
+  favorite: '收藏',
+  share: '分享',
+  shop_buy: '商城购买',
+  upload_photo: '上传照片',
+  use_item: '使用道具'
 }
 
 onMounted(load)

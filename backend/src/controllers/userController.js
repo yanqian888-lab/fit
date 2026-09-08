@@ -115,6 +115,7 @@ function getMe(req, res) {
     phone: user.phone,
     nickname: user.nickname,
     avatar_url: user.avatar_url,
+    openid: user.openid,
     gender: user.gender,
     age: user.age,
     birth_date: user.birth_date,

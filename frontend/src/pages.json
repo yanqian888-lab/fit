@@ -15,13 +15,16 @@
     {
       "path": "pages/pet/currency-detail",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "货币明细"
       }
     },
     {
       "path": "pages/record/index",
       "style": {
-        "navigationStyle": "custom"
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundTextStyle": "dark"
       }
     },
     {

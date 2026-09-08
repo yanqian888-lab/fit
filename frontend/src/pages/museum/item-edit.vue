@@ -1,8 +1,8 @@
 <template>
   <AppPage :fixed="true" :showHeader="true" title="编辑">
   <view class="edit-page">
-    <scroll-view class="content-scroll" scroll-y>
-      <view class="content-wrapper">
+    <scroll-view class="content-scroll" scroll-y :scroll-into-view="scrollIntoId" scroll-with-animation>
+      <view class="content-wrapper" :style="{ paddingBottom: contentPaddingBottom }">
         <view class="form-card">
           <view v-if="!isRecipe && !isInsight && !isMethod" class="form-item">
             <text class="input-label">类型</text>
@@ -12,11 +12,11 @@
           </view>
           <view v-if="!isRecipe" class="form-item">
             <text class="input-label">小标题（可选）</text>
-            <input v-model="form.sub_type" placeholder="请输入标题" maxlength="20" />
+            <input v-model="form.sub_type" placeholder="请输入标题" maxlength="20" adjust-position="{{ false }}" />
           </view>
           <view v-if="!isRecipe" class="form-item">
             <text class="input-label">内容</text>
-            <textarea v-model="form.content" placeholder="写下你想收藏的内容..." :auto-height="true" maxlength="1000" />
+            <textarea v-model="form.content" placeholder="写下你想收藏的内容..." :auto-height="true" maxlength="1000" adjust-position="{{ false }}" />
           </view>
           <view v-if="!isRecipe && !isInsight" class="form-item">
             <text class="input-label">配图（可选）</text>
@@ -28,7 +28,7 @@
           <template v-if="isRecipe">
             <view class="form-item">
               <text class="input-label">食谱标题</text>
-              <input v-model="recipe.title" placeholder="如：10分钟快手减脂午餐" />
+              <input v-model="recipe.title" placeholder="如：10分钟快手减脂午餐" adjust-position="{{ false }}" />
             </view>
 
             <view class="form-item">
@@ -42,8 +42,8 @@
             <view class="form-item">
               <text class="input-label">食材</text>
               <view v-for="(item, idx) in recipe.ingredients" :key="idx" class="ingredient-row">
-                <input v-model="item.name" class="ingredient-name" placeholder="食材名" />
-                <input v-model="item.amount" class="ingredient-amount" placeholder="用量" />
+                <input v-model="item.name" class="ingredient-name" placeholder="食材名" adjust-position="{{ false }}" />
+                <input v-model="item.amount" class="ingredient-amount" placeholder="用量" adjust-position="{{ false }}" />
                 <text class="ingredient-remove" @click="removeIngredient(idx)">✕</text>
               </view>
               <text class="add-link" @click="addIngredient">+ 添加食材</text>
@@ -51,12 +51,12 @@
 
             <view class="form-item">
               <text class="input-label">做法步骤</text>
-              <textarea v-model="recipe.steps" placeholder="请输入做法步骤，换行分隔" :auto-height="true" maxlength="500" />
+              <textarea v-model="recipe.steps" placeholder="请输入做法步骤，换行分隔" :auto-height="true" maxlength="500" adjust-position="{{ false }}" />
             </view>
 
             <view class="form-item">
               <text class="input-label">小贴士</text>
-              <textarea v-model="recipe.tip" placeholder="可选" :auto-height="true" maxlength="500" />
+              <textarea v-model="recipe.tip" placeholder="可选" :auto-height="true" maxlength="500" adjust-position="{{ false }}" />
             </view>
           </template>
 
@@ -78,25 +78,87 @@
             </template>
             <template v-else>
               <text class="input-label">心情 / 标签（可选）</text>
-              <input v-model="form.emotion" placeholder="如：开心、治愈" />
+              <input v-model="form.emotion" placeholder="如：开心、治愈" adjust-position="{{ false }}" />
             </template>
           </view>
         </view>
 
-        <view class="bottom-placeholder"></view>
+        <view class="bottom-placeholder" id="scroll-bottom-anchor"></view>
       </view>
     </scroll-view>
 
-    <view class="save-btn" @click="save">{{ saveBtnText }}</view>
+    <view class="save-btn" :style="{ bottom: saveBtnBottom }" @click="save">{{ saveBtnText }}</view>
   </view>
   </AppPage>
 </template>
 
 <script setup>
 import AppPage from '../../components/AppPage.vue';
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { museumApi } from '../../api';
 import { uploadFile } from '../../utils/request';
+
+/*
+ * 键盘高度监听：
+ * AppPage :fixed="true" 模式下，所有 input/textarea 设 adjust-position=false，
+ * 通过监听键盘高度动态推高底部保存按钮 + 给滚动区底部预留键盘空间。
+ * 键盘收起后恢复原状，顶部 header 始终固定不动。
+ * keyboardOffset 直接使用 px：键盘高度本身是 px，转 rpx（×2）仅在 375px 屏宽准确，
+ * 宽屏机型会偏大导致按钮与键盘之间悬空，故全程 px（CSS bottom/padding 均支持 px）。
+ */
+const keyboardOffset = ref(0);
+let keyboardCleanup = null;
+const focusInputIds = []; // 聚焦中的 input id，用于键盘弹起时滚到可视区
+
+/*
+ * 底部保存按钮的动态 bottom（直接返回 CSS 值字符串）：
+ * - 键盘弹起：推到键盘正上方（px，本页为非 tabBar 子页面，bottom:0 即屏幕底部，
+ *   键盘高度从屏幕底部算起，可直接使用无需扣除 tabBar 占位）
+ * - 键盘收起：回到原位置 calc(32rpx + safe-area-inset-bottom)
+ */
+const saveBtnBottom = computed(() => {
+  if (keyboardOffset.value > 0) {
+    return keyboardOffset.value + 'px';
+  }
+  return 'calc(32rpx + env(safe-area-inset-bottom))';
+});
+
+/*
+ * scroll-view 内容区底部 padding（返回完整 CSS 值字符串）：
+ * 键盘弹起时，底部预留 = 基础 160rpx（save-btn 空间）+ 键盘高度 px，
+ * 确保滚动到底部时最后一条输入框完全可见，不被 save-btn + 键盘遮挡。
+ */
+const contentPaddingBottom = computed(() => {
+  if (keyboardOffset.value > 0) {
+    return `calc(160rpx + ${keyboardOffset.value}px)`;
+  }
+  return '160rpx';
+});
+
+// 滚动定位（键盘弹起时滚到底部）
+const scrollIntoId = computed(() => {
+  if (keyboardOffset.value > 0) return 'scroll-bottom-anchor';
+  return '';
+});
+
+onMounted(() => {
+  keyboardCleanup = uni.onKeyboardHeightChange((res) => {
+    // res.height 单位 px，直接使用（本页非 tabBar 页，无需扣除 tabBar 占位）
+    keyboardOffset.value = res.height || 0;
+    // scrollIntoId 依赖 keyboardOffset，ref 变化后 computed 自动触发 scroll-into-view
+  });
+});
+
+onUnmounted(() => {
+  if (typeof keyboardCleanup === 'function') {
+    keyboardCleanup();
+  } else if (keyboardCleanup) {
+    uni.offKeyboardHeightChange(keyboardCleanup);
+  }
+  keyboardOffset.value = 0;
+  keyboardCleanup = null;
+});
+
 
 const types = [
   { label: '金句', value: 'quote' },

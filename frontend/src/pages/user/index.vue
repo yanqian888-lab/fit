@@ -25,9 +25,15 @@
       </view>
     </view>
 
-    <!-- 退出登录 -->
+    <!-- 退出登录 / 注销账号 -->
     <view v-if="isLoggedIn" class="logout-wrap">
       <button class="logout-btn" @click="logout">退出登录</button>
+      <button class="delete-account-btn" @click="goTo('/pages/user/delete-account-agreement')">注销账号</button>
+    </view>
+
+    <!-- 备案信息（贴页面底部，间距 24px + 安全区） -->
+    <view class="beian">
+      <text class="beian-text">京ICP备2026053100号-3X</text>
     </view>
 
     <!-- 退出登录确认弹框 -->
@@ -151,6 +157,17 @@ onShow(() => {
   padding: 0 32rpx;
   box-sizing: border-box;
   position: relative;
+  /* 撑满 AppPage 剩余高度，让备案号 margin-top:auto 贴到页面底部 */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+/* 本页为二级页（无 tabBar），抵消 AppPage 为 tabBar 预留的底部 padding，备案号才能贴底 */
+.app-page {
+  padding-bottom: 0 !important;
 }
 
 .user-header {
@@ -296,17 +313,48 @@ onShow(() => {
   z-index: 1;
   margin-top: 48rpx;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
 }
 
+/* 退出登录：粉色描边胶囊线框，与注销账号形成视觉区分 */
 .logout-btn {
+  padding: 18rpx 72rpx;
   font-size: 30rpx;
   color: #FB86A5;
   background: transparent;
-  border: none;
+  border: 2rpx solid #FB86A5;
+  border-radius: 44rpx;
+  line-height: 1.4;
 }
 
 .logout-btn::after {
   border: none;
+}
+
+/* 注销账号入口：灰色低调小字，与退出登录拉开 48rpx 间距 */
+.delete-account-btn {
+  margin-top: 48rpx;
+  font-size: 26rpx;
+  color: #B0B3B8;
+  background: transparent;
+  border: none;
+}
+
+.delete-account-btn::after {
+  border: none;
+}
+
+/* 备案信息：margin-top:auto 推到页面底部，间距 24px(48rpx) + 底部安全区 */
+.beian {
+  margin-top: auto;
+  margin-bottom: calc(48rpx + env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+.beian-text {
+  font-size: 24rpx;
+  color: #BFBFBF;
+  letter-spacing: 1rpx;
 }
 </style>

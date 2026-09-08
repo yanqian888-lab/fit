@@ -192,33 +192,44 @@
       </view>
     </view>
 
-    <!-- 全屏趋势弹窗 -->
+    <!-- 全屏趋势弹窗：标题栏+图表整体旋转90°横屏展示（横持手机查看），返回按钮随旋转固定在横屏视图左上角标题栏上 -->
     <view v-if="showFullscreenChart" class="fullscreen-modal" @click="closeFullscreenChart">
       <view class="fullscreen-content" @click.stop>
-        <view class="fullscreen-header">
-          <text class="fullscreen-title">体重趋势</text>
-          <text class="fullscreen-close" @click="closeFullscreenChart">关闭</text>
-        </view>
         <view class="fullscreen-chart">
-          <view v-if="fullscreenPoints.length > 0" class="fullscreen-trend-svg">
-            <view
-              v-for="(seg, idx) in fullscreenSegments"
-              :key="'fseg'+idx"
-              class="trend-segment fullscreen"
-              :style="seg.style"
-            ></view>
-            <view
-              v-for="(point, idx) in fullscreenPoints"
-              :key="'fpt'+idx"
-              class="trend-point fullscreen"
-              :style="{ left: (point.x / 320 * 100) + '%', top: (point.y / 160 * 100) + '%' }"
-            >
-              <view class="trend-dot fullscreen"></view>
-              <text class="chart-value fullscreen">{{ point.value }}</text>
+          <view v-if="fullscreenPoints.length > 0" class="fullscreen-rotate">
+            <view class="fullscreen-header">
+              <view class="fullscreen-back" @click="closeFullscreenChart" aria-label="返回">
+                <text class="fullscreen-back-icon">‹</text>
+              </view>
+              <text class="fullscreen-title">体重趋势</text>
+              <view class="fullscreen-header-right"></view>
             </view>
-          </view>
-          <view class="fullscreen-x-axis">
-            <text v-for="(point, idx) in fullscreenPoints" :key="idx" class="fullscreen-x-label">{{ point.date }}</text>
+            <view class="fullscreen-trend-svg">
+              <view
+                v-for="(seg, idx) in fullscreenSegments"
+                :key="'fseg'+idx"
+                class="trend-segment fullscreen"
+                :style="seg.style"
+              ></view>
+              <view
+                v-for="(point, idx) in fullscreenPoints"
+                :key="'fpt'+idx"
+                class="trend-point fullscreen"
+                :style="{ left: (point.x / 320 * 100) + '%', top: (point.y / 160 * 100) + '%' }"
+              >
+                <view class="trend-dot fullscreen"></view>
+                <text class="chart-value fullscreen">{{ point.value }}</text>
+              </view>
+            </view>
+            <!-- X 轴日期与数据点用同一 left 百分比定位，保证严格对齐 -->
+            <view class="fullscreen-x-axis">
+              <text
+                v-for="(point, idx) in fullscreenPoints"
+                :key="idx"
+                class="fullscreen-x-label"
+                :style="{ left: (point.x / 320 * 100) + '%' }"
+              >{{ point.date }}</text>
+            </view>
           </view>
         </view>
       </view>
@@ -229,7 +240,7 @@
 
 <script setup>
 import AppPage from '../../components/AppPage.vue';
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { recordApi } from '../../api';
 import { showRewardToast } from '../../utils/rewardToast.js';
@@ -377,25 +388,32 @@ const fullscreenPoints = computed(() => {
   });
 });
 
-// 全屏趋势的折线段（viewBox 320 x 160）
+// 全屏趋势的折线段（数据坐标基于 viewBox 320 x 160）
+// 容器旋转 90° 后宽高非等比拉伸（宽≈屏高、高≈屏宽），
+// 线段的角度/长度必须按实际渲染尺寸换算，否则连线与数据点脱节
+const fullscreenChartSize = ref({ w: 0, h: 0 });
 const fullscreenSegments = computed(() => {
   const pts = fullscreenPoints.value;
   if (pts.length < 2) return [];
   const VB_W = 320;
   const VB_H = 160;
+  const { w, h } = fullscreenChartSize.value;
+  // 横向/纵向缩放系数：有测量值用真实值，否则退回等比假设（与点定位公式一致）
+  const kx = w > 0 ? w / VB_W : 1;
+  const ky = h > 0 ? h / VB_H : kx;
   const segs = [];
   for (let i = 0; i < pts.length - 1; i++) {
     const p1 = pts[i];
     const p2 = pts[i + 1];
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
-    const length = Math.sqrt(dx * dx + dy * dy);
-    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const length = Math.sqrt(dx * dx * kx * kx + dy * dy * ky * ky);
+    const angle = (Math.atan2(dy * ky, dx * kx) * 180) / Math.PI;
     segs.push({
       style: {
         left: (p1.x / VB_W * 100) + '%',
         top: (p1.y / VB_H * 100) + '%',
-        width: (length / VB_W * 100) + '%',
+        width: (length / (VB_W * kx) * 100) + '%',
         transform: `rotate(${angle}deg)`,
         transformOrigin: '0 50%'
       }
@@ -680,6 +698,38 @@ async function saveMeasurements() {
 
 function openFullscreenChart() {
   showFullscreenChart.value = true;
+  /*
+   * 图表容器尺寸是确定值，先按 CSS 公式同步计算首帧（真机上等待异步测量才出线会闪）：
+   * - 图表宽 = 100vh（windowHeight）减去旋转容器左右 padding 60rpx×2
+   * - 图表高 = 100vw（windowWidth）减去旋转容器上下 padding(20+40)rpx、
+   *   标题栏(返回键64 + 间距16)rpx、x 轴高 34rpx 及其 margin 16rpx
+   */
+  try {
+    const sys = uni.getSystemInfoSync();
+    const rpx2px = sys.windowWidth / 750;
+    fullscreenChartSize.value = {
+      w: sys.windowHeight - 120 * rpx2px,
+      h: sys.windowWidth - (20 + 40 + 64 + 16 + 34 + 16) * rpx2px
+    };
+  } catch (e) {}
+  /*
+   * 真机兜底：渲染后实测图表容器尺寸，修正部分机型 100vh/100vw 与 windowHeight/windowWidth 的偏差。
+   * 注意 90° 旋转元素的 boundingClientRect 是变换后包围盒，宽高与布局宽高互换，需取反使用。
+   */
+  nextTick(() => {
+    setTimeout(() => {
+      try {
+        uni.createSelectorQuery()
+          .select('.fullscreen-trend-svg')
+          .boundingClientRect(rect => {
+            if (rect && rect.width > 0 && rect.height > 0) {
+              fullscreenChartSize.value = { w: rect.height, h: rect.width };
+            }
+          })
+          .exec();
+      } catch (e) {}
+    }, 80);
+  });
   // #ifdef H5
   try {
     if (screen.orientation && screen.orientation.lock) {
@@ -1062,6 +1112,12 @@ onShow(() => {
 
 .trend-point.fullscreen {
   width: 96rpx;
+  /*
+   * 折线端点枢轴即数据点圆心 (x,y)。默认 translate(-50%,-50%) 以整个容器（数值文本+圆点）中心对齐，
+   * 会把圆点压到端点下方约 10px，视觉上"折线没连上圆点"。
+   * 改为容器底边对齐端点再上抬圆点半径 8rpx，使圆心精确落在 (x,y)。
+   */
+  transform: translate(-50%, calc(-100% + 8rpx));
 }
 
 .trend-dot {
@@ -1277,12 +1333,32 @@ onShow(() => {
   padding: 0;
 }
 
+/* 标题栏位于旋转容器内部：随图表一起旋转，横持手机时呈现在横屏视图顶部，返回按钮固定其上 */
 .fullscreen-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: calc(24rpx + env(safe-area-inset-top)) 32rpx 24rpx;
+  padding: 0 0 16rpx;
   flex-shrink: 0;
+}
+
+/* 左上角返回按钮：圆形浅绿底，与 AppPage 返回键风格一致 */
+.fullscreen-back {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #F0F5EC;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fullscreen-back-icon {
+  font-size: 44rpx;
+  font-weight: 600;
+  color: #563E22;
+  line-height: 1;
+  margin-top: -4rpx;
 }
 
 .fullscreen-title {
@@ -1291,37 +1367,59 @@ onShow(() => {
   color: #27282D;
 }
 
-.fullscreen-close {
-  font-size: 28rpx;
-  color: #8DBB77;
+/* 右侧占位：宽度对齐右上角胶囊按钮，避免标题视觉偏移 */
+.fullscreen-header-right {
+  width: 64rpx;
+  height: 64rpx;
 }
 
+/*
+ * 全屏图表：竖屏内旋转 90° 模拟横屏展示（横持手机查看）
+ * 旋转容器宽=屏高、高=屏宽，居中旋转后恰好铺满整个弹窗区域
+ * 数据点/X 轴均按百分比定位，在拉伸后的容器上自动适配
+ */
 .fullscreen-chart {
+  position: relative;
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fullscreen-rotate {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100vh;
+  height: 100vw;
+  transform: translate(-50%, -50%) rotate(90deg);
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 20rpx 40rpx 40rpx;
-  min-height: 0;
+  padding: 20rpx 60rpx 40rpx;
+  box-sizing: border-box;
 }
 
 .fullscreen-trend-svg {
+  flex: 1;
   width: 100%;
-  aspect-ratio: 2 / 1;
+  min-height: 0;
   position: relative;
 }
 
 .fullscreen-x-axis {
-  display: flex;
-  justify-content: space-between;
-  padding: 0 8rpx;
+  position: relative;
+  width: 100%;
+  height: 34rpx;
   margin-top: 16rpx;
   flex-shrink: 0;
 }
 
 .fullscreen-x-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
   font-size: 22rpx;
   color: #999999;
   line-height: 30rpx;
+  white-space: nowrap;
 }
 </style>

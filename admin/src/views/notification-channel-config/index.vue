@@ -86,7 +86,7 @@ function openDialog(row) {
 async function save() {
   try {
     await cmsNotificationChannelApi.update(editId.value, {
-      is_enabled: form.is_enabled,
+      is_enabled: form.is_enabled ? 1 : 0,
       description: form.description,
       config: form.config,
       sort_order: form.sort_order

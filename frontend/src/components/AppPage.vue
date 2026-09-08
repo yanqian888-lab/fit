@@ -170,6 +170,10 @@ defineExpose({ goBack });
   margin-left: -32rpx;
   margin-right: -32rpx;
   flex-shrink: 0;
+  /* 非 fixed 模式下页面原生滚动时吸顶（fixed 模式页面不滚动，sticky 不触发，无副作用） */
+  position: sticky;
+  top: 0;
+  z-index: 49;
 }
 
 /**
@@ -180,7 +184,10 @@ defineExpose({ goBack });
  * - flex 三列：左返回键（56rpx 定宽）、中标题（flex:1 居中）、右占位（56rpx 定宽平衡居中）
  */
 .page-header {
-  position: relative;
+  /* 吸顶标题行：吸附在 status-bar 下方（top = status-bar 高度），
+     非 fixed 模式页面原生滚动时标题/返回键保持固定；fixed 模式页面不滚动，sticky 不触发 */
+  position: sticky;
+  top: var(--nav-status-h, calc(var(--status-bar-height, 44px) + 44rpx));
   display: flex;
   align-items: center;
   margin: 0 -32rpx 28rpx;

@@ -1,5 +1,5 @@
 <template>
-  <AppPage :showHeader="true" title="添加运动">
+  <AppPage :showHeader="true" :fixed="true" title="添加运动">
   <view class="add-exercise-page">
     <!-- 搜索栏 -->
     <view class="search-bar">
@@ -420,9 +420,10 @@ async function submit() {
 </script>
 <style lang="scss" scoped>
 .add-exercise-page {
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
+  /* AppPage fixed 模式（height:100vh flex 列容器）内撑满剩余高度，页面不整体滚动：
+     顶部 bar + 搜索框置顶固定，仅左侧分类与右侧列表各自滚动 */
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -432,6 +433,7 @@ async function submit() {
 .search-bar {
   position: relative;
   z-index: 1;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   margin: 0 32rpx 24rpx;
@@ -465,9 +467,9 @@ async function submit() {
   padding-bottom: 160rpx;
 }
 
-/* 左侧分类 */
+/* 左侧分类（收窄：给右侧列表让出更多空间） */
 .category-sidebar {
-  width: 170rpx;
+  width: 140rpx;
   height: 100%;
   flex-shrink: 0;
   padding-top: 8rpx;
@@ -480,10 +482,10 @@ async function submit() {
 }
 
 .category-text {
-  font-size: 28rpx;
+  font-size: 26rpx;
   color: #666666;
   line-height: 36rpx;
-  padding: 8rpx 16rpx;
+  padding: 8rpx 12rpx;
   border-radius: 32rpx;
   white-space: nowrap;
 }

@@ -311,7 +311,7 @@
 <script setup>
 import { resolveStaticUrl } from '../../utils/environment.js';
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { onShow, onPullDownRefresh } from '@dcloudio/uni-app';
 import { recordApi, aiApi, workoutApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';
 import AppButton from '../../components/AppButton.vue';
@@ -1082,6 +1082,28 @@ onShow(() => {
 });
 
 onUnmounted(() => { stopCountdown(); });
+
+/*
+ * 页面下拉刷新：按当前 tab 刷新对应数据
+ * - 陪你动 tab：重拉课程列表（购买器材后解锁状态即时更新）
+ * - 今日数据 tab：重拉饮食/运动记录与轻断食状态
+ * 无论成功失败都停止下拉动画，避免转圈不停
+ */
+onPullDownRefresh(async () => {
+  try {
+    if (userStore.isLoggedIn) {
+      if (activeTab.value === 'workout') {
+        await loadWorkouts();
+      } else {
+        await Promise.allSettled([load(), loadDailyState(), loadFastingFromServer()]);
+      }
+    }
+  } catch (e) {
+    console.error('[record] 下拉刷新失败:', e);
+  } finally {
+    uni.stopPullDownRefresh();
+  }
+});
 
 function goTo(url) {
   if (!userStore.requireAuth()) return; uni.navigateTo({ url }); }

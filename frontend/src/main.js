@@ -123,6 +123,60 @@ export function createApp() {
   const pinia = createPinia();
   app.use(pinia);
 
+  // =====================================================================
+  // 【全局分享注入】patch 原生全局 wx.createPage，给所有页面自动注册分享钩子
+  // 原因：微信小程序只认页面配置对象上直接挂载的 onShareAppMessage / onShareTimeline，
+  //       Vue3 全局 mixin 中的分享钩子不会被编译进页面配置，导致"转发给朋友/分享到朋友圈"不亮
+  // 关键：uni-app 编译器会把源码标识符 wx 替换为其内部拷贝对象 wx$1（for...in 复制的副本，
+  //       见 vendor.js 的 Li() 函数），patch 副本无法拦截页面里的 wx.createPage 调用，
+  //       必须通过 globalThis.wx 拿到原生全局对象
+  // 方案：包裹 wx.createPage，在页面配置传入前注入默认分享钩子；
+  //       页面自带同名钩子（uni-app 的 onShareAppMessage 编译产物）时不覆盖，可按页自定义
+  // 时机：createApp 在 app.js 同步执行，早于任何页面 require，patch 必然生效
+  // =====================================================================
+  // #ifdef MP-WEIXIN
+  (function patchCreatePageForShare() {
+    // 注意：必须用字符串索引 g['wx'] 获取原生全局 wx！
+    // uni-app 编译器会在 AST 层把标识符 wx 替换为其内部拷贝对象（wx$1），连 globalThis.wx
+    // 都会被错误改写为指向不存在导出的引用；字符串字面量 'wx' 不会被标识符替换命中
+    const g = typeof globalThis !== 'undefined' ? globalThis : null;
+    const nativeWx = g ? g['wx'] : null;
+    if (!nativeWx || typeof nativeWx.createPage !== 'function') return;
+    const rawCreatePage = nativeWx.createPage;
+    nativeWx.createPage = function (options) {
+      try {
+        if (options && typeof options === 'object') {
+          if (typeof options.onShareAppMessage !== 'function') {
+            options.onShareAppMessage = function () {
+              try {
+                const pages = getCurrentPages();
+                const current = pages[pages.length - 1] || {};
+                const opts = current.options || {};
+                const query = Object.keys(opts).map(k => `${k}=${opts[k]}`).join('&');
+                return {
+                  title: '掉秤搭搭 · 陪你轻松科学掉秤',
+                  path: `/${current.route || 'pages/index/index'}${query ? '?' + query : ''}`
+                };
+              } catch (err) {
+                return { title: '掉秤搭搭 · 陪你轻松科学掉秤', path: '/pages/index/index' };
+              }
+            };
+          }
+          if (typeof options.onShareTimeline !== 'function') {
+            // 朋友圈分享为单页模式，不支持自定义 path，仅标题与图
+            options.onShareTimeline = function () {
+              return { title: '掉秤搭搭 · 陪你轻松科学掉秤' };
+            };
+          }
+        }
+      } catch (e) {
+        // 注入失败不影响页面创建
+      }
+      return rawCreatePage.call(nativeWx, options);
+    };
+  })();
+  // #endif
+
   // 全局页面生命周期：触发弹窗检测、清理定时器、拦截返回键关闭弹窗
   // 【优化】所有 popupManager 调用都添加 .catch() 防止 Uncaught Promise Rejection
   app.mixin({
