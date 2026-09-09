@@ -216,6 +216,16 @@ function getChinaDateStringOf(utcStr) {
   return new Date(d.getTime() + 8 * 60 * 60 * 1000).toISOString().split('T')[0];
 }
 
+/**
+ * 取某个 UTC 时间对应的东八区"当天分钟数"（0-1439），用于判断上次外出是否落在今天某窗口内
+ */
+function getChinaMinutesOf(utcStr) {
+  const d = parseUtcDateTime(utcStr);
+  if (!d) return null;
+  const china = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+  return china.getUTCHours() * 60 + china.getUTCMinutes();
+}
+
 function checkAndResetDailyCounters(userId, state) {
   if (!state) return;
   const today = getChinaDateStr();
@@ -415,15 +425,41 @@ function getPet(userId, sceneKey = null) {
   checkAndResetDailyCounters(userId, state);
   let freshState = db.prepare('SELECT * FROM pet_states WHERE user_id = ?').get(userId);
 
-  const timeState = computeTimeState(userId, freshState);
+  // 【自动外出：定时/概率触发（恢复 2026-08-25 移除前的行为，并保留新用户保护）】
+  // 命中 explore_time 时段 + 概率（stableRandom 按 用户+日期+窗口 稳定，当天结果一致）时，
+  // 自动把搭送出门：每个窗口每天最多触发一次（用 last_explore_at 判断是否本窗口已外出过），
+  // 且受每日外出总次数上限（pet_global.explore.daily_max_count，默认3）约束；
+  // 宠物创建未满 24 小时不自动外出，避免新用户第一次进 tab 就看到"搭搭出去逛逛啦"。
+  if (freshState && freshState.location !== 'away') {
+    const exploreWindow = getCurrentExploreWindow(userId);
+    if (exploreWindow) {
+      try {
+        const globalCfg = getAppConfig('pet_global');
+        const dailyMax = globalCfg.explore?.daily_max_count || 3;
+        const todayCount = db.prepare(`
+          SELECT COUNT(*) as count FROM pet_explorations
+          WHERE user_id = ? AND date(start_at, '+8 hours') = date('now', '+8 hours')
+        `).get(userId).count;
+        const todayStr = getChinaDateStr();
+        const startMin = parseTimeToMinutes(exploreWindow.start);
+        const endMin = parseTimeToMinutes(exploreWindow.end);
+        const lastExploreMin = getChinaMinutesOf(freshState.last_explore_at);
+        const exploredThisWindow = getChinaDateStringOf(freshState.last_explore_at) === todayStr
+          && lastExploreMin !== null && startMin !== null && endMin !== null
+          && lastExploreMin >= startMin && lastExploreMin < endMin;
+        const petCreatedAt = parseUtcDateTime(freshState.created_at);
+        const petAgeMs = petCreatedAt ? Date.now() - petCreatedAt.getTime() : Infinity;
+        if (!exploredThisWindow && todayCount < dailyMax && petAgeMs >= 24 * 3600 * 1000) {
+          beginExploration(userId);
+          freshState = db.prepare('SELECT * FROM pet_states WHERE user_id = ?').get(userId);
+        }
+      } catch (e) {
+        console.error('[PetService] 自动外出失败:', e.message);
+      }
+    }
+  }
 
-  // 【2026-08-25 修复：不再在进 tab 时自动送搭搭出门】
-  // 原逻辑：命中 explore_time 时段 + 概率 → 自动 beginExploration(userId) 直接把搭搭送出去，
-  //         导致新用户第一次进入搭搭 tab 就看到"搭搭出去逛逛啦"（搭搭不在家），体验极差。
-  // 新逻辑：四状态机的 explore_time 仅作为"逛逛时段"提示（前端显示"开始探索"按钮），
-  //         外出必须由用户手动点"开始探索" → 前端调用 petApi.startExplore() →
-  //         后端 startExplore() → beginExploration() 才送搭搭出门。
-  //         新用户初始化 pet_states.location='home'（见 ensurePetState），进 tab 必在家，与用户预期一致。
+  const timeState = computeTimeState(userId, freshState);
 
   const feedLimits = getFeedLimits();
   const exerciseLimits = getExerciseLimits();
