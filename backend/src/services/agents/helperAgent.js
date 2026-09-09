@@ -15,7 +15,8 @@ const { getChinaDateStr } = require('../../utils/chinaTime');
 /**
  * 根据本轮沉淀结果构造给 helper 的系统上下文块
  * 核心原则：搭子只能基于沉淀系统的真实结果反馈"记录状态"，
- * 严禁在未沉淀成功时对用户谎称"已经记录好"（诚信红线）
+ * 严禁在未沉淀成功时对用户谎称"已经记录好"（诚信红线）；
+ * "没记全/拿不到数据"这类内部状态不告诉用户，直接跳过
  * @param {object|null|undefined} precipitation callPrecipitationAgent 返回结果
  *        成功：{ precipitation_id, type, sub_type, status(1=已落库/2=待确认), extracted_data }
  *        失败：{ extracted:false, reason }；未知（超时）：null
@@ -30,13 +31,13 @@ function buildPrecipitationContextBlock(precipitation) {
   }
 
   // 沉淀失败：未提取到任何可记录内容
+  // 注意：拿不到数据/没沉淀上是系统内部状态，禁止对用户透露"没记全"类话术，直接跳过正常回答
   if (precipitation.extracted === false || !precipitation.type) {
-    return `【沉淀结果通知】系统未能从用户本轮消息中提取到可记录的饮食/运动/身体数据（原因：${precipitation.reason || '信息不足或无法识别'}），本轮没有生成任何记录。
+    return `【沉淀结果通知】本轮用户消息没有生成任何新的记录（沉淀系统未提取到可记录内容，原因：${precipitation.reason || '信息不足或无需记录'}）。
 硬性规则：
-1. 严禁说"已经帮你记录/记好了/已记录"这类话——本轮实际上没有任何记录生成，谎称已记录是严重错误。
-2. 如实、轻松地告诉用户"这次我还没太记全"，并引导补充关键信息：运动需要时长、距离或楼层数（如"爬了几层/大概几分钟"），饮食需要食物名称和份量。
-3. 也可以提示用户直接去记录页手动添加。
-4. 不要编造热量数字；可以基于用户提供的信息做估算，但必须说明这只是估算、尚未记录。`;
+1. 严禁说"已经帮你记录/记好了/已记录"这类话——本轮没有任何记录生成，谎称已记录是严重错误；此前已记录的数据依然有效，可正常引用。
+2. 严禁向用户提及"还没记全/没记上/没有记录成功/请补充食物名称和份量/去记录页手动添加"这类话术——拿不到数据属于系统内部情况，不需要告诉用户，直接跳过这部分，基于对话上下文和【系统数据】正常回答消息里的其他内容。
+3. 若用户明显在尝试记录但缺份量/时长（如"爬了几层楼"），用自然语气追问一句即可（如"大概爬了几层呀"），严禁编造热量数字。`;
   }
 
   // 沉淀成功：拼出实际记录内容摘要（数值以沉淀系统为准，helper 不得改写）
@@ -74,11 +75,16 @@ ${summary}
   }
 
   // status=1：已自动确认并正式落库
+  // 饮食记录确认后必须附上简短分析（减脂影响/今日总摄入/下一餐建议），不能只有干巴巴的热量清单
+  const dietAnalysisRule = precipitation.type === 'diet_record'
+    ? `
+3. 确认记录后必须紧接着给出简短的饮食分析（2-4句，不要展开成长篇）：这餐热量约占用户每日热量目标的比例、对用户减脂的影响、今日已记录总摄入情况、以及下一餐/今天的饮食建议。分析中的总摄入热量必须引用【系统数据】里的数值，禁止自行编造。若【系统数据】提示今天记录的餐别不足2个，分析只针对本餐本身，不要评价全天总摄入是否过低。`
+    : '';
   return `【沉淀结果通知】系统已成功从本轮消息提取记录并正式写入用户的记录数据：
 ${summary}
 规则：
 1. 可以告诉用户"记好啦"，但记录内容与数值必须严格引用上方摘要，禁止编造摘要之外的食物、运动或热量数字（例如摘要里是爬楼梯6分钟约35千卡，就不许说成30千卡或其他数字）。
-2. 若摘要内容与用户口述可能有出入（如名称/份量不对），提醒用户可在记录页手动修改。`;
+2. 若摘要内容与用户口述可能有出入（如名称/份量不对），提醒用户可在记录页手动修改。${dietAnalysisRule}`;
 }
 
 /**
@@ -88,6 +94,8 @@ ${summary}
  * @param {object} partnerInfo 搭子人设信息
  * @param {object} [options] 额外选项
  * @param {object|null} [options.precipitation] 本轮消息的沉淀结果，用于如实反馈记录状态，防止谎称已记录
+ * @param {Array} [options.history] 最近对话消息（{role:'user'|'partner', content}，按时间正序），
+ *        用于让 helper 理解"这只是午餐哦"这类依赖上下文的追问；不是本轮新消息
  */
 async function callHelperAgent(question, userInfo = {}, partnerInfo = {}, options = {}) {
   // 数据库表使用内部自增 id 作为 user_id，优先用 id（而不是对外 6 位 user_id）
@@ -324,6 +332,18 @@ ${exerciseList}
     pet_persona: petPersona
   });
 
+  // 最近对话上下文：让 helper 能理解"这只是午餐哦""我喝的是无糖的"这类依赖上文的追问。
+  // 仅供理解指代，不是本轮新消息；上下文里的旧数字以【系统数据】/沉淀摘要为准
+  const historyMessages = Array.isArray(options.history) ? options.history.slice(-10) : [];
+  const historyBlock = historyMessages.length
+    ? `【最近对话上下文】（仅供你理解上下文和指代，不是本轮用户的新消息；你的回答仍只针对本轮问题，严禁把上下文里的旧食物/旧数字说成是本轮新记录，上下文里的饮食若已沉淀以【系统数据】和沉淀摘要为准）\n`
+      + historyMessages.map(m => {
+          const who = m.role === 'partner' ? '搭子' : '用户';
+          const text = String(m.content || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+          return `${who}：${text}`;
+        }).join('\n')
+    : null;
+
   try {
     
     const response = await Promise.race([
@@ -337,6 +357,8 @@ ${exerciseList}
           },
           // 本轮沉淀结果通知：搭子必须基于真实沉淀结果反馈记录状态，未沉淀成功严禁谎称已记录
           { role: 'system', content: buildPrecipitationContextBlock(options.precipitation) },
+          // 最近对话上下文：让 helper 理解依赖上文的追问（可为 null，自动跳过）
+          ...(historyBlock ? [{ role: 'system', content: historyBlock }] : []),
           { role: 'user', content: enhancedQuestion }
         ],
         { temperature: 0.5, max_tokens: 8000 }
@@ -378,7 +400,15 @@ ${exerciseList}
         reply = corrected;
       }
     }
-    
+
+    // 兜底清洗：拿不到数据/没沉淀上是系统内部状态，即使模型违反指令
+    // 也不让"没记全/去补充/去记录页手动添加"这类话术发给用户，只保留回复的其余部分
+    const stripped = stripRecordFailureSentences(reply);
+    if (stripped !== reply) {
+      console.log('[callHelperAgent] 已移除记录失败碎片句子');
+      reply = stripped;
+    }
+
     return reply;
   } catch (error) {
     console.error('全能助手 Agent 调用失败:', error.message);
@@ -402,6 +432,19 @@ function stripThinkingTags(content) {
   }
 
   return result.trim();
+}
+
+/**
+ * 移除回复中的"记录失败"碎片句子（没记全/去补充/去记录页手动添加等）。
+ * 拿不到数据/没沉淀上是系统内部状态，即使模型违反系统指令也不让这些话术泄露给用户；
+ * 只删除命中句子，保留回复其余部分（如正常的饮食分析）
+ */
+function stripRecordFailureSentences(reply) {
+  if (!reply) return reply;
+  const badSentence = /没.{0,4}记[全上]|记不全|没太记|记录失败|没有记录成功|补充.{0,20}(食物|份量|名称|时长|距离).{0,25}(记录|添加)?|去记录页手动添加/;
+  const sentences = String(reply).split(/(?<=[。！？!?；;])|\n+/);
+  const kept = sentences.filter(s => s.trim() && !badSentence.test(s));
+  return kept.join('').trim();
 }
 
 /**

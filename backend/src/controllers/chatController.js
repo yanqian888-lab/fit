@@ -265,6 +265,30 @@ function isCasualChat(content) {
 }
 
 /**
+ * 判断是否为"不吃了/没胃口"类半闲聊负面陈述。
+ * 这类消息不含任何可记录数据，也不是在提问，主 Agent 共情回复即可，
+ * 不应触发 helper 出第二条专业回复（否则只会产出"没记全"式的无意义碎片）
+ */
+function isNegativeFoodRemark(content) {
+  if (!content) return false;
+  const text = String(content).trim();
+  if (/\d/.test(text)) return false; // 含数字的仍按数据消息处理
+  if (/[吗嘛呢吧哈？?！!]\s*$/.test(text)) return false; // 疑问/撒娇语气可能是真问题
+  return /(不吃了|不想吃|没胃口|没有胃口|没啥胃口|吃不下了|吃不下|不饿|懒得吃|没吃|没吃晚饭|没吃晚餐)/.test(text);
+}
+
+/**
+ * 判断 helper 回复是否是无意义的"记录失败"碎片：
+ * 半闲聊场景下沉淀没提取到内容，helper 只回了"没记全/去补充食物名称份量"这类话
+ * 且没有任何数字（热量/份量）——这种第二条消息不应发送给用户
+ */
+function isMeaninglessRecordFragment(reply) {
+  if (!reply) return false;
+  if (/\d/.test(reply)) return false; // 含数字的是有效数据分析
+  return /没.{0,4}记[全上]|记不全|没太记|补充.{0,20}(食物|份量|名称)|去记录页手动添加/.test(reply);
+}
+
+/**
  * 判断消息是否为对今天已有饮食记录的修正/澄清。
  * 典型：用户先说"下午喝了一杯茉莉花茶"，后说"我喝的是无糖的茉莉花茶"。
  * 后者应视为修正，而不是新增一条记录。
@@ -460,7 +484,7 @@ async function sendMessage(req, res) {
     const hasExercise = containsAnyKeyword(content, EXERCISE_KEYWORDS)
       || /爬(?:了|过)?\s*\d+(?:\.\d+)?\s*层/.test(content);
     // 纯闲聊不调用 helper，也不走沉淀
-    const needsHelper = !isCasual && (
+    const needsHelper = !isCasual && !isNegativeFoodRemark(content) && (
       (agentResult.toolCalls && agentResult.toolCalls.some(t =>
         t.name === 'call_allround_helper' ||
         (t.parameters && (t.parameters.question || t.parameters.query))
@@ -473,6 +497,13 @@ async function sendMessage(req, res) {
       || (hasFood && isDeclarativeFoodStatement(content) && !finalReply.includes('千卡') && !finalReply.includes('kcal'))
       || (preliminaryTag && preliminaryTag.type === 'body_data' && !finalReply.includes('千卡') && !finalReply.includes('kcal') && !finalReply.includes('BMI'))
     );
+
+    // 是否给 helper 回溯对话上下文（会略微增加 prompt 长度，按需开启保证普通对话速度）：
+    // 1) 主Agent语义判断该问题依赖上文（工具参数里标了 need_context: true）
+    // 2) 兜底：本轮消息不含任何数字——纯指代/补充类追问（如"这只是午餐哦"）脱离上文无法理解；
+    //    含数字的消息自带数据，沉淀摘要+系统数据已覆盖，不需要历史
+    const needsContext = !!agentResult.needsContext || !/\d/.test(content);
+    const helperHistory = needsContext ? history : undefined;
 
     // ========== 异步调用信息沉淀 Agent（聊天即记录，不阻塞回复） ==========
     // 修正/澄清消息不创建新沉淀，避免把"我喝的是无糖的..."这类说明重复记录
@@ -556,10 +587,14 @@ async function sendMessage(req, res) {
 
           // 把沉淀结果透传给 helper：搭子必须基于真实沉淀结果反馈记录状态，
           // 沉淀失败/未提取到时严禁对用户谎称"已经记录好"
+          // 同时透传最近对话上下文，让 helper 理解"这只是午餐哦"这类依赖上文的追问
           let helperAnswer = await helperAgent.callHelperAgent(helperQuestion, user, partner, {
-            precipitation: precipitationResult
+            precipitation: precipitationResult,
+            history: helperHistory
           });
-          let isUnhelpful = !helperAnswer || /没有思路|换个问法|我不太明白|不知道你在说什么/i.test(helperAnswer);
+          let isUnhelpful = !helperAnswer || /没有思路|换个问法|我不太明白|不知道你在说什么/i.test(helperAnswer)
+            // 无意义的"没记全/去补充"碎片（无任何数据）也不发送
+            || isMeaninglessRecordFragment(helperAnswer);
 
           // 兜底：helper 返回空/无用，但沉淀已成功提取数据时，用沉淀数据生成本地确认回复
           if (isUnhelpful && precipitationResult && precipitationResult.extracted_data) {
@@ -643,11 +678,12 @@ async function sendMessage(req, res) {
         content,
         user,
         partner,
-        syncPrecipitationResult
+        syncPrecipitationResult,
+        helperHistory
       );
 
       for (const result of toolResults) {
-        if (result.name === 'call_allround_helper' && result.answer) {
+        if (result.name === 'call_allround_helper' && result.answer && !isMeaninglessRecordFragment(result.answer)) {
           helperInfo = result.answer;
           // 把专业回答追加到搭子回复中
           finalReply = finalReply ? `${finalReply}\n\n${result.answer}` : result.answer;
@@ -667,9 +703,10 @@ async function sendMessage(req, res) {
           new Promise(r => setTimeout(r, 15000))
         ]);
         const helperAnswer = await helperAgent.callHelperAgent(content, user, partner, {
-          precipitation: fallbackPrecipitationResult
+          precipitation: fallbackPrecipitationResult,
+          history: helperHistory
         });
-        if (helperAnswer) {
+        if (helperAnswer && !isMeaninglessRecordFragment(helperAnswer)) {
           helperInfo = helperAnswer;
           finalReply = helperAnswer;
         }
