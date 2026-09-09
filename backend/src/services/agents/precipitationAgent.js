@@ -119,7 +119,8 @@ function isInvalidFoodName(name) {
   const INTENT_NON_FOOD = new Set([
     '没有', '没吃', '吃了', '少吃', '少吃点', '多吃点', '慢慢瘦', '慢慢减',
     '瘦', '胖', '减肥', '减脂', '减重', '控制饮食', '不知道', '随便',
-    '都行', '没什么', '没有了', '不需要', '不用', '没胃口', '不饿'
+    '都行', '没什么', '没有了', '不需要', '不用', '没胃口', '不饿',
+    '过高', '过低', '太高', '太低', '热量', '热量高', '卡路里', '真实性', '确认', '核对'
   ]);
   if (INTENT_NON_FOOD.has(name)) return true;
   // 整句话被误当食物名的拦截：LLM 偶尔把"哦买噶 这么多热量 我今晚不吃饭"这类
@@ -851,6 +852,13 @@ function shouldPrecipitate(content) {
   const text = (content || '').trim();
   if (text.length < 5) return false;
   // 本地标签匹配器能识别出食物/运动/身体数据/喝水，直接触发沉淀
+  // 但纯提问/质疑句（无数字、无"吃了/喝了"等记录动词）不是记录，不沉淀
+  // 真实案例："这个热量看起来过高，你确认一下真实性" 被拆出食物"过高"
+  if (!/\d/.test(text)
+    && !/(吃了|喝了|吃啦|喝啦|炫了|干掉)/.test(text)
+    && /(确认|核对|真实性|对吗|对不对|是不是|怎么样|为什么|吗\s*$|[？?])/.test(text)) {
+    return false;
+  }
   if (tagMatcher.matchMessageTags(text)) {
     return true;
   }

@@ -83,7 +83,7 @@ ${summary}
   return `【沉淀结果通知】系统已成功从本轮消息提取记录并正式写入用户的记录数据：
 ${summary}
 规则：
-1. 可以告诉用户"记好啦"，但记录内容与数值必须严格引用上方摘要，禁止编造摘要之外的食物、运动或热量数字（例如摘要里是爬楼梯6分钟约35千卡，就不许说成30千卡或其他数字）。
+1. 可以告诉用户"记好啦"，但记录内容与数值必须严格引用上方摘要，禁止编造摘要之外的食物、运动或热量数字（例如摘要里是爬楼梯6分钟约35千卡，就不许说成30千卡或其他数字）。用户询问本条消息中食物/运动的热量时，必须引用摘要数值回答，严禁改用你自己的估算值或网络值覆盖摘要——即使你觉得摘要数值偏高/偏低，也要先按摘要回答。
 2. 若摘要内容与用户口述可能有出入（如名称/份量不对），提醒用户可在记录页手动修改。${dietAnalysisRule}`;
 }
 
@@ -198,6 +198,12 @@ async function callHelperAgent(question, userInfo = {}, partnerInfo = {}, option
       let foodDbBlock = '';    // 可靠营养条目（食品库命中 + 网络核实后新收录）
       try {
         const asksCalorieOrSugar = /(热量|卡路里|千卡|大卡|含糖|无糖|有糖|低糖|能喝|能吃|可以喝|可以吃|多少卡|胖不胖|减肥|减脂|热量高|营养)/.test(question);
+        // 本轮饮食沉淀已成功：本条消息里的食物已由沉淀系统定值（摘要为准），
+        // helper 不再联网核实这些食物——否则网搜失败会退化成"估算值"，
+        // 和刚写入的记录数值打架（真实案例：记录604.5千卡 vs helper估算504千卡）
+        const skipWebSearch = !!(options.precipitation
+          && options.precipitation.type === 'diet_record'
+          && options.precipitation.extracted !== false);
 
         // 收集候选食物，排除今日已记录的
         const candidates = collectFoodCandidates(question)
@@ -213,7 +219,7 @@ async function callHelperAgent(question, userInfo = {}, partnerInfo = {}, option
             if (seenDb.has(info.food_name)) continue;
             seenDb.add(info.food_name);
             dbRefs.push({ name: cleaned, info });
-          } else if (asksCalorieOrSugar && shouldUseWebSearch(question, cleaned)) {
+          } else if (asksCalorieOrSugar && !skipWebSearch && shouldUseWebSearch(question, cleaned)) {
             webCandidates.push(cleaned);
           }
         }
@@ -735,7 +741,7 @@ function collectFoodCandidates(question) {
   const connectorSplit = /\s*(?:和|跟|与|还有|以及|或者|还是|加了?|外加|还有)\s*/;
   // 前缀噪声：量词单字/杯型/品牌名/语气词等，允许连续剥离（如"中杯的一点点四季奶青"→"四季奶青"）
   // "霸王茶"为品牌名"霸王茶姬"被饮品类后缀正则截断的残段，一并剥离
-  const prefixNoise = /^(?:的|了|吗|呢|吧|啊|哦|嗯|喂|是|有|吃|喝|要|想|问|算|约|大概|大约|差不多|可能|应该|建议|推荐|怎么|如何|什么|多少|热量|卡路里|千卡|大卡|含糖|无糖|有糖|纯|鲜|现|中杯|大杯|小杯|一杯|一瓶|一碗|一份|一个|一包|一袋|一盒|一罐|一支|一根|一条|一片|一只|一点点|1點點|1点点|霸王茶姬|霸王茶机|霸王茶|喜茶|奈雪的茶|奈雪|蜜雪冰城|蜜雪|茶百道|古茗|沪上阿姨|书亦烧仙草|书亦|益禾堂|瑞幸|星巴克|coco|CoCo|COCO|杯|碗|盘|个|只|瓶|罐|袋|包|盒|根|条|片|块|勺|的|了|是|有|喝|吃)+/;
+  const prefixNoise = /^(?:的|了|吗|呢|吧|啊|哦|嗯|喂|是|有|吃|喝|要|想|问|算|约|大概|大约|差不多|可能|应该|建议|推荐|怎么|如何|什么|多少|热量|卡路里|千卡|大卡|含糖|无糖|有糖|纯|鲜|现|超大杯|特大杯|中杯|大杯|小杯|一杯|一瓶|一碗|一份|一个|一包|一袋|一盒|一罐|一支|一根|一条|一片|一只|一点点|1點點|1点点|霸王茶姬|霸王茶机|霸王茶|喜茶|奈雪的茶|奈雪|蜜雪冰城|蜜雪|茶百道|古茗|沪上阿姨|书亦烧仙草|书亦|益禾堂|瑞幸|星巴克|coco|CoCo|COCO|杯|碗|盘|个|只|瓶|罐|袋|包|盒|根|条|片|块|勺|的|了|是|有|喝|吃)+/;
   // 后缀噪声：语气词/热量疑问词组（brandRe 品名捕获可能带入"热量高吗/含糖量高/会胖/多少卡"等尾巴）
   const suffixNoise = /(的|了|吗|呢|吧|啊|哦|嗯|热量高吗|热量高不高|热量高|含糖量高吗|含糖量高|含糖量|卡路里|千卡|大卡|热量|含糖|无糖|有糖|多少卡|几卡|多少卡|多少钱|多少|哪个|哪种|会胖吗|会胖|好喝吗|好喝|好吃吗|一大杯|一中杯|一小杯|一杯|一瓶|一碗|一份|一个|一包|一袋|一盒|一罐|一大瓶|小料|配料|卡|杯|瓶|碗|份|袋|盒|罐)$/;
 
