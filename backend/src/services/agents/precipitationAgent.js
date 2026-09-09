@@ -115,6 +115,13 @@ function cleanFoodName(name) {
 function isInvalidFoodName(name) {
   if (!name || name.length < 2) return true;
   if (FOOD_NAME_STOP_ONLY.test(name)) return true;
+  // 意向/态度词误当食物名（"少吃点慢慢瘦"被拆出"没有""慢慢瘦"的真实案例）
+  const INTENT_NON_FOOD = new Set([
+    '没有', '没吃', '吃了', '少吃', '少吃点', '多吃点', '慢慢瘦', '慢慢减',
+    '瘦', '胖', '减肥', '减脂', '减重', '控制饮食', '不知道', '随便',
+    '都行', '没什么', '没有了', '不需要', '不用', '没胃口', '不饿'
+  ]);
+  if (INTENT_NON_FOOD.has(name)) return true;
   // 整句话被误当食物名的拦截：LLM 偶尔把"哦买噶 这么多热量 我今晚不吃饭"这类
   // 聊天话术整体填进 name。特征：过长、含人称/语气/感叹词、含讨论性词汇（热量/千卡）。
   // 正常食物名一般 2~10 个汉字（如"零糖零脂希腊酸奶"7字、"西红柿炒鸡蛋"6字）。
@@ -846,6 +853,14 @@ function shouldPrecipitate(content) {
   // 本地标签匹配器能识别出食物/运动/身体数据/喝水，直接触发沉淀
   if (tagMatcher.matchMessageTags(text)) {
     return true;
+  }
+
+  // 饮食意向/态度陈述（无数字、无具体食物名）：表达的是打算/态度而非"吃了什么"，不沉淀
+  // 真实案例："没有的，就是少吃点慢慢瘦" 被 LLM 硬拆出"没有""慢慢瘦"两条食物记录
+  if (!/\d/.test(text)
+    && /(少吃|多吃点|慢慢瘦|慢慢减|控制饮食|不吃晚饭|不吃主食|节食|减肥|减脂|减重|瘦一点|瘦下来|掉秤|不吃夜宵)/.test(text)
+    && !hasBeverageFoodContent(text)) {
+    return false;
   }
 
   const contentLower = text.toLowerCase();
