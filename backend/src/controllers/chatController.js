@@ -455,7 +455,27 @@ async function sendMessage(req, res) {
       const partnerMessageId = insertPartnerMsg.run(userId, quickReply, partner.mode).lastInsertRowid;
 
       // 闲聊不沉淀，直接返回
+      // 注意：返回结构必须与异步路径一致（user_message + partner_message），
+      // 否则前端 processOneMessage 会报"后端返回结构异常"；message/user_message_id 保留兼容
       return res.json(success({
+        user_message: {
+          id: userMessageId,
+          role: 'user',
+          content,
+          content_type,
+          created_at: new Date().toISOString(),
+          precipitation_status: 0,
+          precipitation_type: null
+        },
+        partner_message: {
+          id: partnerMessageId,
+          role: 'partner',
+          content: quickReply,
+          content_type: 'text',
+          mode: partner.mode,
+          created_at: new Date().toISOString(),
+          is_async_helper: false
+        },
         message: {
           id: partnerMessageId,
           role: 'partner',
