@@ -671,6 +671,36 @@ function sendWakeupMessage(userId) {
 const RECALL_DAYS = [3, 7, 14, 30];
 
 /**
+ * 计算两个东八区日期字符串（YYYY-MM-DD）相差的整天数
+ * @param {string} fromDate 起始日期
+ * @param {string} toDate 结束日期
+ * @returns {number} toDate - fromDate 的天数差
+ */
+function daysBetweenDates(fromDate, toDate) {
+  const d1 = new Date(fromDate + 'T00:00:00+08:00');
+  const d2 = new Date(toDate + 'T00:00:00+08:00');
+  return Math.round((d2.getTime() - d1.getTime()) / 86400000);
+}
+
+/**
+ * 判断当前沉默周期内是否已发送过指定节点的召回消息
+ * 判定依据：该节点召回的发送时间晚于用户最后活跃日期。
+ * 用户回归（登录/聊天）后重新沉默时，旧召回记录不再阻止新周期触发。
+ * @param {number} userId 用户ID
+ * @param {string} templateType 召回类型（如 recall_3d）
+ * @param {string} lastSeenDate 用户最后活跃日期（东八区 YYYY-MM-DD）
+ * @returns {boolean}
+ */
+function hasSentRecallThisCycle(userId, templateType, lastSeenDate) {
+  const result = db.prepare(`
+    SELECT COUNT(*) AS count FROM template_messages
+    WHERE user_id = ? AND template_type = ?
+      AND date(sent_at, '+8 hours') > ?
+  `).get(userId, templateType, lastSeenDate);
+  return result.count > 0;
+}
+
+/**
  * 获取指定天数的召回文案
  */
 function getRecallTemplate(days, mode) {
@@ -722,36 +752,54 @@ function sendRecallMessage(userId, days) {
 
 /**
  * 检查并发送沉默召回消息
- * 基于 last_login_at，按 3/7/14/30 天节点触发，每个节点每天只发一次
+ *
+ * 修复要点：
+ * 1. 「最后见到日期」取最后登录时间与最后聊天活跃日期（user_chat_stats.last_active_date）
+ *    的较近者——用户前天还在聊天时不应收到"7天不见"。
+ * 2. 节点窗口 [N, N+1] 互不重叠（3~4 / 7~8 / 14~15 / 30~31），
+ *    一个用户一天最多命中一个节点，避免同日收到"3天不见"+"7天不见"。
+ * 3. 同一沉默周期内每个节点只发一次；用户回归后重新沉默可再次触发。
+ * 4. 容忍定时任务漏跑一天（N+1 天仍可补发 N 天节点），但不批量补发历史节点。
  */
 function checkAndSendRecalls() {
   const today = getChinaDateStr();
   const sent = [];
 
-  for (const days of RECALL_DAYS) {
-    const type = `recall_${days}d`;
-    const users = db.prepare(`
-      SELECT u.id FROM users u
-      WHERE u.status = 1
-        AND (
-          u.last_login_at IS NULL
-          OR date(u.last_login_at, '+8 hours') <= date(?, '-' || ? || ' days')
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM template_messages tm
-          WHERE tm.user_id = u.id
-            AND tm.template_type = ?
-            AND date(tm.sent_at, '+8 hours') = ?
-        )
-    `).all(today, days, type, today);
+  // 最后登录（UTC存储，+8转东八区日期）与最后聊天活跃日期取最近，都没有则回退注册日期
+  const users = db.prepare(`
+    SELECT u.id,
+      COALESCE(
+        CASE
+          WHEN s.last_active_date IS NULL THEN date(u.last_login_at, '+8 hours')
+          WHEN u.last_login_at IS NULL THEN s.last_active_date
+          WHEN date(u.last_login_at, '+8 hours') >= s.last_active_date
+            THEN date(u.last_login_at, '+8 hours')
+          ELSE s.last_active_date
+        END,
+        date(u.created_at, '+8 hours')
+      ) AS last_seen_date
+    FROM users u
+    LEFT JOIN user_chat_stats s ON s.user_id = u.id
+    WHERE u.status = 1
+  `).all();
 
-    for (const user of users) {
-      try {
-        const result = sendRecallMessage(user.id, days);
-        if (result) sent.push(result);
-      } catch (err) {
-        console.error(`[recall] 发送失败 user=${user.id} days=${days}:`, err.message);
-      }
+  for (const user of users) {
+    const lastSeen = user.last_seen_date || today;
+    const daysSince = daysBetweenDates(lastSeen, today);
+
+    // 仅在节点当天或次日触发，窗口互不重叠，一天最多一个节点
+    const node = RECALL_DAYS.find(n => daysSince === n || daysSince === n + 1);
+    if (!node) continue;
+
+    const type = `recall_${node}d`;
+    // 本沉默周期该节点已发过则跳过（回归后重新沉默不受旧记录影响）
+    if (hasSentRecallThisCycle(user.id, type, lastSeen)) continue;
+
+    try {
+      const result = sendRecallMessage(user.id, node);
+      if (result) sent.push(result);
+    } catch (err) {
+      console.error(`[recall] 发送失败 user=${user.id} days=${node}:`, err.message);
     }
   }
 
