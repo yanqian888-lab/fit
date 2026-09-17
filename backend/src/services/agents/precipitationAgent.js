@@ -185,8 +185,10 @@ function isBeverageFoodContent(content) {
 function convertBeverageHabitToDiet(item, content, userId = null, recordDate = null) {
   if (item.type !== 'habit') return item;
   const data = item.extracted_data || {};
-  const subType = data.sub_type || 'water';
-  if (subType !== 'water' && subType !== '喝水') return item;
+  const subType = normalizeSubType(data.sub_type || 'water');
+  // 归一化后写回，确保落库和后续流程统一
+  data.sub_type = subType;
+  if (subType !== 'water') return item;
   if (!isBeverageFoodContent(content)) return item;
 
   let value = parseFloat(data.value) || 0;
@@ -870,7 +872,7 @@ function recoverMissedExercises(content, rawItems) {
  */
 const { db, withTransaction } = require('../../db');
 const { callWithPrompt } = require('../aiClient');
-const { computeFoodNutrition, computeRecipeTotals, getFoodNutrition, getTypicalWeight, extractFoodKeywords, extractServingFromCommonUnit } = require('../nutritionService');
+const { computeFoodNutrition, computeRecipeTotals, getFoodNutrition, getTypicalWeight, extractFoodKeywords, extractServingFromCommonUnit, normalizeSubType } = require('../nutritionService');
 const promptService = require('../promptService');
 const tagMatcher = require('../tagMatcher');
 const rewardService = require('../rewardService');
@@ -1183,10 +1185,10 @@ function summarizePrecipitationContent(content, type, data) {
     return value !== '' ? `${subType}${value}${unit}` : content.slice(0, 40);
   }
   if (type === 'habit') {
-    const subType = data.sub_type || 'water';
+    const subType = normalizeSubType(data.sub_type || 'water');
     const value = data.value !== undefined && data.value !== null ? data.value : '';
     const unit = data.unit || '';
-    if (subType === 'water' || subType === '喝水') {
+    if (subType === 'water') {
       return value !== '' ? `喝水${value}${unit}` : content.slice(0, 40);
     }
     return value !== '' ? `${subType}${value}${unit}` : content.slice(0, 40);
@@ -1374,7 +1376,8 @@ function hasDuplicateRecord(userId, type, data, recordDate) {
     }
     case 'habit': {
       const habitData = data || {};
-      const subType = habitData.sub_type || 'water';
+      const subType = normalizeSubType(habitData.sub_type || 'water');
+      habitData.sub_type = subType;
       
       // 查询今天是否有相同类型的习惯记录
       const existing = db.prepare(`
@@ -2294,7 +2297,8 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
     } else if (type === 'habit') {
       // 习惯记录（喝水）累加，其他子类型更新
       const habitData = data || {};
-      const subType = habitData.sub_type || 'water';
+      const subType = normalizeSubType(habitData.sub_type || 'water');
+      habitData.sub_type = subType;
       const addValue = parseInt(habitData.value) || 0;
       const existing = db.prepare('SELECT value, water_ml FROM habit_records WHERE id = ?').get(duplicateCheck.recordId);
       const newValue = subType === 'water' ? (parseInt(existing.value) || 0) + addValue : addValue;
@@ -2658,7 +2662,8 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
     }
     case 'habit': {
       const habitData = data || {};
-      const subType = habitData.sub_type || 'water';
+      const subType = normalizeSubType(habitData.sub_type || 'water');
+      habitData.sub_type = subType;
       const value = parseInt(habitData.value) || 0;
       const waterMl = subType === 'water' ? value : 0;
       const upsertHabit = db.prepare(`
@@ -2915,8 +2920,8 @@ async function callPrecipitationAgent(content, userId, chatId = null, recordDate
     // 仅保留喝水习惯；睡眠、排便、心情等暂不生成沉淀记录（后续用于日记生成）
     items = items.filter(item => {
       if (item.type === 'habit') {
-        const subType = item.extracted_data?.sub_type || 'water';
-        return subType === 'water' || subType === '喝水';
+        const subType = normalizeSubType(item.extracted_data?.sub_type || 'water');
+        return subType === 'water';
       }
       if (item.type === 'emotion') return false;
       // 食谱由 partnerAssetAgent 专属处理，通用沉淀 Agent 不再处理

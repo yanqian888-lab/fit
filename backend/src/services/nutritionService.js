@@ -1003,11 +1003,42 @@ function computeRecipeTotals(ingredients) {
   return { totalWeight: Math.round(totalWeight), totalCalorie: Math.round(totalCalorie) };
 }
 
+/**
+ * sub_type 别名表：归一化喝水相关子类型为统一值 'water'
+ *
+ * 设计：以后端存储值 'water' 为 canonical，中文 / 英文 / 变体全部映射过来。
+ * 这样前端、LLM、手动编辑都能用中文写（"喝水" "白水"），
+ * 后端内部查询和统计只判断 === 'water' 一处即可。
+ *
+ * 如需新增别名（"矿泉水" "温水" 等），只需在 ALIASES 对象里加一行。
+ */
+const SUB_TYPE_ALIASES = {
+  // canonical: 'water'
+  '喝水': 'water',
+  '白水': 'water',
+  '饮水': 'water',
+  'plain_water': 'water',
+  'water': 'water',
+  // 其他子类型如需归一也可在此扩展（未来添加）
+};
+
+/**
+ * 归一化 sub_type：把别名映射到 canonical 值
+ * @param {string} raw 原始 sub_type（可能是中文 '喝水' / 英文 'water' / 其他变体）
+ * @returns {string} 归一化后的值；不在别名表里则原样返回
+ */
+function normalizeSubType(raw) {
+  if (!raw || typeof raw !== 'string') return 'water';
+  const key = raw.trim();
+  return SUB_TYPE_ALIASES[key] || key;
+}
+
 module.exports = {
   getFoodNutrition,
   computeFoodNutrition,
   computeRecipeTotals,
   getTypicalWeight,
   extractServingFromCommonUnit,
-  extractFoodKeywords
+  extractFoodKeywords,
+  normalizeSubType
 };

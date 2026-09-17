@@ -5,9 +5,12 @@
 const { db, withTransaction } = require('../db');
 const { success, error } = require('../utils/response');
 const mainAgent = require('../services/agents/mainAgent');
+const { getChinaDateStr, getChinaDateStrOffset } = require('../utils/chinaTime');
+const { normalizeSubType } = require('../services/nutritionService');
 const { generateContextualFallbackReply } = mainAgent;
 const precipitationAgent = require('../services/agents/precipitationAgent');
 const helperAgent = require('../services/agents/helperAgent');
+const dietCorrectionService = require('../services/dietCorrectionService');
 const partnerAssetAgent = require('../services/agents/partnerAssetAgent');
 const templateMessageService = require('../services/templateMessageService');
 const promptService = require('../services/promptService');
@@ -366,7 +369,7 @@ function isCorrectionMessage(content, userId, recordDate) {
 async function sendMessage(req, res) {
   const userId = req.userId;
   const { content, content_type = 'text', record_date } = req.body;
-  const today = record_date || new Date().toISOString().split('T')[0];
+  const today = record_date || getChinaDateStr();
 
   if (!content || !content.trim()) {
     return res.status(400).json(error('消息内容不能为空', 400));
@@ -436,6 +439,18 @@ async function sendMessage(req, res) {
     const preliminaryTag = initResult.preliminaryTag;
     const isCorrection = initResult.isCorrection;
     const isCasual = isCasualChat(content);
+
+    // 饮食更正消息（如"我后来没吃烤杏鲍菇，吃了大概100克的哈密瓜"）：
+    // 对"没吃X"部分做受保护的自动删除（仅当日记录、唯一匹配才删，绝不误删），
+    // 对"吃了Y"部分提取肯定小句走正常沉淀；删除结果透传给 helper 约束话术
+    const dietCorrection = (!isCasual && !isCorrection)
+      ? dietCorrectionService.detectAndApplyDietCorrection(userId, content, today)
+      : null;
+    if (dietCorrection) {
+      console.log(`[dietCorrection] 命中更正消息: 删除${dietCorrection.removed.length}项, ` +
+        `未找到${dietCorrection.notFound.length}项, 多条匹配${dietCorrection.ambiguous.length}项, ` +
+        `肯定小句: "${dietCorrection.affirmativeText}"`);
+    }
 
     // 获取最近历史消息（排除刚保存的当前消息）
     const history = db.prepare(`
@@ -527,9 +542,13 @@ async function sendMessage(req, res) {
 
     // ========== 异步调用信息沉淀 Agent（聊天即记录，不阻塞回复） ==========
     // 修正/澄清消息不创建新沉淀，避免把"我喝的是无糖的..."这类说明重复记录
+    // 饮食更正消息（dietCorrection）：只对"吃了Y"的肯定小句做沉淀，"没吃X"已由更正服务删除
+    const precipContent = dietCorrection ? dietCorrection.affirmativeText : content;
     const precipitationPromise = (isCasual || isCorrection)
       ? Promise.resolve({ extracted: false, reason: isCorrection ? '修正/澄清消息不沉淀' : '闲聊不沉淀' })
-      : precipitationAgent.callPrecipitationAgent(content, userId, userMessageId, today)
+      : !precipContent
+        ? Promise.resolve({ extracted: false, reason: '更正消息（无新增内容，仅删除旧记录）' })
+        : precipitationAgent.callPrecipitationAgent(precipContent, userId, userMessageId, today)
       .then(result => {
         
         if (result && result.precipitation_id && result.status !== 2) {
@@ -610,7 +629,8 @@ async function sendMessage(req, res) {
           // 同时透传最近对话上下文，让 helper 理解"这只是午餐哦"这类依赖上文的追问
           let helperAnswer = await helperAgent.callHelperAgent(helperQuestion, user, partner, {
             precipitation: precipitationResult,
-            history: helperHistory
+            history: helperHistory,
+            correction: dietCorrection
           });
           let isUnhelpful = !helperAnswer || /没有思路|换个问法|我不太明白|不知道你在说什么/i.test(helperAnswer)
             // 无意义的"没记全/去补充"碎片（无任何数据）也不发送
@@ -699,7 +719,8 @@ async function sendMessage(req, res) {
         user,
         partner,
         syncPrecipitationResult,
-        helperHistory
+        helperHistory,
+        dietCorrection
       );
 
       for (const result of toolResults) {
@@ -724,7 +745,8 @@ async function sendMessage(req, res) {
         ]);
         const helperAnswer = await helperAgent.callHelperAgent(content, user, partner, {
           precipitation: fallbackPrecipitationResult,
-          history: helperHistory
+          history: helperHistory,
+          correction: dietCorrection
         });
         if (helperAnswer && !isMeaninglessRecordFragment(helperAnswer)) {
           helperInfo = helperAnswer;
@@ -1092,10 +1114,10 @@ function buildLocalHelperResponse(precipitationResult) {
   }
 
   if (type === 'habit') {
-    const subType = data.sub_type || 'water';
+    const subType = normalizeSubType(data.sub_type || 'water');
     const value = data.value;
     const unit = data.unit || 'ml';
-    if (subType === 'water' || subType === '喝水') {
+    if (subType === 'water') {
       return `已帮你记录喝水${value}${unit}。`;
     }
   }
