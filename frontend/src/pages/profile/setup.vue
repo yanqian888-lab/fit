@@ -1,5 +1,5 @@
 <template>
-  <AppPage>
+  <AppPage :padStatusBar="true">
     <view class="setup-page">
       <view class="page-header">
         <text class="page-title">完善基础信息</text>
@@ -201,14 +201,8 @@ function skipToHome() {
 <style lang="scss" scoped>
 .setup-page {
   position: relative;
-  /*
-   * 顶部占位：标杆双行兜底 + 原内容顶部留白 60rpx
-   *   calc(44px + 88rpx)：与 AppPage 自绘 status-bar 高度完全一致（先硬码兜底，再覆盖变量版）
-   *   + 60rpx：原页面设计内容顶部 padding
-   * → 整体内容下移到状态栏 + 导航栏下方，不再顶到胶囊按钮（用户红框越界问题解决）
-   */
-  padding-top: calc(44px + 88rpx + 60rpx);
-  padding-top: calc(var(--status-bar-height, 44px) + 88rpx + 60rpx);
+  /* AppPage padStatusBar 已完成状态栏+胶囊占位，这里只保留内容区顶部留白 */
+  padding-top: 60rpx;
 }
 
 .page-header {
