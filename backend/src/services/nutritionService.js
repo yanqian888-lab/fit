@@ -1004,21 +1004,22 @@ function computeRecipeTotals(ingredients) {
 }
 
 /**
- * sub_type 别名表：归一化喝水相关子类型为统一值 'water'
+ * sub_type 别名表：归一化喝水相关子类型为统一值 '喝水'
  *
- * 设计：以后端存储值 'water' 为 canonical，中文 / 英文 / 变体全部映射过来。
- * 这样前端、LLM、手动编辑都能用中文写（"喝水" "白水"），
- * 后端内部查询和统计只判断 === 'water' 一处即可。
+ * 设计：中文项目以中文 canonical '喝水' 为主，英文 water 作为兼容别名。
+ * 前端手动打卡用中文，LLM 偶尔输出英文都能正确识别并落库。
+ * 归一化函数只对已登记的别名做映射，不认识的 sub_type 原样返回，
+ * 不会强制覆盖（即其他子类型如甜品/运动饮料正常存在，不受影响）。
  *
  * 如需新增别名（"矿泉水" "温水" 等），只需在 ALIASES 对象里加一行。
  */
 const SUB_TYPE_ALIASES = {
-  // canonical: 'water'
-  '喝水': 'water',
-  '白水': 'water',
-  '饮水': 'water',
-  'plain_water': 'water',
-  'water': 'water',
+  // canonical: '喝水'（中文项目以中文为主）
+  'water': '喝水',
+  'plain_water': '喝水',
+  '白水': '喝水',
+  '饮水': '喝水',
+  '喝水': '喝水',
   // 其他子类型如需归一也可在此扩展（未来添加）
 };
 
@@ -1028,7 +1029,7 @@ const SUB_TYPE_ALIASES = {
  * @returns {string} 归一化后的值；不在别名表里则原样返回
  */
 function normalizeSubType(raw) {
-  if (!raw || typeof raw !== 'string') return 'water';
+  if (!raw || typeof raw !== 'string') return '喝水';
   const key = raw.trim();
   return SUB_TYPE_ALIASES[key] || key;
 }

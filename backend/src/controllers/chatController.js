@@ -1114,10 +1114,10 @@ function buildLocalHelperResponse(precipitationResult) {
   }
 
   if (type === 'habit') {
-    const subType = normalizeSubType(data.sub_type || 'water');
+    const subType = normalizeSubType(data.sub_type || '喝水');
     const value = data.value;
     const unit = data.unit || 'ml';
-    if (subType === 'water') {
+    if (subType === '喝水') {
       return `已帮你记录喝水${value}${unit}。`;
     }
   }
