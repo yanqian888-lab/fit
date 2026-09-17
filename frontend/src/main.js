@@ -2,6 +2,8 @@ import { createSSRApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 import popupManager from './utils/popupManager';
+import { useUserStore } from './store';
+import { isProfileComplete } from './utils/profile.js';
 
 // =====================================================================
 // 【全局 Promise 异常兜底】防止 Uncaught Promise Rejection 导致渲染层报错
@@ -154,18 +156,18 @@ export function createApp() {
                 const opts = current.options || {};
                 const query = Object.keys(opts).map(k => `${k}=${opts[k]}`).join('&');
                 return {
-                  title: '掉秤搭搭 · 陪你轻松科学掉秤',
+                  title: '聊天即记录，搭搭陪你一起科学掉秤！',
                   path: `/${current.route || 'pages/index/index'}${query ? '?' + query : ''}`
                 };
               } catch (err) {
-                return { title: '掉秤搭搭 · 陪你轻松科学掉秤', path: '/pages/index/index' };
+                return { title: '聊天即记录，搭搭陪你一起科学掉秤！', path: '/pages/index/index' };
               }
             };
           }
           if (typeof options.onShareTimeline !== 'function') {
             // 朋友圈分享为单页模式，不支持自定义 path，仅标题与图
             options.onShareTimeline = function () {
-              return { title: '掉秤搭搭 · 陪你轻松科学掉秤' };
+              return { title: '聊天即记录，搭搭陪你一起科学掉秤！' };
             };
           }
         }
@@ -192,6 +194,30 @@ export function createApp() {
       } catch (e) {
         console.warn('[popup] onShow 钩子异常已捕获', e);
       }
+
+      // 资料门禁：登录用户必须完善资料后才能使用小程序。
+      // 登录流程内的检查只覆盖"登录当下"，冷启动 token 恢复场景此前无拦截——
+      // 用户没填资料退出重进就直接进首页。此处统一拦截。
+      setTimeout(async () => {
+        try {
+          const userStore = useUserStore();
+          if (!userStore.isLoggedIn) return;
+          await userStore.init(); // 与 App onLaunch 共享 Promise，等用户信息同步完成
+          if (isProfileComplete(userStore.userInfo)) return;
+          const pages2 = getCurrentPages();
+          const route2 = pages2[pages2.length - 1]?.route || '';
+          // 资料页本身及公开/信息类页面放行，避免死循环
+          const allowedPrefixes = [
+            'pages/profile/', 'pages/onboarding/', 'pages/guide/', 'pages/splash/',
+            'pages/login/', 'pages/register/', 'pages/blank/', 'pages/webview/', 'pages/user/'
+          ];
+          if (!allowedPrefixes.some(p => route2.startsWith(p))) {
+            uni.redirectTo({ url: '/pages/profile/setup', fail: () => {} });
+          }
+        } catch (e) {
+          console.warn('[profile-gate] 资料门禁异常已捕获', e);
+        }
+      }, 0);
     },
     onHide() {
       try {
