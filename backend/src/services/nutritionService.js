@@ -23,7 +23,16 @@ const UNIT_WEIGHTS = {
   '袋': 50,
   '粒': 5,
   '颗': 5,
-  '口': 20
+  '口': 20,
+  // 中餐常见计量单位兜底（具体食物优先查 FOOD_TYPICAL_WEIGHTS）
+  '盘': 250,
+  '份': 300,
+  '碟': 150,
+  '串': 25,
+  '支': 60,
+  '张': 60,
+  '枚': 50,
+  '罐': 330
 };
 
 // 常见食物单份典型重量（克），覆盖通用表中过于笼统的默认值
@@ -97,6 +106,10 @@ const FOOD_TYPICAL_WEIGHTS = {
   '柚子': { '瓣': 80 },
   '菠萝': { '片': 100 },
   '凤梨': { '片': 100 },
+  // 红枣/大枣按干果计：小枣约10g/颗，大红枣约15g/颗（此前无条目时回退到"个=50g"，
+  // 导致"8个大红枣"记成 400g/1148千卡）
+  '大枣': { '个': 15, '颗': 15 },
+  '红枣': { '个': 10, '颗': 10 },
 
   // 肉蛋奶/海鲜类
   '鸡腿': { '个': 150, '只': 150 },
@@ -200,7 +213,126 @@ const FOOD_TYPICAL_WEIGHTS = {
   '奶茶': { '杯': 500 },
   '可乐': { '罐': 330, '瓶': 500 },
   '啤酒': { '罐': 330, '瓶': 500 },
-  '果汁': { '杯': 250, '瓶': 300 }
+  '果汁': { '杯': 250, '瓶': 300 },
+
+  // ============ 补全：常见食物按单件计量的典型重量 ============
+  // 参考《中国食物成分表》可食部常见规格；量级以"用户口语说 N 个/颗/只/根"时的真实重量为准
+
+  // 坚果类：按可食部（仁）计重——用户说"2个核桃"指的是整果，但热量表按仁计
+  '核桃': { '个': 7, '颗': 7 },
+  '巴旦木': { '颗': 3, '粒': 3 },
+  '杏仁': { '颗': 3, '粒': 3 },
+  '腰果': { '颗': 3, '粒': 3 },
+  '开心果': { '颗': 2, '粒': 2 },
+  '夏威夷果': { '颗': 5, '个': 5 },
+  '榛子': { '颗': 2, '粒': 2 },
+  '板栗': { '个': 15, '颗': 15 },
+  '花生': { '粒': 1, '颗': 1 },
+  '瓜子': { '粒': 1, '颗': 1 },
+  '松子': { '粒': 0.5 },
+
+  // 蛋/水产类补充
+  '松花蛋': { '个': 60 },
+  '皮蛋': { '个': 60 },
+  '咸鸭蛋': { '个': 60 },
+  '螃蟹': { '只': 100, '个': 100 },
+  '海参': { '只': 30, '条': 30 },
+  '蟹棒': { '根': 15, '条': 15 },
+  '奶酪棒': { '支': 20 },
+  '奶酪': { '片': 15, '块': 30 },
+
+  // 熟肉/烧烤串类
+  '火腿肠': { '根': 30 },
+  '红肠': { '根': 100 },
+  '午餐肉': { '片': 30 },
+  '腊肉': { '片': 20, '块': 100 },
+  '烤鸭': { '块': 30, '片': 15 },
+  '白切鸡': { '块': 25 },
+  '烧鹅': { '块': 40 },
+  '叉烧': { '块': 40, '片': 15 },
+  '烤翅': { '个': 40, '只': 40 },
+  '凤爪': { '个': 40 },
+  '羊肉串': { '串': 25 },
+  '牛肉串': { '串': 30 },
+  '烤串': { '串': 30 },
+  '鸡排': { '块': 150, '个': 150 },
+  '鸡块': { '块': 20 },
+  '鸡米花': { '个': 5 },
+  '薯条': { '根': 3 },
+  '鸡翅中': { '个': 35 },
+  '关东煮': { '串': 40 },
+
+  // 水果补充
+  '李子': { '个': 50 },
+  '牛油果': { '个': 150 },
+  '山竹': { '个': 70 },
+  '百香果': { '个': 50 },
+  '山楂': { '个': 20 },
+  '车厘子': { '颗': 10 },
+  '西柚': { '个': 250 },
+  '番石榴': { '个': 180 },
+  '芭乐': { '个': 180 },
+  '杨桃': { '个': 150 },
+  '莲雾': { '个': 100 },
+  '释迦': { '个': 300 },
+  '红毛丹': { '个': 20 },
+  '人参果': { '个': 100 },
+  '树莓': { '颗': 5 },
+  '覆盆子': { '颗': 5 },
+  '黑加仑': { '颗': 3 },
+  '杏干': { '个': 15 },
+  '柿饼': { '个': 50 },
+  '黑枣': { '颗': 10 },
+  '冬枣': { '个': 20, '颗': 20 },
+  // 脆冬枣是干制品（"脆冬枣"含"冬枣"子串，靠更长 key 优先命中 5g）
+  '脆冬枣': { '个': 5, '颗': 5 },
+  '榴莲': { '块': 100, '房': 250 },
+  '椰子肉': { '块': 50 },
+
+  // 主食/糕点补充
+  '花卷': { '个': 100 },
+  '窝头': { '个': 100 },
+  '发糕': { '块': 80, '个': 80 },
+  '贝果': { '个': 90 },
+  '恰巴塔': { '个': 120 },
+  '葱油饼': { '张': 100, '个': 100 },
+  '锅盔': { '个': 250 },
+  '烤馕': { '个': 250 },
+  '青团': { '个': 70 },
+  '麻薯': { '个': 30 },
+  '汤圆': { '个': 20 },
+  '月饼': { '个': 100, '块': 50 },
+  '披萨': { '块': 150 },
+  '爆米花': { '桶': 100, '份': 100 },
+
+  // 零食/甜点补充
+  '桃酥': { '块': 40 },
+  '甜甜圈': { '个': 80 },
+  '蛋黄酥': { '个': 55 },
+  '沙琪玛': { '块': 40 },
+  '提拉米苏': { '块': 100 },
+  '司康': { '个': 60 },
+  '雪媚娘': { '个': 60 },
+  '班戟': { '个': 80 },
+  '毛巾卷': { '块': 100 },
+  '米花糖': { '块': 30 },
+  '牛轧糖': { '颗': 10 },
+  '硬糖': { '颗': 5 },
+  '软糖': { '颗': 5 },
+  '奶糖': { '颗': 5 },
+  '棉花糖': { '颗': 5 },
+  '锅巴': { '包': 25 },
+  '仙贝': { '片': 3 },
+  '雪饼': { '片': 10 },
+  '果冻': { '个': 25 },
+  '布丁': { '个': 100, '盒': 100 },
+  '魔芋爽': { '包': 20 },
+  '海带结': { '个': 10 },
+
+  // 即食/健身食品
+  '即食鸡胸肉': { '袋': 100, '包': 100 },
+  '鸡胸肉肠': { '根': 30 },
+  '蛋白棒': { '根': 40, '个': 40 }
 };
 
 // 常见别名映射
@@ -600,10 +732,13 @@ function escapeLike(str) {
 
 function getTypicalWeight(foodName, unit) {
   if (!unit) return null;
+  // 量词别名：颗/枚 按"个"取典型重量（一颗鸡蛋≈一个鸡蛋）
+  const unitAlias = { '颗': '个', '枚': '个' };
   const names = Object.keys(FOOD_TYPICAL_WEIGHTS).sort((a, b) => b.length - a.length);
   for (const name of names) {
     if (foodName.includes(name)) {
-      const w = FOOD_TYPICAL_WEIGHTS[name][unit];
+      const w = FOOD_TYPICAL_WEIGHTS[name][unit]
+        || (unitAlias[unit] ? FOOD_TYPICAL_WEIGHTS[name][unitAlias[unit]] : undefined);
       if (w) return w;
     }
   }
@@ -621,6 +756,51 @@ function extractWeightFromName(name) {
     return { name: name.replace(match[0], '').trim(), weight };
   }
   return { name, weight: null };
+}
+
+/**
+ * 从食品库 common_unit 描述文本中提取「单份标准重量/体积」（克或毫升）
+ *
+ * 支持格式：
+ *   约500g / 约 480ml
+ *   一份500g / 每份（500g）/ 整碗450g / 标准碗约450g / 一碗250克 / 1杯400ml
+ *   每份450-460g（范围取均值）
+ *
+ * 安全约束（防止误读）：
+ *   - 数字后必须紧跟 g/克/ml/毫升，"约425千卡""每份380千卡"不会被当作重量
+ *   - "每100g约70千卡"这类营养密度描述不会被当作单份重量
+ *
+ * @param {string} text common_unit 原文
+ * @returns {number|null} 单份克数/毫升数；无法可靠提取时返回 null
+ */
+function extractServingFromCommonUnit(text) {
+  if (!text) return null;
+  const s = String(text);
+  // 单位后不能紧跟字母（防止 g 匹配到 gabc）；中文单位（克/毫升）不使用 \b，
+  // 因为中文不属于 ASCII 单词字符，"250克"在结尾处 \b 会匹配失败
+  const unit = '(?:g|克|ml|毫升)(?![a-zA-Z])';
+  // 数字（可选范围 450-460 / 450~460 / 450至460）
+  const numGroup = '(\\d+(?:\\.\\d+)?)(?:\\s*[-~–至到]\\s*(\\d+(?:\\.\\d+)?))?';
+  const patterns = [
+    // 优先：带明确份量引导词（一份/每份/整碗/标准碗/每碗/一碗/1碗/一杯/1杯…）
+    new RegExp(
+      '(?:一份|每份|整[碗杯盒瓶罐]|标准[碗杯盒瓶罐份]|每[碗杯盒瓶罐份个只条根]|[一1][碗杯盒瓶罐份个只条根])' +
+      '[（(]?[^0-9a-zA-Z]{0,6}(?:约\\s*)?' + numGroup + '\\s*' + unit,
+      'i'
+    ),
+    // 兜底："约500g / 约480ml"
+    new RegExp('约\\s*' + numGroup + '\\s*' + unit, 'i')
+  ];
+  for (const re of patterns) {
+    const m = s.match(re);
+    if (m) {
+      const lo = parseFloat(m[1]);
+      const hi = m[2] ? parseFloat(m[2]) : null;
+      if (hi && hi > lo) return Math.round((lo + hi) / 2);
+      return lo;
+    }
+  }
+  return null;
 }
 
 function resolveWeight(food) {
@@ -680,7 +860,8 @@ function computeFoodNutrition(food) {
         carb: parseFloat(food.carb) || Math.round((nutrientSource.carb_per_100g || 0) * ratio * 10) / 10,
         fat: parseFloat(food.fat) || Math.round((nutrientSource.fat_per_100g || 0) * ratio * 10) / 10,
         category: food.category || nutrientSource.category || '',
-        sub_category: food.sub_category || nutrientSource.sub_category || ''
+        sub_category: food.sub_category || nutrientSource.sub_category || '',
+        nutrition_source: 'user_specified'
       };
     } else {
       // 食物库和兜底值都没有，保留用户指定的热量和营养素
@@ -692,7 +873,8 @@ function computeFoodNutrition(food) {
         calorie: parseFloat(food.calorie),
         protein: parseFloat(food.protein) || 0,
         carb: parseFloat(food.carb) || 0,
-        fat: parseFloat(food.fat) || 0
+        fat: parseFloat(food.fat) || 0,
+        nutrition_source: 'user_specified'
       };
     }
   }
@@ -703,6 +885,19 @@ function computeFoodNutrition(food) {
   const dbFood = getFoodNutrition(food.name, food.category, { minConfidence: 'medium' });
 
   if (dbFood) {
+    // 饮品/包装食品/碗装甜品常见份量修正：用户按份量单位记录（1个/1杯/1碗）且没给具体重量时，
+    // 若库条目 common_unit 带有标准份重（"约480ml""一份500g"），优先按该份量计重，
+    // 避免默认"个=50g/碗=150g"把一整碗甜品或一杯饮品算少
+    // （真实案例：瑞幸小黄油美式算成18千卡 vs 实际约173千卡；鲜芋仙仙草4号 200g/170千卡 vs 实际500g/425千卡）
+    let effWeight = weight;
+    const userGaveWeight = parseFloat(food.weight) > 0 || extractWeightFromName(food.name || '').weight;
+    if (!userGaveWeight && ['个', '只', '杯', '瓶', '罐', '盒', '份', '碗'].includes(unit)) {
+      const servingGrams = extractServingFromCommonUnit(dbFood.common_unit);
+      if (servingGrams) {
+        effWeight = (parseFloat(quantity) || 1) * servingGrams;
+      }
+    }
+    const dbRatio = effWeight / 100;
     // 如果用户已经选择了分类，且数据库匹配到的分类不一致，保留用户选择的分类
     const incomingCategory = normalizeCategory(food.category);
     const dbCategory = normalizeCategory(dbFood.category);
@@ -710,15 +905,17 @@ function computeFoodNutrition(food) {
 
     return {
       ...food,
-      weight,
+      weight: effWeight,
       quantity,
       unit,
       category: shouldKeepIncomingCategory ? food.category : (dbFood.category || food.category || ''),
       sub_category: shouldKeepIncomingCategory ? food.sub_category : (dbFood.sub_category || food.sub_category || ''),
-      calorie: Math.round((dbFood.calorie_per_100g || 0) * ratio * 10) / 10,
-      protein: Math.round((dbFood.protein_per_100g || 0) * ratio * 10) / 10,
-      carb: Math.round((dbFood.carb_per_100g || 0) * ratio * 10) / 10,
-      fat: Math.round((dbFood.fat_per_100g || 0) * ratio * 10) / 10
+      calorie: Math.round((dbFood.calorie_per_100g || 0) * dbRatio * 10) / 10,
+      protein: Math.round((dbFood.protein_per_100g || 0) * dbRatio * 10) / 10,
+      carb: Math.round((dbFood.carb_per_100g || 0) * dbRatio * 10) / 10,
+      fat: Math.round((dbFood.fat_per_100g || 0) * dbRatio * 10) / 10,
+      nutrition_source: dbFood.match_level === 'web_learned' ? 'web_learned'
+        : (dbFood.match_level === 'generic_fallback' ? 'generic_fallback' : 'food_db')
     };
   }
 
@@ -735,11 +932,12 @@ function computeFoodNutrition(food) {
       calorie: Math.round((fallbackFood.calorie_per_100g || 0) * ratio * 10) / 10,
       protein: Math.round((fallbackFood.protein_per_100g || 0) * ratio * 10) / 10,
       carb: Math.round((fallbackFood.carb_per_100g || 0) * ratio * 10) / 10,
-      fat: Math.round((fallbackFood.fat_per_100g || 0) * ratio * 10) / 10
+      fat: Math.round((fallbackFood.fat_per_100g || 0) * ratio * 10) / 10,
+      nutrition_source: 'generic_fallback'
     };
   }
 
-  // 4. 连兜底值都没有，保留传入值
+  // 4. 连兜底值都没有，保留传入值（LLM 估算，可靠性低，下游可据此决定联网核实）
   return {
     ...food,
     weight,
@@ -748,7 +946,8 @@ function computeFoodNutrition(food) {
     calorie: parseFloat(food.calorie) || 0,
     protein: parseFloat(food.protein) || 0,
     carb: parseFloat(food.carb) || 0,
-    fat: parseFloat(food.fat) || 0
+    fat: parseFloat(food.fat) || 0,
+    nutrition_source: 'llm_estimate'
   };
 }
 
@@ -809,5 +1008,6 @@ module.exports = {
   computeFoodNutrition,
   computeRecipeTotals,
   getTypicalWeight,
+  extractServingFromCommonUnit,
   extractFoodKeywords
 };
