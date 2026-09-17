@@ -9,6 +9,7 @@ const { db, withTransaction } = require('../db');
 const currencyService = require('./currencyService');
 const taskService = require('./taskService');
 const achievementService = require('./achievementService');
+const { getChinaDateStr, getChinaDateStrOffset } = require('../utils/chinaTime');
 
 const MODE_PRESETS = {
   '16:8': { target_hours: 16, eating_window_start: '10:00', eating_window_end: '18:00' },
@@ -23,7 +24,7 @@ const MODE_PRESETS = {
  * 获取今日轻断食状态（若今日无记录则按最近一次计划自动创建，保持用户设置不丢失）
  */
 function getTodayFasting(userId, date = null) {
-  const recordDate = date || new Date().toISOString().split('T')[0];
+  const recordDate = date || getChinaDateStr();
   const existing = db.prepare('SELECT * FROM fasting_records WHERE user_id = ? AND record_date = ?').get(userId, recordDate);
   if (existing) return existing;
 
@@ -63,7 +64,7 @@ function insertPlan(userId, today, { mode, target_hours, eating_window_start, ea
  * 确保当日有计划行：没有则按「请求设置 > 最近一次计划 > 默认」自动创建
  */
 function ensureTodayPlan(userId, payload = {}) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getChinaDateStr();
   const existing = getTodayFasting(userId, today);
   if (existing) return existing;
 
@@ -125,7 +126,7 @@ function startFasting(userId, payload = {}) {
 
 function endFasting(userId, payload = {}) {
   return withTransaction(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getChinaDateStr();
     const fasting = ensureTodayPlan(userId, payload);
     if (fasting.status !== 'fasting' && fasting.status !== 'planned') return { error: '当前状态不能结束禁食' };
 
@@ -161,7 +162,7 @@ function endFasting(userId, payload = {}) {
 }
 
 function cancelFasting(userId) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getChinaDateStr();
   const fasting = getTodayFasting(userId, today);
   if (!fasting) return { error: '今日没有轻断食计划' };
   if (fasting.status === 'completed' || fasting.status === 'failed') return { error: '当前状态不能取消' };
@@ -179,13 +180,13 @@ function getFastingStats(userId) {
   const thisWeekCompleted = db.prepare(`
     SELECT COUNT(*) as count FROM fasting_records
     WHERE user_id = ? AND status = 'completed'
-    AND strftime('%Y-%W', record_date) = strftime('%Y-%W', 'now')
+    AND strftime('%Y-%W', record_date) = strftime('%Y-%W', 'now', '+8 hours')
   `).get(userId).count;
 
   const thisWeek52 = db.prepare(`
     SELECT COUNT(*) as count FROM fasting_records
     WHERE user_id = ? AND status = 'completed' AND mode = '5:2'
-    AND strftime('%Y-%W', record_date) = strftime('%Y-%W', 'now')
+    AND strftime('%Y-%W', record_date) = strftime('%Y-%W', 'now', '+8 hours')
   `).get(userId).count;
 
   const rows = db.prepare(`

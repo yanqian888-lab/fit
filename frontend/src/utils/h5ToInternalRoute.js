@@ -22,28 +22,28 @@ const INTERNAL_ROUTE_WHITELIST = new Set([
   '/pages/pet/currency-detail',
   '/pages/chat/settings',
   '/pages/record/index',
-  '/pages/record/diet-detail',
-  '/pages/record/add-food',
-  '/pages/record/create-food',
-  '/pages/record/food-detail',
-  '/pages/record/habit',
-  '/pages/record/mood',
-  '/pages/record/exercise-detail',
-  '/pages/record/add-exercise',
-  '/pages/record/body-data',
+  '/pagesRecord/diet-detail',
+  '/pagesRecord/add-food',
+  '/pagesRecord/create-food',
+  '/pagesRecord/food-detail',
+  '/pagesRecord/habit',
+  '/pagesRecord/mood',
+  '/pagesRecord/exercise-detail',
+  '/pagesRecord/add-exercise',
+  '/pagesRecord/body-data',
   '/pages/museum/index',
-  '/pages/museum/diary',
-  '/pages/museum/diary-generate',
-  '/pages/museum/diary-detail',
+  '/pagesMuseum/diary',
+  '/pagesMuseum/diary-generate',
+  '/pagesMuseum/diary-detail',
   '/pages/workout/session',
-  '/pages/museum/milestones',
-  '/pages/museum/recipes',
-  '/pages/museum/insights',
-  '/pages/museum/item-edit',
-  '/pages/museum/compare',
-  '/pages/museum/photo-upload',
-  '/pages/museum/recipe-detail',
-  '/pages/museum/methods',
+  '/pagesMuseum/milestones',
+  '/pagesMuseum/recipes',
+  '/pagesMuseum/insights',
+  '/pagesMuseum/item-edit',
+  '/pagesMuseum/compare',
+  '/pagesMuseum/photo-upload',
+  '/pagesMuseum/recipe-detail',
+  '/pagesMuseum/methods',
   '/pages/login/index',
   '/pages/register/index',
   '/pages/user/index',
@@ -85,8 +85,8 @@ export function normalizeToInternalRoute(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
   const url = rawUrl.trim();
 
-  // 1. 已经是 /pages/... 这种内部路由直接校验白名单返回
-  if (url.startsWith('/pages/')) {
+  // 1. 已经是内部路由直接校验白名单返回（主包 /pages/xxx / 分包 /pagesRecord/xxx /pagesMuseum/xxx 等）
+  if (url.startsWith('/pages/') || url.startsWith('/pagesRecord/') || url.startsWith('/pagesMuseum/')) {
     const clean = url.split('?')[0].split('#')[0];
     return INTERNAL_ROUTE_WHITELIST.has(clean) ? { url } : null;
   }
@@ -106,12 +106,21 @@ export function normalizeToInternalRoute(rawUrl) {
   }
 
   // 3. 依次剥离已知的 H5 发布目录前缀，尝试拿到 /pages/xxx/xxx
+  //    分包迁移后 pages.json 已配置 pagesRecord/pagesMuseum 等分包根，
+  //    H5 路径可能直接指向分包路径（/h5/pagesMuseum/milestones），
+  //    所以这里先试 `/${rest}` 原样匹配白名单（分包路由），
+  //    匹配不到再回退到 `/pages/${rest}`（主包路由）
   for (const prefix of H5_PATH_PREFIX) {
     if (pathname.startsWith(prefix)) {
       const rest = pathname.slice(prefix.length);
-      const candidate = `/pages/${rest}`;
-      const clean = candidate.split('?')[0].split('#')[0];
-      if (INTERNAL_ROUTE_WHITELIST.has(clean)) return { url: candidate };
+      // 优先：rest 已经带分包根前缀（pagesMuseum/pagesRecord/...）
+      const directMatch = `/${rest}`;
+      const cleanDirect = directMatch.split('?')[0].split('#')[0];
+      if (INTERNAL_ROUTE_WHITELIST.has(cleanDirect)) return { url: directMatch };
+      // 回退：主包路由，补上 /pages/ 前缀
+      const fallback = `/pages/${rest}`;
+      const cleanFallback = fallback.split('?')[0].split('#')[0];
+      if (INTERNAL_ROUTE_WHITELIST.has(cleanFallback)) return { url: fallback };
     }
   }
   return null;
@@ -135,11 +144,13 @@ export function isWebViewAllowed(url) {
     // 核心业务路径严格禁止落到 web-view（提审红线）
     const forbiddenKeywords = [
       '/pages/record',
+      '/pagesrecord',
       '/pages/pet',
       '/pages/shop',
       '/pages/index',
       '/pages/login',
       '/pages/museum',
+      '/pagesmuseum',
       '/pages/workout',
       '/pages/inventory',
       '/pages/user/index',
