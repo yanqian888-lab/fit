@@ -104,10 +104,9 @@ export const dataApi = {
   clearAll: () => userApi.clearData()
 };
 
-// 应用全局配置（协议、隐私政策）
+// 应用全局配置（协议、隐私政策）— 协议修改统一走CMS后台
 export const configApi = {
-  getAppConfig: () => get('/app-config'),
-  updateAppConfig: (data) => put('/admin/app-config', data)
+  getAppConfig: () => get('/app-config')
 };
 
 // 系统
@@ -127,11 +126,8 @@ export const systemApi = {
 // 反馈
 export const feedbackApi = {
   getList: (params) => get('/feedback', params),
-  submit: (data) => post('/feedback', data),
-  // 管理后台
-  getAdminList: (params) => get('/admin/feedbacks', params),
-  reply: (id, data) => post(`/admin/feedbacks/${id}/reply`, data),
-  updateStatus: (id, status) => put(`/admin/feedbacks/${id}/status`, { status })
+  submit: (data) => post('/feedback', data)
+  // 反馈管理功能统一走CMS后台，C端不再保留管理接口
 };
 
 // 弹窗广告

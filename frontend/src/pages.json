@@ -389,25 +389,6 @@
       ]
     },
     {
-      "root": "pages/admin",
-      "pages": [
-        {
-          "path": "feedback",
-          "style": {
-            "navigationBarTitleText": "用户反馈",
-            "navigationStyle": "custom"
-          }
-        },
-        {
-          "path": "privacy",
-          "style": {
-            "navigationBarTitleText": "隐私政策",
-            "navigationStyle": "custom"
-          }
-        }
-      ]
-    },
-    {
       "root": "pages/blank",
       "pages": [
         {
