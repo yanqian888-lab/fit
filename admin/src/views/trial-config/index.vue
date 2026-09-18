@@ -27,7 +27,7 @@
         </div>
       </div>
       <div style="margin-top: 16px;">
-        <el-button type="warning" @click="openAuditMode">审核模式一键开启</el-button>
+        <el-button type="warning" @click="openAuditMode" v-perm="'trial_config:write'">审核模式一键开启</el-button>
       </div>
     </div>
 
@@ -134,8 +134,8 @@
               <el-option label="IP" value="ip" />
             </el-select>
             <el-button type="primary" @click="loadWhitelist">查询</el-button>
-            <el-button type="success" @click="openWhitelistDialog">新增白名单</el-button>
-            <el-button type="success" plain @click="openBatchWhitelistDialog">批量导入</el-button>
+            <el-button type="success" @click="openWhitelistDialog" v-perm="'trial_config:write'">新增白名单</el-button>
+            <el-button type="success" plain @click="openBatchWhitelistDialog" v-perm="'trial_config:write'">批量导入</el-button>
           </div>
 
           <el-table :data="whitelistList" border v-loading="whitelistLoading">
@@ -153,8 +153,8 @@
             <el-table-column prop="remark" label="备注" />
             <el-table-column label="操作" width="180">
               <template #default="{ row }">
-                <el-button type="primary" size="small" @click="openEditWhitelist(row)">编辑</el-button>
-                <el-button type="danger" size="small" @click="removeWhitelist(row.id)">删除</el-button>
+                <el-button type="primary" size="small" @click="openEditWhitelist(row)" v-perm="'trial_config:write'">编辑</el-button>
+                <el-button type="danger" size="small" @click="removeWhitelist(row.id)" v-perm="'trial_config:write'">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -329,6 +329,15 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { cmsTrialApi, cmsAppUserApi } from '../../api/cms.js'
+import { useAuthStore } from '@/store/auth'
+
+const auth = useAuthStore()
+// v-perm 自定义指令：用户无该权限码时直接移除按钮元素
+const vPerm = {
+  mounted(el, binding) {
+    if (!auth.hasPermission(binding.value)) el.remove()
+  }
+}
 
 const activeTab = ref('config')
 const config = reactive({

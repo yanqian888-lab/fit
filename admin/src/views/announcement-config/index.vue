@@ -34,7 +34,7 @@
         <el-table-column prop="created_by" label="创建人" width="120" />
         <el-table-column label="操作" width="280">
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="openDialog(row)">编辑</el-button>
+            <el-button type="primary" size="small" @click="openDialog(row)" v-perm="'announcement:write'">编辑</el-button>
             <el-button v-if="row.status === 'enabled'" v-perm="'announcement:write'" type="warning" size="small" @click="recall(row)">撤回</el-button>
             <el-button v-perm="'announcement:write'" type="danger" size="small" @click="remove(row.id)">删除</el-button>
           </template>

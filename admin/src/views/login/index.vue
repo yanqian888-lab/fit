@@ -43,8 +43,8 @@ async function handleLogin() {
     ElMessage.success('登录成功')
     router.push('/')
   } catch (e) {
+    // 登录失败的错误 toast 已由 request.js 拦截器统一弹出，这里只记录日志和复位 loading
     console.error(e)
-    ElMessage.error(e?.message || '登录失败，请检查账号密码')
   } finally {
     loading.value = false
   }

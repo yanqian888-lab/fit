@@ -1,7 +1,7 @@
 <template>
   <div class="card">
     <div class="search-bar">
-      <el-button type="primary" @click="openDialog()">新增角色</el-button>
+      <el-button type="primary" @click="openDialog()" v-perm="'cms_user:write'">新增角色</el-button>
     </div>
     <el-table :data="list" v-loading="loading" border empty-text="暂无内容">
       <el-table-column prop="id" label="ID" width="70" />
@@ -19,8 +19,8 @@
       </el-table-column>
       <el-table-column label="操作" width="160">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDialog(row)">编辑</el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
+          <el-button link type="primary" @click="openDialog(row)" v-perm="'cms_user:write'">编辑</el-button>
+          <el-button link type="danger" @click="remove(row)" v-perm="'cms_user:write'">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -47,24 +47,44 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { cmsUserApi } from '@/api/cms'
+import { useAuthStore } from '@/store/auth'
 
+const auth = useAuthStore()
+// v-perm 自定义指令：用户无该权限码时直接移除按钮元素
+const vPerm = {
+  mounted(el, binding) {
+    if (!auth.hasPermission(binding.value)) el.remove()
+  }
+}
+
+// CMS 后台已注册的全部权限码清单，用于角色编辑页 checkbox 渲染
 const allPermissions = [
-  'dashboard',
-  'app_config:read', 'app_config:write',
+  'dashboard:read',
+  'announcement:read', 'announcement:write',
+  'notification_channel:read', 'notification_channel:write',
+  'popup_config:read', 'popup_config:write',
+  'operation_stats:read',
+  'milestone:read', 'milestone:write',
+  'museum_config:read', 'museum_config:write',
+  'prompt:read', 'prompt:write',
+  'ai_config:read', 'ai_config:write',
+  'trial_config:read', 'trial_config:write',
+  'workout_config:read', 'workout_config:write',
   'template_config:read', 'template_config:write',
-  'app_user:read', 'app_user:write',
-  'feedback:read', 'feedback:write',
   'food_lib:read', 'food_lib:write',
   'exercise_lib:read', 'exercise_lib:write',
-  'cms_user:read', 'cms_user:write',
-  'log:read',
-  'pet_config:read', 'pet_config:write',
-  'currency_config:read', 'currency_config:write',
   'shop_config:read', 'shop_config:write',
   'event_config:read', 'event_config:write',
   'task_config:read', 'task_config:write',
   'achievement_config:read', 'achievement_config:write',
-  'dialogue_config:read', 'dialogue_config:write'
+  'dialogue_config:read', 'dialogue_config:write',
+  'pet_config:read', 'pet_config:write',
+  'currency_config:read', 'currency_config:write',
+  'log:read',
+  'feedback:read', 'feedback:write',
+  'app_user:read', 'app_user:write',
+  'cms_user:read', 'cms_user:write',
+  'app_config:read', 'app_config:write'
 ]
 
 const loading = ref(false)

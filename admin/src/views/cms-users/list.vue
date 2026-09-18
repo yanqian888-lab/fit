@@ -1,7 +1,7 @@
 <template>
   <div class="card">
     <div class="search-bar">
-      <el-button type="primary" @click="openDialog()">新增管理员</el-button>
+      <el-button type="primary" @click="openDialog()" v-perm="'cms_user:write'">新增管理员</el-button>
     </div>
     <el-table :data="list" v-loading="loading" border empty-text="暂无内容">
       <el-table-column prop="id" label="ID" width="70" />
@@ -16,9 +16,9 @@
       <el-table-column prop="last_login_at" label="最后登录" width="160" />
       <el-table-column label="操作" width="220">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDialog(row)">编辑</el-button>
-          <el-button link type="warning" @click="openPwd(row)">重置密码</el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
+          <el-button link type="primary" @click="openDialog(row)" v-perm="'cms_user:write'">编辑</el-button>
+          <el-button link type="warning" @click="openPwd(row)" v-perm="'cms_user:write'">重置密码</el-button>
+          <el-button link type="danger" @click="remove(row)" v-perm="'cms_user:write'">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -66,6 +66,15 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { cmsUserApi } from '@/api/cms'
+import { useAuthStore } from '@/store/auth'
+
+const auth = useAuthStore()
+// v-perm 自定义指令：用户无该权限码时直接移除按钮元素
+const vPerm = {
+  mounted(el, binding) {
+    if (!auth.hasPermission(binding.value)) el.remove()
+  }
+}
 
 const loading = ref(false)
 const saving = ref(false)
