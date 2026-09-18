@@ -31,11 +31,16 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('[ERROR] 未处理的 Promise 拒绝:', reason);
 });
 
-// 初始化数据库
-initTables();
-migrateTables();
-initSeedData();
-console.log('数据库初始化完成');
+// 初始化数据库（失败时打印错误并退出进程，避免带病启动）
+try {
+  initTables();
+  migrateTables();
+  initSeedData();
+  console.log('数据库初始化完成');
+} catch (err) {
+  console.error('[FATAL] 数据库初始化失败:', err);
+  process.exit(1);
+}
 
 // 初始化 CMS 超级管理员与角色
 seedCms();

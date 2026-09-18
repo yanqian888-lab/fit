@@ -2193,9 +2193,15 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
     // 对于习惯记录（喝水），累加数值
     // 对于饮食记录，如果有需要累加或更新的食物，执行相应操作
     if (type === 'diet_record' && duplicateCheck.hasMerge && duplicateCheck.foodsToMerge) {
+      // 预编译 UPDATE 语句在循环外准备，循环内只执行 .run()，避免反复 db.prepare
+      const updateMergedDiet = db.prepare(`
+        UPDATE diet_records
+        SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, precipitation_id = COALESCE(precipitation_id, ?), updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `);
       for (const merge of duplicateCheck.foodsToMerge) {
         const { newFood, recordId, existingFood } = merge;
-        
+
         // 累加数量、重量和热量
         const updatedQuantity = (existingFood.quantity || 1) + (newFood.quantity || 1);
         const updatedWeight = (existingFood.weight || 0) + (newFood.weight || 0);
@@ -2203,7 +2209,7 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
         const updatedProtein = (existingFood.protein || 0) + (newFood.protein || 0);
         const updatedCarb = (existingFood.carb || 0) + (newFood.carb || 0);
         const updatedFat = (existingFood.fat || 0) + (newFood.fat || 0);
-        
+
         // 更新记录
         const updatedFood = {
           ...existingFood,
@@ -2214,14 +2220,10 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
           carb: updatedCarb,
           fat: updatedFat
         };
-        
-        db.prepare(`
-          UPDATE diet_records 
-          SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, precipitation_id = COALESCE(precipitation_id, ?), updated_at = CURRENT_TIMESTAMP 
-          WHERE id = ?
-        `).run(JSON.stringify([updatedFood]), updatedCalorie, updatedProtein, updatedCarb, updatedFat, precipitationId, recordId);
-        
-        
+
+        updateMergedDiet.run(JSON.stringify([updatedFood]), updatedCalorie, updatedProtein, updatedCarb, updatedFat, precipitationId, recordId);
+
+
       }
       
       // 处理全新的食物（如果有）
@@ -2246,9 +2248,15 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
     
     // 对于饮食记录的热量修正（更新而非累加）
     if (type === 'diet_record' && duplicateCheck.hasUpdate && duplicateCheck.foodsToUpdate) {
+      // 预编译 UPDATE 语句在循环外准备，循环内只执行 .run()，避免反复 db.prepare
+      const updateCorrectedDiet = db.prepare(`
+        UPDATE diet_records
+        SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, precipitation_id = COALESCE(precipitation_id, ?), updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `);
       for (const update of duplicateCheck.foodsToUpdate) {
         const { newFood, recordId, existingFood } = update;
-        
+
         // 修正热量：保留原有重量和数量，只更新热量和营养
         const correctedFood = computeFoodNutrition({
           ...existingFood,
@@ -2258,12 +2266,8 @@ function syncToBusinessTable(userId, type, content, data, recordDate, subType = 
           fat: newFood.fat || existingFood.fat
         });
         const correctedArray = [correctedFood];
-        
-        db.prepare(`
-          UPDATE diet_records
-          SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?, precipitation_id = COALESCE(precipitation_id, ?), updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).run(JSON.stringify(correctedArray), correctedFood.calorie, correctedFood.protein, correctedFood.carb, correctedFood.fat, precipitationId, recordId);
+
+        updateCorrectedDiet.run(JSON.stringify(correctedArray), correctedFood.calorie, correctedFood.protein, correctedFood.carb, correctedFood.fat, precipitationId, recordId);
         // 后台异步兜底：0千卡食物 LLM 估算后回写，不阻塞保存链路
         scheduleZeroCalorieBackfill(userId, recordId, correctedArray);
 
@@ -3198,13 +3202,15 @@ function scheduleZeroCalorieBackfill(userId, recordId, foods) {
       // 重量兜底为100g：负数/0/缺失一律按100g估算，防止负比例算出负热量
       const estWeight = parseFloat(f.weight) > 0 ? parseFloat(f.weight) : 100;
       const est = await estimateNutritionWithLLM(f.name, estWeight);
-      if (est && parseFloat(est.calorie_per_100g) > 0) {
+      // 校验 LLM 返回的每100g热量严格>0且为有限数，校验失败跳过该食物回写
+      const per100 = parseFloat(est && est.calorie_per_100g);
+      if (est && per100 > 0 && Number.isFinite(per100)) {
         const ratio = estWeight / 100;
-        f.calorie = Math.round(est.calorie_per_100g * ratio);
+        f.calorie = Math.round(per100 * ratio);
         f.protein = Math.round((parseFloat(est.protein_per_100g) || 0) * ratio * 10) / 10;
         f.carb = Math.round((parseFloat(est.carb_per_100g) || 0) * ratio * 10) / 10;
         f.fat = Math.round((parseFloat(est.fat_per_100g) || 0) * ratio * 10) / 10;
-        console.log(`[营养兜底] "${f.name}" 热量为0，已用LLM按每100g ${est.calorie_per_100g}千卡回填 → ${f.calorie}千卡`);
+        console.log(`[营养兜底] "${f.name}" 热量为0，已用LLM按每100g ${per100}千卡回填 → ${f.calorie}千卡`);
         return f;
       }
     } catch (e) {
@@ -3212,7 +3218,14 @@ function scheduleZeroCalorieBackfill(userId, recordId, foods) {
     }
     return null;
   })).then(filled => {
-    if (!filled.filter(Boolean).length) return;
+    const valid = filled.filter(Boolean);
+    if (!valid.length) return;
+    // 回写前再次校验：只回写 calorie 严格>0 且为有限数的食物，避免 LLM 失败后写回 calorie:0
+    const hasInvalid = valid.some(f => !(parseFloat(f.calorie) > 0 && Number.isFinite(parseFloat(f.calorie))));
+    if (hasInvalid) {
+      console.warn(`[营养兜底] 记录#${recordId} 存在无效热量食物，跳过回写`);
+      return;
+    }
     // 重算总计并回写数据库
     const totals = calculateFoodTotals(foods);
     db.prepare(`
@@ -3225,7 +3238,7 @@ function scheduleZeroCalorieBackfill(userId, recordId, foods) {
     if (precip && precip.precipitation_id) {
       try { syncDietExtractedDataToPrecipitation(userId, precip.precipitation_id, precip.meal_time); } catch (e) { /* 非阻塞 */ }
     }
-    console.log(`[营养兜底] 记录#${recordId} 已回填 ${filled.filter(Boolean).length} 个0千卡食物，总计${totals.calorie}千卡`);
+    console.log(`[营养兜底] 记录#${recordId} 已回填 ${valid.length} 个0千卡食物，总计${totals.calorie}千卡`);
   }).catch(err => console.warn('[营养兜底] 回写失败:', err.message));
 }
 

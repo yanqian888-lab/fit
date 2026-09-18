@@ -103,8 +103,8 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
       console.log('[callMainAgent] 发现工具调用标记，开始解析...');
     }
     
-    // 解析工具调用
-    const toolCalls = parseToolCalls(content);
+    // 解析工具调用（返回 null 表示 JSON 解析失败，上层降级为无工具调用处理）
+    const toolCalls = parseToolCalls(content) || [];
     let reply = cleanToolCallMarkers(content).trim();
 
     // 主Agent语义判断：本轮问题是否依赖对话上下文（指代/省略/修正类追问），
@@ -155,10 +155,13 @@ async function callMainAgent(userMessage, history = [], userInfo = {}, partnerIn
 /**
  * 解析工具调用
  * 支持两种格式：<<<FunctionCall>>> 和 <|FunctionCallBegin|>
+ * JSON.parse 失败时记录结构化日志并返回 null，让上层判断是否降级处理
  */
 function parseToolCalls(content) {
   const calls = [];
-  
+  // 截取原始 LLM 输出前 200 字符，用于结构化日志排障
+  const rawPrefix = String(content || '').slice(0, 200);
+
   // 格式1：<<<FunctionCall>>>...<<<FunctionCallEnd>>>（支持2-4个>）
   const regex1 = /<<<FunctionCall>>>([\s\S]*?)<<<FunctionCallEnd>{2,4}/gs;
   let match;
@@ -167,10 +170,18 @@ function parseToolCalls(content) {
       const parsed = JSON.parse(match[1].trim());
       calls.push(...(Array.isArray(parsed) ? parsed : [parsed]));
     } catch (e) {
-      console.error('工具调用解析失败(格式1):', match[1], e.message);
+      // 结构化日志：含错误信息、原始 LLM 输出前 200 字符、匹配到的片段，返回 null 让上层判断
+      console.error(JSON.stringify({
+        event: 'parseToolCalls_failed',
+        format: 'functionCall_v1',
+        error: e.message,
+        raw_llm_prefix: rawPrefix,
+        matched_fragment: String(match[1]).slice(0, 200)
+      }));
+      return null;
     }
   }
-  
+
   // 格式2：<|FunctionCallBegin|>...<|FunctionCallEnd|>
   const regex2 = /<\|FunctionCallBegin\|>(.*?)<\|FunctionCallEnd\|>/gs;
   while ((match = regex2.exec(content)) !== null) {
@@ -178,10 +189,18 @@ function parseToolCalls(content) {
       const parsed = JSON.parse(match[1].trim());
       calls.push(...(Array.isArray(parsed) ? parsed : [parsed]));
     } catch (e) {
-      console.error('工具调用解析失败(格式2):', match[1], e.message);
+      // 结构化日志：含错误信息、原始 LLM 输出前 200 字符、匹配到的片段，返回 null 让上层判断
+      console.error(JSON.stringify({
+        event: 'parseToolCalls_failed',
+        format: 'functionCall_v2',
+        error: e.message,
+        raw_llm_prefix: rawPrefix,
+        matched_fragment: String(match[1]).slice(0, 200)
+      }));
+      return null;
     }
   }
-  
+
   return calls;
 }
 
@@ -387,7 +406,7 @@ function isInternalInstruction(reply) {
  * @param {Array} [history] 最近对话消息（{role, content}，时间正序），透传给 helper 理解上下文追问
  * @returns {Promise<Array>} 各工具调用的执行结果
  */
-async function executeToolCalls(toolCalls, userId, userMessage, userInfo, partnerInfo = {}, precipitationResult = null, history = []) {
+async function executeToolCalls(toolCalls, userId, userMessage, userInfo, partnerInfo = {}, precipitationResult = null, history = [], correction = null) {
   const results = [];
   for (const call of toolCalls) {
     try {
@@ -406,10 +425,11 @@ async function executeToolCalls(toolCalls, userId, userMessage, userInfo, partne
         const answer = await Promise.race([
           // 透传本轮沉淀结果：helper 只能基于真实沉淀结果反馈记录状态，未沉淀成功严禁谎称已记录
           // 同时透传最近对话上下文，让 helper 能理解"这只是午餐哦"这类依赖上文的追问
-          helperAgent.callHelperAgent(question, userInfo, partnerInfo, { precipitation: precipitationResult, history }),
-          new Promise((resolve) => setTimeout(() => {
-            console.log('[executeToolCalls] helperAgent调用超时，返回兜底回复');
-            resolve('这个问题有点复杂，我慢慢算一下，你先忙别的～');
+          helperAgent.callHelperAgent(question, userInfo, partnerInfo, { precipitation: precipitationResult, history, correction }),
+          // 超时改为 reject，由调用方 catch 决定降级策略，避免静默返回兜底文案
+          new Promise((_, reject) => setTimeout(() => {
+            console.log('[executeToolCalls] helperAgent调用超时');
+            reject(new Error('helper_timeout'));
           }, 50000))
         ]);
         result = { name: 'call_allround_helper', answer };
@@ -554,6 +574,13 @@ function generateContextualFallbackReply(userMessage, history = [], partnerMode 
     idx = (idx + 1) % pool.length;
   }
   userLastFallbackMap.set(lastKey, pool[idx]);
+  // 写入后设置 TTL 自动清理，防止 Map 随用户增长导致内存泄漏（60秒后自动删除）
+  setTimeout(() => {
+    // 仅当值未被后续调用覆盖时才删除，避免误删新写入的值
+    if (userLastFallbackMap.get(lastKey) === pool[idx]) {
+      userLastFallbackMap.delete(lastKey);
+    }
+  }, 60000);
   return pool[idx];
 }
 

@@ -619,10 +619,13 @@ async function sendMessage(req, res) {
         try {
           // 等待沉淀Agent完成，确保当前消息的饮食/运动记录已写入后再回答
           // 沉淀涉及 LLM 调用，通常 3-10 秒，最多等 20 秒；超时仍继续调用 helperAgent（helper 会按"结果未知"保守回复）
+          // 使用 clearTimeout 配合 .finally() 清理定时器，避免 setTimeout 泄漏
+          let precipTimer = null;
+          const precipTimeout = new Promise(r => { precipTimer = setTimeout(r, 20000); });
           const precipitationResult = await Promise.race([
             precipitationPromise,
-            new Promise(r => setTimeout(r, 20000))
-          ]);
+            precipTimeout
+          ]).finally(() => clearTimeout(precipTimer));
 
           // 把沉淀结果透传给 helper：搭子必须基于真实沉淀结果反馈记录状态，
           // 沉淀失败/未提取到时严禁对用户谎称"已经记录好"
@@ -874,17 +877,21 @@ function getMessages(req, res) {
   `).all(userId, size, offset);
 
   // 对历史消息补打标签（不依赖 Agent，避免旧消息无标签）
+  // 预编译语句在循环外准备，循环内只执行 .run()，并用事务批量提交减少 N+1 往返
   const updateTagStmt = db.prepare('UPDATE chat_messages SET precipitation_status = ?, precipitation_type = ? WHERE id = ?');
-  for (const msg of list) {
-    if (msg.role === 'user' && (!msg.precipitation_type || msg.precipitation_status === 0 || msg.precipitation_status === null)) {
-      const matched = tagMatcher.matchMessageTags(msg.content);
-      if (matched) {
-        updateTagStmt.run(matched.status, matched.type, msg.id);
-        msg.precipitation_status = matched.status;
-        msg.precipitation_type = matched.type;
+  const batchUpdateTags = db.transaction(() => {
+    for (const msg of list) {
+      if (msg.role === 'user' && (!msg.precipitation_type || msg.precipitation_status === 0 || msg.precipitation_status === null)) {
+        const matched = tagMatcher.matchMessageTags(msg.content);
+        if (matched) {
+          updateTagStmt.run(matched.status, matched.type, msg.id);
+          msg.precipitation_status = matched.status;
+          msg.precipitation_type = matched.type;
+        }
       }
     }
-  }
+  });
+  batchUpdateTags();
 
   const total = db.prepare('SELECT COUNT(*) as count FROM chat_messages WHERE user_id = ?').get(userId).count;
 
@@ -1182,7 +1189,7 @@ async function generateAdviceAsync(userId, userInfoStr, mode) {
   // 实测 4000 全被思考耗尽（finish=length, contentLen=0）导致建议永远生成失败
   const generateContent = async () => {
     const systemPrompt = promptService.getPrompt('weight_loss_advice', { user_info: userInfoStr });
-    const opts = { temperature: 0.7, max_tokens: 10000, timeout: 180000 };
+    const opts = { temperature: 0.7, max_tokens: 10000, timeout: 30000 };
     const response = await callWithPrompt('weight_loss_advice', [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: '请根据我的身体数据，严格按照【输出结构】给出完整的减重方案。' }
@@ -1221,25 +1228,26 @@ async function generateAdviceAsync(userId, userInfoStr, mode) {
 async function sendAdviceMessage(req, res) {
   const userId = req.userId;
 
-  // 原子清除标记，避免并发/重复进入页面时重复生成
-  const claimed = db.prepare(`
-    UPDATE user_profiles SET advice_pending = 0 WHERE user_id = ? AND advice_pending = 1
-  `).run(userId);
-  if (claimed.changes === 0) {
-    return res.json(success(null, '无需生成'));
-  }
-
   try {
     const user = db.prepare('SELECT gender, age, height FROM users WHERE id = ?').get(userId);
     const profile = db.prepare(`
       SELECT initial_weight, current_weight, target_weight, target_date FROM user_profiles WHERE user_id = ?
     `).get(userId);
 
+    // 先校验身体信息完整性：不完整时直接返回，不清除 advice_pending 标记，避免永久丢失
     const complete = user && profile
       && (user.gender === 1 || user.gender === 2) && user.age && user.height
       && profile.current_weight && profile.target_weight;
     if (!complete) {
       return res.json(success(null, '身体信息不完整，暂不生成'));
+    }
+
+    // 校验通过后再原子清除标记，避免并发/重复进入页面时重复生成
+    const claimed = db.prepare(`
+      UPDATE user_profiles SET advice_pending = 0 WHERE user_id = ? AND advice_pending = 1
+    `).run(userId);
+    if (claimed.changes === 0) {
+      return res.json(success(null, '无需生成'));
     }
 
     const userInfoStr = [

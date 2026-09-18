@@ -10,6 +10,7 @@ const { staticUrl } = require('../utils/staticUrl');
 const { safeDeleteLocalFile, deleteUserLocalFiles } = require('../utils/deleteUserFiles');
 const taskService = require('../services/taskService');
 const achievementService = require('../services/achievementService');
+const { getChinaDateStr, getChinaDateStrOffset } = require('../utils/chinaTime');
 
 // 确保头像目录存在
 const avatarDir = path.join(__dirname, '../../public/avatars');
@@ -111,6 +112,7 @@ function getMe(req, res) {
 
   return res.json(success({
     id: user.id,
+    user_id: user.user_id,
     username: user.username,
     phone: user.phone,
     nickname: user.nickname,
@@ -266,7 +268,7 @@ function updateProfile(req, res) {
 
     // 如果更新了当前体重，同步把今天的体重记录也更新，避免“今日体重”和 profile 当前体重不一致
     if (current_weight !== undefined && current_weight !== null) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getChinaDateStr();
       const existing = db.prepare(`
         SELECT id FROM body_records
         WHERE user_id = ? AND record_date = ? AND type = 'weight' AND status = 1

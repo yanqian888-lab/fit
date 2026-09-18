@@ -950,6 +950,7 @@ function initTables() {
       role VARCHAR(16) DEFAULT 'primary' CHECK(role IN ('primary', 'backup')),
       sort_order INTEGER DEFAULT 0,
       is_enabled TINYINT DEFAULT 1,
+      extra_params TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -1355,7 +1356,10 @@ function migrateTables() {
   try {
     db.exec(`ALTER TABLE users DROP COLUMN plain_password;`);
   } catch (err) {
-    // 老版本 SQLite 不支持 DROP COLUMN 时静默跳过，该列已从新库 CREATE TABLE 中移除
+    // 仅忽略"无此列"错误（列已不存在或老版本不支持 DROP COLUMN），其他错误向上抛出
+    if (!/no such column|no such table|near "DROP"/i.test(err.message)) {
+      throw err;
+    }
   }
 
   // 新增 AI 配置表相关迁移
@@ -1374,6 +1378,7 @@ function migrateTables() {
         role VARCHAR(16) DEFAULT 'primary' CHECK(role IN ('primary', 'backup')),
         sort_order INTEGER DEFAULT 0,
         is_enabled TINYINT DEFAULT 1,
+        extra_params TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -1381,6 +1386,17 @@ function migrateTables() {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_configs_role_sort ON ai_configs(role, sort_order);`);
   } catch (err) {
     console.error('AI 配置表迁移失败:', err.message);
+  }
+
+  // 存量库补齐 ai_configs.extra_params 列（历史建表语句缺该列，生产库曾手工添加）
+  try {
+    const cols = db.prepare(`PRAGMA table_info(ai_configs)`).all().map(c => c.name);
+    if (!cols.includes('extra_params')) {
+      db.exec(`ALTER TABLE ai_configs ADD COLUMN extra_params TEXT`);
+      console.log('迁移: ai_configs 补齐 extra_params 列');
+    }
+  } catch (err) {
+    console.error('ai_configs.extra_params 列迁移失败:', err.message);
   }
 
   try {
@@ -1989,6 +2005,16 @@ function migrateTables() {
     addColumnIfNotExists('pet_states_lib', 'scene_key', 'VARCHAR(32) DEFAULT NULL');
   } catch (err) {
     console.error('pet_states_lib 序列帧/坐标/场景字段迁移失败:', err.message);
+  }
+
+  // 宠物状态库补充 App 端坐标/尺寸字段（与小程序端独立配置；全空 = 跟随小程序端）
+  try {
+    addColumnIfNotExists('pet_states_lib', 'app_pos_x', 'INTEGER DEFAULT NULL');
+    addColumnIfNotExists('pet_states_lib', 'app_pos_y', 'INTEGER DEFAULT NULL');
+    addColumnIfNotExists('pet_states_lib', 'app_width', 'INTEGER DEFAULT NULL');
+    addColumnIfNotExists('pet_states_lib', 'app_height', 'INTEGER DEFAULT NULL');
+  } catch (err) {
+    console.error('pet_states_lib App 端坐标/尺寸字段迁移失败:', err.message);
   }
 
   // 事件照片表（同一事件多照片，掉落时随机一张）
