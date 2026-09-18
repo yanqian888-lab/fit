@@ -41,7 +41,8 @@ function cmsAuthMiddleware(req, res, next) {
     req.cmsUserId = user.id;
     req.cmsUsername = user.username;
     req.cmsRoleId = user.role_id;
-    req.cmsPermissions = Array.isArray(rolePermissions) ? rolePermissions : (decoded.permissions || []);
+    // 权限以数据库角色表为准（已在第30-39行读取），不使用 token 中可能过期的 permissions
+    req.cmsPermissions = rolePermissions;
     next();
   } catch (err) {
     return res.status(401).json(error('登录已过期，请重新登录', 401));
