@@ -105,12 +105,12 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
+import AppPage from '../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
-import { museumApi, recordApi } from '../../api';
-import { showRewardToast } from '../../utils/rewardToast.js';
-import { resolveStaticUrl } from '../../utils/environment.js';
-import AppModal from '../../components/AppModal.vue';
+import { museumApi, recordApi } from '../api';
+import { showRewardToast } from '../utils/rewardToast.js';
+import { resolveStaticUrl } from '../utils/environment.js';
+import AppModal from '../components/AppModal.vue';
 
 const recipe = ref({});
 const recipeId = ref(null);
@@ -355,7 +355,7 @@ async function onPickMeal(mealTime) {
 }
 
 function editRecipe() {
-  uni.navigateTo({ url: `/pages/museum/item-edit?id=${recipeId.value}&type=recipe` });
+  uni.navigateTo({ url: `/pagesMuseum/item-edit?id=${recipeId.value}&type=recipe` });
 }
 
 function deleteRecipe() {

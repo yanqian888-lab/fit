@@ -63,14 +63,14 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
+import AppPage from '../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { museumApi } from '../../api';
-import { formatDate } from '../../utils/date';
-import AppEmpty from '../../components/AppEmpty.vue';
-import AppLoadMore from '../../components/AppLoadMore.vue';
-import AppModal from '../../components/AppModal.vue';
+import { museumApi } from '../api';
+import { formatDate } from '../utils/date';
+import AppEmpty from '../components/AppEmpty.vue';
+import AppLoadMore from '../components/AppLoadMore.vue';
+import AppModal from '../components/AppModal.vue';
 
 // 删除确认弹框状态
 const showDeleteModal = ref(false);
@@ -174,11 +174,11 @@ function formatEmotions(emotion) {
 }
 
 function addInsight() {
-  uni.navigateTo({ url: '/pages/museum/item-edit?type=insight' });
+  uni.navigateTo({ url: '/pagesMuseum/item-edit?type=insight' });
 }
 
 function editItem(item) {
-  uni.navigateTo({ url: `/pages/museum/item-edit?id=${item.id}&type=${item.type}` });
+  uni.navigateTo({ url: `/pagesMuseum/item-edit?id=${item.id}&type=${item.type}` });
 }
 
 function deleteItem(item) {

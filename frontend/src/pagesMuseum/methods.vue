@@ -53,13 +53,13 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
+import AppPage from '../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
-import { museumApi } from '../../api';
-import AppEmpty from '../../components/AppEmpty.vue';
-import AppLoadMore from '../../components/AppLoadMore.vue';
-import AppModal from '../../components/AppModal.vue';
-import { formatDateTime } from '../../utils/date';
+import { museumApi } from '../api';
+import AppEmpty from '../components/AppEmpty.vue';
+import AppLoadMore from '../components/AppLoadMore.vue';
+import AppModal from '../components/AppModal.vue';
+import { formatDateTime } from '../utils/date';
 
 // 删除确认弹框状态
 const showDeleteModal = ref(false);
@@ -119,11 +119,11 @@ function onSearch() {
 }
 
 function editItem(item) {
-  uni.navigateTo({ url: `/pages/museum/item-edit?id=${item.id}&type=method` });
+  uni.navigateTo({ url: `/pagesMuseum/item-edit?id=${item.id}&type=method` });
 }
 
 function goAdd() {
-  uni.navigateTo({ url: '/pages/museum/item-edit?type=method' });
+  uni.navigateTo({ url: '/pagesMuseum/item-edit?type=method' });
 }
 
 async function remove(id) {
@@ -208,7 +208,7 @@ async function confirmDelete() {
   background: $bg-card;
   border-radius: 32rpx;
   padding: $spacing-md;
-  margin: 0 48rpx $spacing-sm;
+  margin: 0 32rpx $spacing-sm;
   box-shadow: $shadow-card;
 }
 

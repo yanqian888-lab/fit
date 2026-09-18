@@ -28,133 +28,145 @@
       }
     },
     {
-      "path": "pages/record/diet-detail",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/add-food",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/create-food",
-      "style": {
-        "navigationBarTitleText": "创建食物"
-      }
-    },
-    {
-      "path": "pages/record/food-detail",
-      "style": {
-        "navigationBarTitleText": "食物详情"
-      }
-    },
-    {
-      "path": "pages/record/habit",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/mood",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/exercise-detail",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/add-exercise",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/record/body-data",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
       "path": "pages/museum/index",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/diary",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/diary-generate",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/diary-detail",
-      "style": {
-        "navigationBarTitleText": "日记详情"
-      }
-    },
-    {
-      "path": "pages/museum/milestones",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/recipes",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/insights",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/item-edit",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/compare",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/photo-upload",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/recipe-detail",
-      "style": {
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/museum/methods",
       "style": {
         "navigationStyle": "custom"
       }
     }
   ],
   "subPackages": [
+    {
+      "root": "pagesRecord",
+      "pages": [
+        {
+          "path": "diet-detail",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "add-food",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "create-food",
+          "style": {
+            "navigationBarTitleText": "创建食物",
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "food-detail",
+          "style": {
+            "navigationBarTitleText": "食物详情",
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "habit",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "mood",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "exercise-detail",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "add-exercise",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "body-data",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
+    {
+      "root": "pagesMuseum",
+      "pages": [
+        {
+          "path": "diary",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "diary-generate",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "diary-detail",
+          "style": {
+            "navigationBarTitleText": "日记详情"
+          }
+        },
+        {
+          "path": "milestones",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "recipes",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "insights",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "item-edit",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "compare",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "photo-upload",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "recipe-detail",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        },
+        {
+          "path": "methods",
+          "style": {
+            "navigationStyle": "custom"
+          }
+        }
+      ]
+    },
     {
       "root": "pages/login",
       "pages": [
@@ -306,19 +318,22 @@
         {
           "path": "data-manage",
           "style": {
-            "navigationBarTitleText": "数据管理"
+            "navigationBarTitleText": "数据管理",
+            "navigationStyle": "custom"
           }
         },
         {
           "path": "achievement",
           "style": {
-            "navigationBarTitleText": "成就中心"
+            "navigationBarTitleText": "成就中心",
+            "navigationStyle": "custom"
           }
         },
         {
           "path": "notifications",
           "style": {
-            "navigationBarTitleText": "通知设置"
+            "navigationBarTitleText": "通知设置",
+            "navigationStyle": "custom"
           }
         },
         {
@@ -348,13 +363,15 @@
         {
           "path": "help",
           "style": {
-            "navigationBarTitleText": "帮助中心"
+            "navigationBarTitleText": "帮助中心",
+            "navigationStyle": "custom"
           }
         },
         {
           "path": "help-detail",
           "style": {
-            "navigationBarTitleText": "帮助详情"
+            "navigationBarTitleText": "帮助详情",
+            "navigationStyle": "custom"
           }
         },
         {
@@ -377,13 +394,15 @@
         {
           "path": "feedback",
           "style": {
-            "navigationBarTitleText": "用户反馈"
+            "navigationBarTitleText": "用户反馈",
+            "navigationStyle": "custom"
           }
         },
         {
           "path": "privacy",
           "style": {
-            "navigationBarTitleText": "隐私政策"
+            "navigationBarTitleText": "隐私政策",
+            "navigationStyle": "custom"
           }
         }
       ]
@@ -420,6 +439,10 @@
     "pages/pet/index": {
       "network": "all",
       "packages": ["pages/shop", "pages/inventory", "pages/tasks"]
+    },
+    "pages/record/index": {
+      "network": "all",
+      "packages": ["pagesRecord"]
     }
   },
   "globalStyle": {

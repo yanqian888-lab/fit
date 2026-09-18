@@ -48,11 +48,11 @@
 
 <script setup>
 import { ref, computed } from 'vue';
-import { systemApi } from '../../api';
-import AppPage from '../../components/AppPage.vue';
-import AppHeader from '../../components/AppHeader.vue';
-import AppInput from '../../components/AppInput.vue';
-import AppButton from '../../components/AppButton.vue';
+import { systemApi } from '../api';
+import AppPage from '../components/AppPage.vue';
+import AppHeader from '../components/AppHeader.vue';
+import AppInput from '../components/AppInput.vue';
+import AppButton from '../components/AppButton.vue';
 
 const categories = [
   { value: '主食类', label: '主食类' },

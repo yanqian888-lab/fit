@@ -36,9 +36,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
-import { getToday } from '../../utils/date';
-import AppPage from '../../components/AppPage.vue';
-import AppButton from '../../components/AppButton.vue';
+import { getToday } from '../utils/date';
+import AppPage from '../components/AppPage.vue';
+import AppButton from '../components/AppButton.vue';
 
 const angles = ['正面', '侧面', '背面'];
 const angleValues = ['front', 'side', 'back'];

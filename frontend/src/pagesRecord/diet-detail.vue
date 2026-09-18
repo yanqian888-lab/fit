@@ -107,7 +107,7 @@
 
     <!-- 食物编辑弹窗 -->
     <view class="panel-overlay" :class="{ show: showEditPanel }" @click="closeEditPanel"></view>
-    <view class="edit-panel" :class="{ show: showEditPanel }">
+    <view class="edit-panel" :class="{ show: showEditPanel }" :style="editPanelStyle">
       <view class="panel-header">
         <text class="panel-title">编辑{{ editingFoodName }}</text>
         <text class="panel-close" @click="closeEditPanel">✕</text>
@@ -115,12 +115,12 @@
       <view class="panel-body">
         <view v-if="!isGramOnlyFood" class="form-row">
           <text class="form-label">数量</text>
-          <input v-model="editQuantity" type="digit" class="form-input" />
+          <input v-model="editQuantity" type="digit" class="form-input" :adjust-position="false" @focus="onEditInputFocus" @blur="onEditInputBlur" />
           <text class="form-unit">{{ editingFoodUnit }}</text>
         </view>
         <view class="form-row">
           <text class="form-label">重量</text>
-          <input v-model="editWeight" type="digit" class="form-input" />
+          <input v-model="editWeight" type="digit" class="form-input" :adjust-position="false" @focus="onEditInputFocus" @blur="onEditInputBlur" />
           <text class="form-unit">g</text>
         </view>
         <text class="edit-calorie">{{ editCalorie }} 千卡</text>
@@ -153,13 +153,13 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
-import { ref, computed, onMounted, watch } from 'vue';
+import AppPage from '../components/AppPage.vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { recordApi } from '../../api';
-import { MEAL_OPTIONS, isDescriptiveUnit } from '../../utils/constants';
-import { getToday, formatDate, isFutureDate } from '../../utils/date';
-import AppModal from '../../components/AppModal.vue';
+import { recordApi } from '../api';
+import { MEAL_OPTIONS, isDescriptiveUnit } from '../utils/constants';
+import { getToday, formatDate, isFutureDate } from '../utils/date';
+import AppModal from '../components/AppModal.vue';
 
 // 删除食物确认弹框
 const showDeleteModal = ref(false);
@@ -390,7 +390,7 @@ function addFood() {
     success: (res) => {
       const meal = MEAL_OPTIONS[res.tapIndex].value;
       uni.navigateTo({
-        url: `/pages/record/add-food?meal=${meal}&date=${selectedDate.value}&editMode=1`
+        url: `/pagesRecord/add-food?meal=${meal}&date=${selectedDate.value}&editMode=1`
       });
     }
   });
@@ -415,7 +415,48 @@ function closeEditPanel() {
   editingRecord.value = null;
   editingFoodIndex.value = -1;
   editingFood.value = null;
+  // 关闭弹窗同时收起键盘并归零悬浮偏移，避免残留
+  try {
+    uni.hideKeyboard({ force: true });
+  } catch (e) { /* 部分平台不支持 force 参数，忽略 */ }
+  keyboardHeight.value = 0;
+  lastKeyboardHeight = 0;
 }
+
+/*
+ * 键盘高度监听：输入框设 adjust-position=false 后页面整体不再被键盘顶起
+ * （背景页面保持原位），改为只把编辑弹窗抬到键盘上方，
+ * 确保「热量展示」和「确认修改」按钮始终可见。
+ * 键盘高度本身是 px，直接用 px 作为 fixed bottom 偏移。
+ */
+const keyboardHeight = ref(0);
+let lastKeyboardHeight = 0;
+
+/** 键盘高度变化回调（具名函数引用，注册/注销必须是同一引用） */
+function onEditKeyboardHeightChange(res) {
+  const height = Math.max(0, Number(res && res.height) || 0);
+  keyboardHeight.value = height;
+  lastKeyboardHeight = height;
+}
+
+/** 输入框聚焦：键盘已弹着但不再派发高度事件时，用最近一次高度恢复悬浮 */
+function onEditInputFocus() {
+  if (lastKeyboardHeight > 0 && keyboardHeight.value === 0) {
+    keyboardHeight.value = lastKeyboardHeight;
+  }
+}
+
+/** 输入框失焦：归零悬浮偏移（height=0 事件丢失时兜底） */
+function onEditInputBlur() {
+  keyboardHeight.value = 0;
+}
+
+/** 编辑弹窗动态样式：键盘弹起时整体上移，热量显示/确认按钮露出 */
+const editPanelStyle = computed(() => {
+  if (keyboardHeight.value <= 0) return '';
+  // 悬浮在键盘上时去掉底部安全区 padding，避免面板与键盘之间留缝
+  return `bottom: ${keyboardHeight.value}px; padding-bottom: 48rpx;`;
+});
 
 const isGramOnlyFood = computed(() => {
   return editingFood.value && ['g', '克'].includes(editingFood.value.unit);
@@ -531,6 +572,12 @@ async function confirmDeleteFood() {
 onMounted(() => {
   load();
   loadRecordDates();
+  uni.onKeyboardHeightChange(onEditKeyboardHeightChange);
+});
+
+onUnmounted(() => {
+  // 同一函数引用注销，避免监听堆积
+  uni.offKeyboardHeightChange(onEditKeyboardHeightChange);
 });
 
 onShow(() => {

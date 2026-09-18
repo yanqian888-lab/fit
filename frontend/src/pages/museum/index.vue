@@ -160,12 +160,12 @@ const museumIconMap = {
 };
 
 const allEntries = [
-  { key: 'recipe', name: '食谱库', icon: museumIconMap.recipe, url: '/pages/museum/recipes' },
-  { key: 'insight', name: '感悟与心情', icon: museumIconMap.insight, url: '/pages/museum/insights' },
-  { key: 'photo', name: '照片墙', icon: museumIconMap.photo, url: '/pages/museum/compare' },
-  { key: 'method', name: '方法库', icon: museumIconMap.method, url: '/pages/museum/methods' },
-  { key: 'diary', name: '日记与分析', icon: museumIconMap.diary, url: '/pages/museum/diary' },
-  { key: 'milestone', name: '里程碑', icon: museumIconMap.milestone, url: '/pages/museum/milestones' }
+  { key: 'recipe', name: '食谱库', icon: museumIconMap.recipe, url: '/pagesMuseum/recipes' },
+  { key: 'insight', name: '感悟与心情', icon: museumIconMap.insight, url: '/pagesMuseum/insights' },
+  { key: 'photo', name: '照片墙', icon: museumIconMap.photo, url: '/pagesMuseum/compare' },
+  { key: 'method', name: '方法库', icon: museumIconMap.method, url: '/pagesMuseum/methods' },
+  { key: 'diary', name: '日记与分析', icon: museumIconMap.diary, url: '/pagesMuseum/diary' },
+  { key: 'milestone', name: '里程碑', icon: museumIconMap.milestone, url: '/pagesMuseum/milestones' }
 ];
 
 const visibleEntries = computed(() => {
@@ -269,23 +269,10 @@ async function saveTargetWeight() {
   }
 }
 
+// 注意：MP 端首次进入时 onShow 先于 onMounted 执行，数据加载统一放 onShow，
+// onMounted 只做缓存渲染，避免首次双发请求
 onMounted(() => {
-  // 1. 先从缓存恢复数据（避免白屏）
-  const hasCache = initFromCache();
-  // 2. 后台异步刷新
-  if (userStore.isLoggedIn) {
-    // 没有缓存时显示 loading，有缓存时直接显示缓存数据
-    if (!hasCache) {
-      loading.value = true;
-    }
-    // 使用 nextTick 让缓存数据先渲染，再刷新
-    nextTick(() => {
-      load().finally(() => {
-        loading.value = false;
-        hasCachedData.value = true;
-      });
-    });
-  }
+  initFromCache();
 });
 
 onShow(() => {

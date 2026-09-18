@@ -64,10 +64,10 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { systemApi } from '../../api';
-import AppPage from '../../components/AppPage.vue';
-import AppHeader from '../../components/AppHeader.vue';
-import AppButton from '../../components/AppButton.vue';
+import { systemApi } from '../api';
+import AppPage from '../components/AppPage.vue';
+import AppHeader from '../components/AppHeader.vue';
+import AppButton from '../components/AppButton.vue';
 
 const food = ref({});
 const foodId = ref(null);
@@ -119,7 +119,7 @@ async function toggleFavorite() {
 
 function addToDiet() {
   uni.navigateTo({
-    url: `/pages/record/add-food?foodId=${foodId.value}&source=${source.value}&name=${encodeURIComponent(food.value.name)}`
+    url: `/pagesRecord/add-food?foodId=${foodId.value}&source=${source.value}&name=${encodeURIComponent(food.value.name)}`
   });
 }
 </script>

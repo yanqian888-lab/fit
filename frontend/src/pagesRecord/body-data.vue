@@ -202,7 +202,6 @@
                 <text class="fullscreen-back-icon">‹</text>
               </view>
               <text class="fullscreen-title">体重趋势</text>
-              <view class="fullscreen-header-right"></view>
             </view>
             <view class="fullscreen-trend-svg">
               <view
@@ -239,12 +238,12 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
+import AppPage from '../components/AppPage.vue';
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { recordApi } from '../../api';
-import { showRewardToast } from '../../utils/rewardToast.js';
-import { getToday, formatDate, isFutureDate } from '../../utils/date';
+import { recordApi } from '../api';
+import { showRewardToast } from '../utils/rewardToast.js';
+import { getToday, formatDate, isFutureDate } from '../utils/date';
 
 // 日期相关
 const today = getToday();
@@ -1337,13 +1336,19 @@ onShow(() => {
 .fullscreen-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   padding: 0 0 16rpx;
   flex-shrink: 0;
+  position: relative;
 }
 
-/* 左上角返回按钮：圆形浅绿底，与 AppPage 返回键风格一致 */
+/* 左上角返回按钮：圆形浅绿底，与 AppPage 返回键风格一致。
+ * 绝对定位脱离标题居中文本；left 220rpx 映射到设备顶部边缘，避开右上角微信胶囊
+ * （旋转 90° 后标题栏即设备右边缘，返回键靠阅读视角的标题栏左侧，与胶囊错开） */
 .fullscreen-back {
+  position: absolute;
+  left: 220rpx;
+  top: 0;
   width: 64rpx;
   height: 64rpx;
   border-radius: 50%;

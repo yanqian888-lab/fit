@@ -73,15 +73,15 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
+import AppPage from '../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { museumApi } from '../../api';
-import { formatDate } from '../../utils/date';
-import { resolveStaticUrl } from '../../utils/environment.js';
-import AppEmpty from '../../components/AppEmpty.vue';
-import AppLoadMore from '../../components/AppLoadMore.vue';
-import AppModal from '../../components/AppModal.vue';
+import { museumApi } from '../api';
+import { formatDate } from '../utils/date';
+import { resolveStaticUrl } from '../utils/environment.js';
+import AppEmpty from '../components/AppEmpty.vue';
+import AppLoadMore from '../components/AppLoadMore.vue';
+import AppModal from '../components/AppModal.vue';
 
 // 删除确认弹框状态
 const showDeleteModal = ref(false);
@@ -197,11 +197,11 @@ function recipeTotalsText(item) {
 }
 
 function goDetail(id) {
-  uni.navigateTo({ url: `/pages/museum/recipe-detail?id=${id}` });
+  uni.navigateTo({ url: `/pagesMuseum/recipe-detail?id=${id}` });
 }
 
 function addRecipe() {
-  uni.navigateTo({ url: '/pages/museum/item-edit?type=recipe' });
+  uni.navigateTo({ url: '/pagesMuseum/item-edit?type=recipe' });
 }
 
 /**
@@ -213,7 +213,7 @@ function isEditableRecipe(item) {
 
 function editItem(item) {
   if (!isEditableRecipe(item)) return;
-  uni.navigateTo({ url: `/pages/museum/item-edit?id=${item.id}&type=recipe` });
+  uni.navigateTo({ url: `/pagesMuseum/item-edit?id=${item.id}&type=recipe` });
 }
 
 function deleteItem(item) {

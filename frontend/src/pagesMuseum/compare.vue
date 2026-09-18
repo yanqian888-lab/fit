@@ -32,12 +32,12 @@
 </template>
 
 <script setup>
-import { resolveStaticUrl } from '../../utils/environment.js';
+import { resolveStaticUrl } from '../utils/environment.js';
 import { ref, onMounted } from 'vue';
-import { photoApi } from '../../api';
-import AppPage from '../../components/AppPage.vue';
-import AppHeader from '../../components/AppHeader.vue';
-import AppEmpty from '../../components/AppEmpty.vue';
+import { photoApi } from '../api';
+import AppPage from '../components/AppPage.vue';
+import AppHeader from '../components/AppHeader.vue';
+import AppEmpty from '../components/AppEmpty.vue';
 
 const photos = ref([]);
 
@@ -53,7 +53,7 @@ async function loadPhotos() {
 }
 
 function goUpload() {
-  uni.navigateTo({ url: '/pages/museum/photo-upload' });
+  uni.navigateTo({ url: '/pagesMuseum/photo-upload' });
 }
 
 function previewPhoto(photo) {

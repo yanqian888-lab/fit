@@ -34,11 +34,11 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
+import AppPage from '../components/AppPage.vue';
 import { ref } from 'vue';
-import { museumApi } from '../../api';
-import { showRewardToast } from '../../utils/rewardToast.js';
-import { getToday } from '../../utils/date';
+import { museumApi } from '../api';
+import { showRewardToast } from '../utils/rewardToast.js';
+import { getToday } from '../utils/date';
 
 const selectedMood = ref('');
 const note = ref('');

@@ -51,9 +51,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { aiApi } from '../../api';
-import { showGlobalLoading, hideGlobalLoading } from '../../utils/loading';
-import AppModal from '../../components/AppModal.vue';
+import { aiApi } from '../api';
+import { showGlobalLoading, hideGlobalLoading } from '../utils/loading';
+import AppModal from '../components/AppModal.vue';
 
 const id = ref(null);
 const date = ref('');

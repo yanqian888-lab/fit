@@ -130,15 +130,15 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
+import AppPage from '../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { recordApi, systemApi } from '../../api';
-import { showRewardToast } from '../../utils/rewardToast.js';
-import { MEAL_OPTIONS, isDescriptiveUnit } from '../../utils/constants';
-import AppButton from '../../components/AppButton.vue';
-import AppEmpty from '../../components/AppEmpty.vue';
-import { getToday } from '../../utils/date';
+import { recordApi, systemApi } from '../api';
+import { showRewardToast } from '../utils/rewardToast.js';
+import { MEAL_OPTIONS, isDescriptiveUnit } from '../utils/constants';
+import AppButton from '../components/AppButton.vue';
+import AppEmpty from '../components/AppEmpty.vue';
+import { getToday } from '../utils/date';
 
 const pageQuery = ref({});
 const isEdit = ref(false);
@@ -335,7 +335,7 @@ function selectFood(food) {
 }
 
 function goFoodDetail(food) {
-  uni.navigateTo({ url: `/pages/record/food-detail?id=${food.id}` });
+  uni.navigateTo({ url: `/pagesRecord/food-detail?id=${food.id}` });
 }
 
 const categories = [
@@ -408,7 +408,7 @@ function onMealChange(e) {
 }
 
 function goCreateFood() {
-  uni.navigateTo({ url: '/pages/record/create-food' });
+  uni.navigateTo({ url: '/pagesRecord/create-food' });
 }
 
 function getFoodStatus(food) {

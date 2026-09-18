@@ -21,19 +21,19 @@
     <view v-if="activeTab === 'data'" class="tab-content">
     <!-- 快捷入口 -->
     <view class="quick-actions">
-      <view class="action-item" @click="goTo('/pages/record/diet-detail')">
+      <view class="action-item" @click="goTo('/pagesRecord/diet-detail')">
         <view class="action-icon-box">
           <image class="action-icon-img" :src="resolveStaticUrl('/static/image/icon/jiyinshi@3x.png')" mode="aspectFit" />
         </view>
         <text class="action-label">记饮食</text>
       </view>
-      <view class="action-item" @click="goTo('/pages/record/exercise-detail')">
+      <view class="action-item" @click="goTo('/pagesRecord/exercise-detail')">
         <view class="action-icon-box">
           <image class="action-icon-img" :src="resolveStaticUrl('/static/image/icon/jiyundong.png')" mode="aspectFit" />
         </view>
         <text class="action-label">记运动</text>
       </view>
-      <view class="action-item" @click="goTo('/pages/record/body-data')">
+      <view class="action-item" @click="goTo('/pagesRecord/body-data')">
         <view class="action-icon-box">
           <image class="action-icon-img" :src="resolveStaticUrl('/static/image/icon/jitizhong@3x.png')" mode="aspectFit" />
         </view>
@@ -44,7 +44,7 @@
     <!-- 今日摄入卡片 -->
     <view class="intake-card">
       <text class="intake-card-title">今日摄入</text>
-      <view class="intake-main">
+      <view class="intake-main" @click="goTo('/pagesRecord/diet-detail')">
         <view class="intake-ring-wrap">
           <view
             class="intake-ring"
@@ -69,7 +69,7 @@
         </view>
       </view>
 
-      <view class="weight-bar">
+      <view class="weight-bar" @click="goToBody">
         <view class="weight-bar-left">
           <text class="weight-label">今日体重</text>
           <view class="weight-value-row">
@@ -532,18 +532,23 @@ const macroList = computed(() => [
 
 const fastingActionText = computed(() => {
   if (!hasStartedToday.value) {
-    // 只要今天还没手动打卡，按钮就一直高亮可点
+    // 未打卡：用餐窗口（系统设置时间推算）已结束则提示并禁用，避免超时后仍可点击打卡
+    if (isEatingWindowOver.value) return '用餐时间结束了';
     return '开始用餐打卡';
   }
+  if (fastingStatus.value === 'completed' || fastingStatus.value === 'failed') return '今日已完成';
   if (isInEatingWindow.value) return '提前结束用餐';
+  // 已打开始卡但没打结束卡，用餐时间已结束
+  if (isEatingWindowOver.value) return '用餐时间结束了';
   return '今日已完成';
 });
 
 const fastingDisabled = computed(() => {
-  // 今天还没手动打卡时，按钮始终可点；只有已打卡且用餐窗口结束后才置灰
-  if (!hasStartedToday.value) return false;
-  if (hasStartedToday.value && !isInEatingWindow.value) return true;
-  return false;
+  // 今天还没手动打卡时，窗口未结束按钮可点；窗口结束后置灰
+  if (!hasStartedToday.value) return isEatingWindowOver.value;
+  if (isInEatingWindow.value) return false;
+  // 已打卡且不在用餐窗口（未开始/已结束/已完成）均不可点
+  return true;
 });
 
 function onFastingAction() {
@@ -608,6 +613,9 @@ watch([panelSelectedMode, customTargetHours], () => {
   }
 });
 const countdownTimer = ref(null);
+// 随倒计时每秒刷新的当前时间戳，驱动用餐窗口边界的按钮状态自动切换
+const nowTick = ref(Date.now());
+const fastingStatus = ref('');
 const countdownText = ref('--:--');
 const fastingStats = ref(null);
 
@@ -630,8 +638,14 @@ const fastingModeText = computed(() => {
 
 const isInEatingWindow = computed(() => {
   if (!eatingStart.value || !eatingEnd.value) return false;
-  const now = Date.now();
+  const now = nowTick.value;
   return now >= eatingStart.value && now < eatingEnd.value;
+});
+
+// 用餐窗口是否已结束（含未打卡时的系统设定窗口、打卡后按实际开始时间推算的窗口）
+const isEatingWindowOver = computed(() => {
+  if (!eatingStart.value || !eatingEnd.value) return false;
+  return nowTick.value >= eatingEnd.value;
 });
 
 const eatingStatusText = computed(() => {
@@ -710,6 +724,7 @@ async function loadFastingFromServer() {
       }
     }
     hasStartedToday.value = f.status === 'fasting' || f.status === 'completed' || f.status === 'failed';
+    fastingStatus.value = f.status || '';
     if (f.eating_window_start && f.eating_window_end) {
       const today = new Date().toISOString().split('T')[0];
       const s = new Date(`${today}T${f.eating_window_start}`);
@@ -735,8 +750,9 @@ async function loadFastingFromServer() {
 }
 
 function updateCountdown() {
+  nowTick.value = Date.now();
   if (!eatingEnd.value) { countdownText.value = '--:--'; return; }
-  const now = Date.now();
+  const now = nowTick.value;
   let target;
   if (now < eatingStart.value) target = eatingStart.value;
   else if (now < eatingEnd.value) target = eatingEnd.value;
@@ -814,6 +830,7 @@ async function confirmDailyAdjust() {
   eatingStart.value = dailyAdjustStart.value;
   eatingEnd.value = dailyAdjustEnd.value;
   hasStartedToday.value = true;
+  fastingStatus.value = 'fasting';
   // 首次打卡选择的时间沉淀为长期设置，之后每天到点自动滚动
   startTimeValue.value = [...dailyAdjustTimeValue.value];
   saveSettings();
@@ -861,7 +878,9 @@ async function endEatingEarly() {
     return; // 失败时不改本地状态
   }
   eatingEnd.value = Date.now();
+  nowTick.value = eatingEnd.value;
   hasStartedToday.value = true;
+  fastingStatus.value = 'completed';
   saveDailyState();
   stopCountdown();
   countdownText.value = '00:00';
@@ -916,6 +935,7 @@ function saveDailyState() {
 
 function resetDailyState() {
   hasStartedToday.value = false;
+  fastingStatus.value = '';
   eatingStart.value = null;
   eatingEnd.value = null;
   saveDailyState();
@@ -998,39 +1018,13 @@ async function confirmFastingSettings() {
 }
 
 /**
- * 页面挂载：先从缓存恢复数据，再后台异步刷新
+ * 页面挂载：只做缓存恢复渲染；MP 端首次进入时 onShow 先于 onMounted 执行，
+ * 数据请求统一放 onShow，避免首次双发请求
  */
+let recordFirstEntryDone = false;
+
 onMounted(() => {
-  // 1. 先从缓存恢复数据（避免白屏）
-  const hasCache = initFromCache();
-  
-  // 2. 后台异步刷新
-  if (!userStore.isLoggedIn) return;
-  
-  if (!hasCache) {
-    loading.value = true;
-  }
-  
-  nextTick(() => {
-    try {
-      load();
-      loadWaterToday();
-      loadSettings();
-      ensureTodayWindow();
-      loadDailyState();
-      checkDateRollover();
-      loadFastingFromServer().then(() => {
-        ensureTodayWindow();
-        loadFastingStats();
-        if (eatingStart.value && eatingEnd.value) startCountdown();
-      }).catch(() => { /* 静默失败，不阻塞页面 */ });
-    } catch (e) {
-      console.error('[record] onMounted 数据加载异常:', e);
-    } finally {
-      loading.value = false;
-      hasCachedData.value = true;
-    }
-  });
+  initFromCache();
 });
 
 onShow(() => {
@@ -1055,6 +1049,13 @@ onShow(() => {
     if (shouldShowLoading) {
       loading.value = true;
     }
+    // 首次进入补一轮原 onMounted 专属的加载项（饮水/设置/断食统计）
+    const isFirstEntry = !recordFirstEntryDone;
+    if (isFirstEntry) {
+      recordFirstEntryDone = true;
+      loadWaterToday();
+      loadSettings();
+    }
     nextTick(() => {
       try {
         Promise.allSettled([
@@ -1063,7 +1064,8 @@ onShow(() => {
           Promise.resolve(checkDateRollover()),
           Promise.resolve(ensureTodayWindow()),
           loadFastingFromServer(),
-          activeTab.value === 'workout' ? loadWorkouts() : Promise.resolve()
+          activeTab.value === 'workout' ? loadWorkouts() : Promise.resolve(),
+          isFirstEntry ? loadFastingStats() : Promise.resolve()
         ]).then(() => {
           if (eatingStart.value && eatingEnd.value) startCountdown();
         }).catch(err => {
@@ -1108,7 +1110,7 @@ onPullDownRefresh(async () => {
 function goTo(url) {
   if (!userStore.requireAuth()) return; uni.navigateTo({ url }); }
 function goToBody() {
-  if (!userStore.requireAuth()) return; uni.navigateTo({ url: '/pages/record/body-data' }); }
+  if (!userStore.requireAuth()) return; uni.navigateTo({ url: '/pagesRecord/body-data' }); }
 
 /**
  * 加载今日数据
@@ -1178,7 +1180,7 @@ function generateDiary() {
   if (!userStore.requireAuth()) return;
   // 已生成：直接进入日记与分析页（默认选中当天）
   if (todayDiaryExists.value) {
-    uni.navigateTo({ url: '/pages/museum/diary' });
+    uni.navigateTo({ url: '/pagesMuseum/diary' });
     return;
   }
   // 每天首次生成需二次确认
@@ -1189,7 +1191,7 @@ function generateDiary() {
  */
 function confirmGenerateDiary() {
   showDiaryModal.value = false;
-  uni.navigateTo({ url: `/pages/museum/diary-generate?date=${today}` });
+  uni.navigateTo({ url: `/pagesMuseum/diary-generate?date=${today}` });
 }
 </script>
 <style lang="scss" scoped>

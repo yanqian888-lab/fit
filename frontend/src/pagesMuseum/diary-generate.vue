@@ -66,12 +66,12 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
+import AppPage from '../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
-import { aiApi } from '../../api';
-import { getToday } from '../../utils/date';
-import { checkPermission, reportCount } from '../../utils/trial.js';
-import AuthPopup from '../../components/AuthPopup.vue';
+import { aiApi } from '../api';
+import { getToday } from '../utils/date';
+import { checkPermission, reportCount } from '../utils/trial.js';
+import AuthPopup from '../components/AuthPopup.vue';
 
 function formatFastingTime(ts) {
   if (!ts) return '';
@@ -106,7 +106,7 @@ function getFastingParams(date) {
   }
   return params;
 }
-import AppButton from '../../components/AppButton.vue';
+import AppButton from '../components/AppButton.vue';
 
 const props = defineProps({
   date: { type: String, default: '' }

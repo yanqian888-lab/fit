@@ -118,15 +118,15 @@
 </template>
 
 <script setup>
-import { resolveStaticUrl } from '../../utils/environment.js';
-import AppPage from '../../components/AppPage.vue';
+import { resolveStaticUrl } from '../utils/environment.js';
+import AppPage from '../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
-import { aiApi, museumApi, recordApi } from '../../api';
-import { checkPermission, reportCount } from '../../utils/trial.js';
-import AuthPopup from '../../components/AuthPopup.vue';
-import AppModal from '../../components/AppModal.vue';
+import { aiApi, museumApi, recordApi } from '../api';
+import { checkPermission, reportCount } from '../utils/trial.js';
+import AuthPopup from '../components/AuthPopup.vue';
+import AppModal from '../components/AppModal.vue';
 
-import { showGlobalLoading, hideGlobalLoading } from '../../utils/loading';
+import { showGlobalLoading, hideGlobalLoading } from '../utils/loading';
 
 // 生成今日分析确认弹框
 const showGenerateModal = ref(false);
@@ -336,7 +336,7 @@ async function loadDiaries() {
 function goToGenerateToday() {
   // 已生成：直接查看（服务端幂等返回当天日记）；首次生成：二次确认后进入生成页
   if (diaries.value[todayStr.value]) {
-    uni.navigateTo({ url: `/pages/museum/diary-generate?date=${todayStr.value}` });
+    uni.navigateTo({ url: `/pagesMuseum/diary-generate?date=${todayStr.value}` });
     return;
   }
   showGenerateModal.value = true;
@@ -347,7 +347,7 @@ function goToGenerateToday() {
  */
 function confirmGenerateToday() {
   showGenerateModal.value = false;
-  uni.navigateTo({ url: `/pages/museum/diary-generate?date=${todayStr.value}` });
+  uni.navigateTo({ url: `/pagesMuseum/diary-generate?date=${todayStr.value}` });
 }
 
 const todayDiaryTitle = computed(() => {

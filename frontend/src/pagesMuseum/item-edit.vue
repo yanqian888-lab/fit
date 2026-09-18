@@ -93,10 +93,10 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
+import AppPage from '../components/AppPage.vue';
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
-import { museumApi } from '../../api';
-import { uploadFile } from '../../utils/request';
+import { museumApi } from '../api';
+import { uploadFile } from '../utils/request';
 
 /*
  * 键盘高度监听：

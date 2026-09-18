@@ -147,11 +147,11 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
+import AppPage from '../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
 import { onShow, onLoad } from '@dcloudio/uni-app';
-import { recordApi } from '../../api';
-import { getToday, isFutureDate } from '../../utils/date';
+import { recordApi } from '../api';
+import { getToday, isFutureDate } from '../utils/date';
 
 const tabs = [
   { label: '喝水', value: 'water' },
@@ -341,7 +341,7 @@ async function loadHabits() {
   }
 }
 
-import { showRewardToast } from '../../utils/rewardToast.js';
+import { showRewardToast } from '../utils/rewardToast.js';
 
 async function saveHabit(type, value, unit, remark, id) {
   const res = await recordApi.saveHabit({
@@ -426,7 +426,7 @@ async function saveDefecation() {
 }
 
 function goMood() {
-  uni.navigateTo({ url: '/pages/record/mood' });
+  uni.navigateTo({ url: '/pagesRecord/mood' });
 }
 </script>
 

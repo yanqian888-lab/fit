@@ -107,7 +107,7 @@
 
     <!-- 编辑弹窗 -->
     <view v-if="showEditModal" class="modal-mask" @click="closeEditModal"></view>
-    <view v-if="showEditModal" class="edit-modal">
+    <view v-if="showEditModal" class="edit-modal" :style="editModalStyle">
       <view class="modal-header">
         <text class="modal-title">编辑运动</text>
         <text class="modal-close" @click="closeEditModal">✕</text>
@@ -117,22 +117,22 @@
           <text class="edit-exercise-name">{{ exercise.name }}</text>
           <view class="edit-field">
             <text class="edit-label">时长</text>
-            <input v-model="editDurations[index]" type="digit" class="edit-input" />
+            <input v-model="editDurations[index]" type="digit" class="edit-input" :adjust-position="false" @focus="onEditInputFocus" @blur="onEditInputBlur" />
             <text class="edit-unit">分钟</text>
           </view>
           <view class="edit-field" v-if="exercise.distance !== undefined">
             <text class="edit-label">距离</text>
-            <input v-model="editDistances[index]" type="digit" class="edit-input" />
+            <input v-model="editDistances[index]" type="digit" class="edit-input" :adjust-position="false" @focus="onEditInputFocus" @blur="onEditInputBlur" />
             <text class="edit-unit">km</text>
           </view>
           <view class="edit-field" v-if="exercise.sets !== undefined">
             <text class="edit-label">组数</text>
-            <input v-model="editSets[index]" type="digit" class="edit-input" />
+            <input v-model="editSets[index]" type="digit" class="edit-input" :adjust-position="false" @focus="onEditInputFocus" @blur="onEditInputBlur" />
             <text class="edit-unit">组</text>
           </view>
           <view class="edit-field" v-if="exercise.reps !== undefined">
             <text class="edit-label">次数</text>
-            <input v-model="editReps[index]" type="digit" class="edit-input" />
+            <input v-model="editReps[index]" type="digit" class="edit-input" :adjust-position="false" @focus="onEditInputFocus" @blur="onEditInputBlur" />
             <text class="edit-unit">次</text>
           </view>
         </view>
@@ -162,13 +162,13 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
-import { ref, computed, onMounted } from 'vue';
+import AppPage from '../components/AppPage.vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { recordApi } from '../../api';
-import { EXERCISE_TYPES } from '../../utils/constants';
-import { getToday, formatDate, isFutureDate } from '../../utils/date';
-import AppModal from '../../components/AppModal.vue';
+import { recordApi } from '../api';
+import { EXERCISE_TYPES } from '../utils/constants';
+import { getToday, formatDate, isFutureDate } from '../utils/date';
+import AppModal from '../components/AppModal.vue';
 
 // 删除确认弹框
 const showDeleteModal = ref(false);
@@ -401,7 +401,7 @@ async function loadRecordDates() {
 
 function addExercise() {
   uni.navigateTo({
-    url: `/pages/record/add-exercise?date=${selectedDate.value}`
+    url: `/pagesRecord/add-exercise?date=${selectedDate.value}`
   });
 }
 
@@ -421,7 +421,48 @@ function closeEditModal() {
   editDistances.value = [];
   editSets.value = [];
   editReps.value = [];
+  // 关闭弹窗同时收起键盘并归零悬浮偏移，避免残留
+  try {
+    uni.hideKeyboard({ force: true });
+  } catch (e) { /* 部分平台不支持 force 参数，忽略 */ }
+  keyboardHeight.value = 0;
+  lastKeyboardHeight = 0;
 }
+
+/*
+ * 键盘高度监听：输入框设 adjust-position=false 后页面整体不再被键盘顶起
+ * （背景页面保持原位），改为只把编辑弹窗抬到键盘上方，
+ * 确保「热量展示」和「保存/取消」按钮始终可见。
+ * 键盘高度本身是 px，直接用 px 作为 fixed bottom 偏移。
+ */
+const keyboardHeight = ref(0);
+let lastKeyboardHeight = 0;
+
+/** 键盘高度变化回调（具名函数引用，注册/注销必须是同一引用） */
+function onEditKeyboardHeightChange(res) {
+  const height = Math.max(0, Number(res && res.height) || 0);
+  keyboardHeight.value = height;
+  lastKeyboardHeight = height;
+}
+
+/** 输入框聚焦：键盘已弹着但不再派发高度事件时，用最近一次高度恢复悬浮 */
+function onEditInputFocus() {
+  if (lastKeyboardHeight > 0 && keyboardHeight.value === 0) {
+    keyboardHeight.value = lastKeyboardHeight;
+  }
+}
+
+/** 输入框失焦：归零悬浮偏移（height=0 事件丢失时兜底） */
+function onEditInputBlur() {
+  keyboardHeight.value = 0;
+}
+
+/** 编辑弹窗动态样式：键盘弹起时整体上移，热量显示/操作按钮露出 */
+const editModalStyle = computed(() => {
+  if (keyboardHeight.value <= 0) return '';
+  // 悬浮在键盘上时去掉底部安全区 padding，避免面板与键盘之间留缝
+  return `bottom: ${keyboardHeight.value}px; padding-bottom: 48rpx;`;
+});
 
 async function saveEdit() {
   if (!editingItem.value) return;
@@ -482,6 +523,12 @@ async function confirmDeleteItem() {
 onMounted(() => {
   load();
   loadRecordDates();
+  uni.onKeyboardHeightChange(onEditKeyboardHeightChange);
+});
+
+onUnmounted(() => {
+  // 同一函数引用注销，避免监听堆积
+  uni.offKeyboardHeightChange(onEditKeyboardHeightChange);
 });
 
 onShow(() => {
@@ -868,7 +915,10 @@ onShow(() => {
   padding: 32rpx;
   z-index: 1001;
   max-height: 70vh;
-  overflow-y: auto;
+  /* 三段式：头部/按钮固定，仅中间内容区滚动 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .modal-header {
@@ -876,6 +926,7 @@ onShow(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24rpx;
+  flex-shrink: 0;
 }
 
 .modal-title {
@@ -890,6 +941,9 @@ onShow(() => {
 }
 
 .modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   margin-bottom: 24rpx;
 }
 
@@ -954,6 +1008,7 @@ onShow(() => {
 .modal-footer {
   display: flex;
   gap: 20rpx;
+  flex-shrink: 0;
 }
 
 .modal-btn {

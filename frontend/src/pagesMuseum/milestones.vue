@@ -18,12 +18,12 @@
 </template>
 
 <script setup>
-import { resolveStaticUrl } from '../../utils/environment.js';
+import { resolveStaticUrl } from '../utils/environment.js';
 import { ref, onMounted } from 'vue';
-import { aiApi } from '../../api';
-import AppPage from '../../components/AppPage.vue';
-import AppHeader from '../../components/AppHeader.vue';
-import AppEmpty from '../../components/AppEmpty.vue';
+import { aiApi } from '../api';
+import AppPage from '../components/AppPage.vue';
+import AppHeader from '../components/AppHeader.vue';
+import AppEmpty from '../components/AppEmpty.vue';
 
 const milestones = ref([]);
 

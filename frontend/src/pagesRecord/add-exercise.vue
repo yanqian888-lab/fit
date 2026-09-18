@@ -124,13 +124,13 @@
 </template>
 
 <script setup>
-import AppPage from '../../components/AppPage.vue';
+import AppPage from '../components/AppPage.vue';
 import { ref, computed, onMounted } from 'vue';
-import { recordApi, systemApi } from '../../api';
-import { showRewardToast } from '../../utils/rewardToast.js';
-import AppButton from '../../components/AppButton.vue';
-import AppEmpty from '../../components/AppEmpty.vue';
-import { getToday } from '../../utils/date';
+import { recordApi, systemApi } from '../api';
+import { showRewardToast } from '../utils/rewardToast.js';
+import AppButton from '../components/AppButton.vue';
+import AppEmpty from '../components/AppEmpty.vue';
+import { getToday } from '../utils/date';
 
 const isEdit = ref(false);
 const loading = ref(false);

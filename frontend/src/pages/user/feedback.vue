@@ -14,7 +14,7 @@
       </view>
 
       <!-- 表单与反馈历史：独立滚动区，tab 吸顶不随内容滚走 -->
-      <scroll-view class="feedback-scroll" scroll-y>
+      <scroll-view class="feedback-scroll" scroll-y :style="scrollStyle">
         <view class="form-card">
         <text class="card-title">反馈类型</text>
         <view class="type-list">
@@ -22,7 +22,7 @@
         </view>
 
         <text class="card-title">反馈内容</text>
-        <textarea v-model="form.content" :placeholder="activeTab === 'report' ? '请描述你要举报的 AI 内容问题...' : '请描述你遇到的问题或建议...'" :maxlength="500" />
+        <textarea v-model="form.content" :placeholder="activeTab === 'report' ? '请描述你要举报的 AI 内容问题...' : '请描述你遇到的问题或建议...'" :maxlength="500" :adjust-position="false" />
 
         <!-- 提审阶段先隐藏上传截图（相机/相册读取权限暂不声明） -->
         <view class="image-list hidden-permission">
@@ -33,7 +33,7 @@
         </view>
 
         <text class="card-title">联系方式（选填）</text>
-        <input v-model="form.contact" placeholder="手机号 / 邮箱" />
+        <input v-model="form.contact" placeholder="手机号 / 邮箱" :adjust-position="false" />
 
         <text class="card-title">满意度</text>
         <view class="score-list">
@@ -79,7 +79,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { feedbackApi } from '../../api';
 import AppPage from '../../components/AppPage.vue';
 import AppButton from '../../components/AppButton.vue';
@@ -126,6 +126,21 @@ const serverUrl = getServerUrl();
 const history = ref([]);
 const submitting = ref(false);
 
+/**
+ * 键盘高度状态：输入框已设 adjust-position=false，页面整体不再被顶起，
+ * 改为通过 padding-bottom 把 scroll-view 内容上移到键盘上方，
+ * 确保「提交反馈」按钮和输入框始终可见。
+ */
+const keyboardHeight = ref(0);
+
+/** scroll-view 动态内边距：键盘弹起时增加底部 padding，避免输入被遮挡 */
+const scrollStyle = computed(() => {
+  if (keyboardHeight.value > 0) {
+    return `padding-bottom: ${keyboardHeight.value}px;`;
+  }
+  return '';
+});
+
 onMounted(() => {
   const pages = getCurrentPages();
   const currentPage = pages[pages.length - 1];
@@ -138,6 +153,19 @@ onMounted(() => {
   }
 
   loadHistory();
+
+  // 监听键盘高度变化，动态调整 scroll-view 的 padding-bottom
+  uni.onKeyboardHeightChange(onKeyboardHeightChange);
+});
+
+/** 键盘高度变化回调（具名函数引用，注册/注销必须是同一引用） */
+function onKeyboardHeightChange(res) {
+  keyboardHeight.value = Math.max(0, Number(res && res.height) || 0);
+}
+
+onUnmounted(() => {
+  // 同一函数引用注销，避免监听堆积
+  uni.offKeyboardHeightChange(onKeyboardHeightChange);
 });
 
 async function loadHistory() {
