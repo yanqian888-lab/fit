@@ -172,10 +172,26 @@ function updateFeedbackStatus(req, res) {
   return res.json(success({ id }, '状态更新成功'));
 }
 
+/**
+ * 反馈统计（按状态计数，供管理端统计卡使用）
+ */
+function getFeedbackStats(req, res) {
+  const rows = db.prepare(`
+    SELECT status, COUNT(*) as count FROM feedback GROUP BY status
+  `).all();
+  const stats = { total: 0, pending: 0, processing: 0, resolved: 0 };
+  for (const r of rows) {
+    stats[r.status] = r.count;
+    stats.total += r.count;
+  }
+  return res.json(success(stats));
+}
+
 module.exports = {
   createFeedback,
   getFeedbacks,
   getAllFeedbacks,
+  getFeedbackStats,
   replyFeedback,
   updateFeedbackStatus
 };

@@ -6,8 +6,8 @@
           v-if="detail.video_url"
           id="workoutVideo"
           class="workout-video"
-          :src="detail.video_url"
-          :poster="detail.cover_url"
+          :src="resolveStaticUrl(detail.video_url)"
+          :poster="resolveStaticUrl(detail.cover_url)"
           :controls="false"
           :show-play-btn="false"
           :show-center-play-btn="false"
@@ -17,7 +17,7 @@
           object-fit="contain"
         ></video>
         <view v-else class="video-placeholder">
-          <image class="placeholder-img" :src="detail.cover_url || defaultWorkoutCoverUrl" mode="aspectFit" />
+          <image class="placeholder-img" :src="resolveStaticUrl(detail.cover_url) || defaultWorkoutCoverUrl" mode="aspectFit" />
           <text class="placeholder-text">视频准备中，先跟着动作完成吧</text>
         </view>
 
@@ -77,7 +77,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { onUnload } from '@dcloudio/uni-app';
 import { workoutApi } from '../../api';
 import { goBack as navigateBack } from '../../utils/navigate';
 import { resolveStaticUrl } from '../../utils/environment.js';
@@ -126,8 +127,13 @@ async function loadDetail() {
   try {
     const res = await workoutApi.getDetail(workoutKey.value);
     detail.value = res.data || {};
+    // 标题在顶部导航展示：详情加载后替换默认的「跟练」
+    if (detail.value.name) {
+      uni.setNavigationBarTitle({ title: detail.value.name });
+    }
   } catch (e) {
     console.error(e);
+    uni.showToast({ title: '网络错误', icon: 'none' });
   }
 }
 
@@ -225,6 +231,45 @@ function resume() {
   playVideo();
 }
 
+/*
+ * 跟练进行中拦截页面返回（微信小程序原生返回按钮/手势返回无法弹自定义窗，
+ * 用微信内置的"返回确认"弹窗兜底：确认返回 → onUnload 里按已跟练时长自动记录；
+ * 取消 → 留在页面继续跟练）。仅在倒计时/跟练/暂停/组间休息期间开启。
+ */
+function enableBackIntercept() {
+  // #ifdef MP-WEIXIN
+  if (typeof wx !== 'undefined' && wx.enableAlertBeforeUnload) {
+    wx.enableAlertBeforeUnload({});
+  }
+  // #endif
+}
+
+function disableBackIntercept() {
+  // #ifdef MP-WEIXIN
+  if (typeof wx !== 'undefined' && wx.disableAlertBeforeUnload) {
+    wx.disableAlertBeforeUnload({});
+  }
+  // #endif
+}
+
+watch(phase, (p) => {
+  const inProgress = ['countdown', 'playing', 'paused', 'resting'].includes(p);
+  if (inProgress) {
+    enableBackIntercept();
+  } else {
+    disableBackIntercept();
+  }
+});
+
+// 页面销毁（用户确认了返回弹窗）：跟练已开始且未记录时，按已跟练时长补记运动数据
+onUnload(() => {
+  stopTick();
+  if (elapsed.value > 0 && !recorded.value) {
+    // 页面已销毁，不再 await：请求发出即可，recordOnce 内部有 recorded 防重
+    recordOnce();
+  }
+});
+
 // 写入运动记录（按实际跟练时长，后端按 千卡/小时 折算消耗）
 async function recordOnce() {
   if (recorded.value || elapsed.value <= 0) return null;
@@ -263,6 +308,8 @@ async function onExit() {
   }
   stopTick();
   pauseVideo();
+  // 即将主动返回：先关掉返回拦截，避免已记录后又弹系统确认框
+  disableBackIntercept();
   if (elapsed.value > 0) {
     const result = await recordOnce();
     if (result && !result.error) {

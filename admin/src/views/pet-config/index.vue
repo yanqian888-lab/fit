@@ -136,7 +136,7 @@
             <el-button type="primary" @click="saveSprite" v-perm="'pet_config:write'">保存</el-button>
           </div>
           <el-form label-width="180px" class="schedule-form">
-            <el-divider content-position="left">展示位置（地图坐标：以背景图左上角为原点，参考高度见场景配置）</el-divider>
+            <el-divider content-position="left">小程序端展示位置（地图坐标：以背景图左上角为原点，参考高度见场景配置）</el-divider>
             <el-form-item label="X 坐标（left）">
               <el-input-number v-model="sprite.x" :min="0" :max="2000" />
             </el-form-item>
@@ -148,6 +148,19 @@
             </el-form-item>
             <el-form-item label="高度">
               <el-input-number v-model="sprite.height" :min="10" :max="1000" />
+            </el-form-item>
+            <el-divider content-position="left">App 端展示位置（留空则与小程序一致）</el-divider>
+            <el-form-item label="App X 坐标">
+              <el-input-number v-model="sprite.app.x" :min="0" :max="2000" clearable placeholder="留空同小程序" />
+            </el-form-item>
+            <el-form-item label="App Y 坐标">
+              <el-input-number v-model="sprite.app.y" :min="0" :max="2000" clearable placeholder="留空同小程序" />
+            </el-form-item>
+            <el-form-item label="App 宽度">
+              <el-input-number v-model="sprite.app.width" :min="10" :max="750" clearable placeholder="留空同小程序" />
+            </el-form-item>
+            <el-form-item label="App 高度">
+              <el-input-number v-model="sprite.app.height" :min="10" :max="1000" clearable placeholder="留空同小程序" />
             </el-form-item>
             <el-divider content-position="left">序列帧（按顺序播放，配置 1 张则为静态形象）</el-divider>
             <el-form-item label="播放速率（每秒张数）">
@@ -294,7 +307,7 @@
           <div style="width:100%;">
             <div class="option-row">
               <span style="margin-right:8px;">播放速率（fps）</span>
-              <el-input-number v-model="stateForm.frame_rate" :min="1" :max="60" />
+              <el-input-number v-model="stateForm.frame_rate" :min="0.1" :max="60" :step="0.1" :precision="1" />
             </div>
             <div v-for="(frame, idx) in stateForm.frames_json" :key="idx" class="frame-row">
               <span class="frame-index">{{ idx + 1 }}</span>
@@ -307,7 +320,7 @@
             <div style="color:#909399;font-size:12px;margin-top:6px;">上传 1 张为静态形象，多张按顺序播放序列帧</div>
           </div>
         </el-form-item>
-        <el-form-item label="地图坐标">
+        <el-form-item label="小程序端坐标">
           <div class="option-row">
             <span style="margin-right:8px;">X</span>
             <el-input-number v-model="stateForm.pos_x" :min="0" :max="2000" />
@@ -316,13 +329,31 @@
           </div>
           <div style="color:#909399;font-size:12px;margin-top:4px;">以背景图左上角为原点的地图坐标，取值范围见场景配置的坐标系说明</div>
         </el-form-item>
-        <el-form-item label="尺寸">
+        <el-form-item label="小程序端尺寸">
           <div class="option-row">
             <span style="margin-right:8px;">宽</span>
             <el-input-number v-model="stateForm.width" :min="10" :max="1000" />
             <span style="margin:0 8px;">高</span>
             <el-input-number v-model="stateForm.height" :min="10" :max="1000" />
           </div>
+        </el-form-item>
+        <el-form-item label="App 端坐标">
+          <div class="option-row">
+            <span style="margin-right:8px;">X</span>
+            <el-input-number v-model="stateForm.app_pos_x" :min="0" :max="2000" clearable placeholder="留空同小程序" />
+            <span style="margin:0 8px;">Y</span>
+            <el-input-number v-model="stateForm.app_pos_y" :min="0" :max="2000" clearable placeholder="留空同小程序" />
+          </div>
+          <div style="color:#909399;font-size:12px;margin-top:4px;">App 端独立坐标，留空则与上方小程序坐标一致</div>
+        </el-form-item>
+        <el-form-item label="App 端尺寸">
+          <div class="option-row">
+            <span style="margin-right:8px;">宽</span>
+            <el-input-number v-model="stateForm.app_width" :min="10" :max="1000" clearable placeholder="留空同小程序" />
+            <span style="margin:0 8px;">高</span>
+            <el-input-number v-model="stateForm.app_height" :min="10" :max="1000" clearable placeholder="留空同小程序" />
+          </div>
+          <div style="color:#909399;font-size:12px;margin-top:4px;">留空则与上方小程序尺寸一致（接口字段 app_pos_x / app_pos_y / app_width / app_height）</div>
         </el-form-item>
         <el-form-item label="持续时长（分）">
           <el-input-number v-model="stateForm.duration_minutes" :min="1" :max="1440" />
@@ -456,6 +487,7 @@ const emptyStateForm = () => ({
   state_key: '', name: '', lottie_url: '', scene_key: '',
   frames_json: [], frame_rate: 2,
   pos_x: null, pos_y: null, width: null, height: null,
+  app_pos_x: null, app_pos_y: null, app_width: null, app_height: null,
   time_ranges: [], duration_minutes: 30, sort_order: 0, is_enabled: true
 })
 const stateForm = ref(emptyStateForm())
@@ -609,8 +641,8 @@ function removeExploreWindow(idx) {
   schedules.value.explore.windows.splice(idx, 1)
 }
 
-// 形象配置（坐标/序列帧/播放速率）
-const sprite = ref({ x: 375, y: 500, width: 380, height: 380, fps: 2, frames: [] })
+// 形象配置（坐标/序列帧/播放速率）；app 为 App 端独立坐标/尺寸（null = 跟随小程序端）
+const sprite = ref({ x: 375, y: 500, width: 380, height: 380, fps: 2, frames: [], app: { x: null, y: null, width: null, height: null } })
 
 async function loadSprite() {
   try {
@@ -622,7 +654,8 @@ async function loadSprite() {
       width: data.width ?? 380,
       height: data.height ?? 380,
       fps: data.fps ?? 2,
-      frames: Array.isArray(data.frames) ? [...data.frames] : []
+      frames: Array.isArray(data.frames) ? [...data.frames] : [],
+      app: { x: null, y: null, width: null, height: null, ...(data.app || {}) }
     }
   } catch (e) { console.error(e) }
 }
@@ -757,6 +790,10 @@ function openStateDialog(row = null) {
       pos_y: row.pos_y ?? null,
       width: row.width ?? null,
       height: row.height ?? null,
+      app_pos_x: row.app_pos_x ?? null,
+      app_pos_y: row.app_pos_y ?? null,
+      app_width: row.app_width ?? null,
+      app_height: row.app_height ?? null,
       scene_key: row.scene_key || '',
       time_ranges: Array.isArray(row.time_ranges) ? row.time_ranges.map(t => ({ ...t })) : [],
       duration_minutes: row.duration_minutes ?? 30,

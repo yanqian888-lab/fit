@@ -10,7 +10,7 @@ const petService = require('../petService');
 const webSearchService = require('../webSearchService');
 const nutritionService = require('../nutritionService');
 const { safeJsonParse } = require('../../utils/safeJson');
-const { getChinaDateStr } = require('../../utils/chinaTime');
+const { getChinaDateStr, getChinaDateStrOffset } = require('../../utils/chinaTime');
 
 /**
  * 根据本轮沉淀结果构造给 helper 的系统上下文块
@@ -44,10 +44,20 @@ function buildPrecipitationContextBlock(precipitation) {
   const lines = [];
   const data = precipitation.extracted_data || {};
   if (precipitation.type === 'diet_record') {
+    // 营养来源标注：搭子话术需区分"已核实数据"与"估算值"，避免对估算值过度承诺
+    const sourceLabel = {
+      food_db: '（食品库数据）',
+      web_verified: '（网络核实）',
+      web_learned: '（网络核实）',
+      llm_estimate: '（估算值）',
+      generic_fallback: '（估算值）',
+      user_specified: ''
+    };
     const foods = Array.isArray(data.foods) ? data.foods : [];
     foods.forEach(f => {
       const amount = f.weight ? `${f.weight}g` : (f.quantity ? `${f.quantity}${f.unit || ''}` : '');
-      lines.push(`- 饮食：${f.name}${amount ? ' ' + amount : ''}，约${Math.round(f.calorie || 0)}千卡`);
+      const label = sourceLabel[f.nutrition_source] ?? '（估算值）';
+      lines.push(`- 饮食：${f.name}${amount ? ' ' + amount : ''}，约${Math.round(f.calorie || 0)}千卡${label}`);
     });
     if (data.total_calorie != null) lines.push(`- 本餐合计约 ${Math.round(data.total_calorie)} 千卡`);
   } else if (precipitation.type === 'exercise_record') {
@@ -84,7 +94,40 @@ ${summary}
 ${summary}
 规则：
 1. 可以告诉用户"记好啦"，但记录内容与数值必须严格引用上方摘要，禁止编造摘要之外的食物、运动或热量数字（例如摘要里是爬楼梯6分钟约35千卡，就不许说成30千卡或其他数字）。用户询问本条消息中食物/运动的热量时，必须引用摘要数值回答，严禁改用你自己的估算值或网络值覆盖摘要——即使你觉得摘要数值偏高/偏低，也要先按摘要回答。
-2. 若摘要内容与用户口述可能有出入（如名称/份量不对），提醒用户可在记录页手动修改。${dietAnalysisRule}`;
+2. 摘要中标注"（估算值）"的数据，如用户追问准确度，需如实说明这是估算参考，可以帮 ta 稍后核实；标注"（食品库数据）/（网络核实）"的数据可直接作为准确值引用。若摘要内容与用户口述可能有出入（如名称/份量不对），提醒用户可在记录页手动修改。${dietAnalysisRule}`;
+}
+
+/**
+ * 根据饮食更正结果构造给 helper 的系统上下文块
+ * 核心原则：搭子只能"如实"反馈删除结果——
+ * 只有下方明确列出"已删除"的项目才能说"已帮你删掉"；
+ * 未找到/多条匹配的项目绝不允许承诺删除或替换，只能引导用户手动处理
+ * @param {object|null} correction dietCorrectionService.detectAndApplyDietCorrection 返回结果
+ * @returns {string|null} 注入给 LLM 的系统消息文本；无更正时返回 null
+ */
+function buildCorrectionContextBlock(correction) {
+  if (!correction) return null;
+  const lines = [];
+  if (Array.isArray(correction.removed) && correction.removed.length) {
+    const items = correction.removed.map(r =>
+      `${r.name}（约${r.calorie}千卡，${r.mealTime || ''}）`).join('、');
+    lines.push(`【已执行删除】系统已从用户今日记录中删除：${items}。`);
+  }
+  if (Array.isArray(correction.notFound) && correction.notFound.length) {
+    lines.push(`【未删除-未找到】用户说没吃「${correction.notFound.join('、')}」，但今日记录中没有找到对应记录，未做任何删除。`);
+  }
+  if (Array.isArray(correction.ambiguous) && correction.ambiguous.length) {
+    lines.push(`【未删除-多条匹配】「${correction.ambiguous.join('、')}」匹配到多条记录，为避免误删未自动删除。`);
+  }
+  const summary = lines.length ? lines.join('\n') : '【更正结果】本轮没有删除任何记录。';
+
+  return `【饮食更正结果通知】用户本轮消息包含对已有饮食记录的更正（比如"我后来没吃X，吃了Y"）。
+${summary}
+硬性规则：
+1. 只有上方【已执行删除】里明确列出的项目，你才能对用户说"已帮你删掉/去掉了"。列表之外严禁承诺删除、替换、改掉任何记录——说了就必须真的做过，没做过就绝对不许说。
+2. 对【未删除-未找到】和【未删除-多条匹配】的项目：如实告诉用户"这条没找到/匹配到多条，怕删错我没敢动，你可以在记录页长按手动删除或修改"。严禁说"我帮你删除/换成/更新"这类话。
+3. 如果本轮【已执行删除】为空，严禁出现任何"帮你把X换成Y/帮你删掉"的表述。
+4. "吃了Y"的新增部分以【沉淀结果通知】为准：沉淀成功才说记好了，未成功不许说已记录。`;
 }
 
 /**
@@ -94,6 +137,8 @@ ${summary}
  * @param {object} partnerInfo 搭子人设信息
  * @param {object} [options] 额外选项
  * @param {object|null} [options.precipitation] 本轮消息的沉淀结果，用于如实反馈记录状态，防止谎称已记录
+ * @param {object|null} [options.correction] 饮食更正结果（dietCorrectionService 返回），
+ *        约束搭子只能如实反馈删除结果，严禁承诺未执行的删除/替换
  * @param {Array} [options.history] 最近对话消息（{role:'user'|'partner', content}，按时间正序），
  *        用于让 helper 理解"这只是午餐哦"这类依赖上下文的追问；不是本轮新消息
  */
@@ -142,6 +187,19 @@ async function callHelperAgent(question, userInfo = {}, partnerInfo = {}, option
 
   // 构建包含今日营养数据的问题（实时查询数据库）
   let enhancedQuestion = question;
+  // 用户质疑已记录数据时（如"这个数据不对"，不含任何食物关键词，needsFoodData 不会命中）：
+  // 今日记录中来源非食物库（LLM估算/兜底）的食物热量不可靠，强制联网核实，
+  // 差异明显时直接更正记录（真实案例：瑞幸小黄油美式被记成10千卡，实际约173千卡）
+  // 修正通知在下方所有数据块拼完后统一追加，避免被【系统数据】模板覆盖
+  let challengedCorrections = [];
+  if (userId && /(不对|错了|有误|不准|怀疑|真的吗|核实|重新核|重新算|数据不|不靠谱|有问题)/.test(question || '')) {
+    try {
+      challengedCorrections = await verifyChallengedRecords(userId, question);
+    } catch (e) {
+      console.error('[helper] 质疑数据联网核实失败:', e.message);
+    }
+  }
+
   const needsFoodData = /(吃|喝|食物|酸奶|饭|菜|肉|水果|饮料|晚餐|午餐|早餐|加餐|零食|热量|卡路里|千卡|摄入|吃了多少|总计|汇总|算|脂肪|蛋白质|碳水|营养)/.test(question);
   const needsExerciseData = /(运动|训练|健身|哑铃|杠铃|跑步|游泳|跳绳|骑车|骑行|瑜伽|帕梅拉|周六野|刘畊宏|肩背|胸|腿|臀|腹|有氧|无氧|HIIT|Tabata|拉伸|深蹲|俯卧撑|平板支撑|卷腹|开合跳|波比跳|快走|慢跑|爬楼|爬山|登山|动感单车|椭圆机|划船机|壶铃|TRX|战绳|拳击|打拳|搏击|尊巴|舞蹈|跳操|健身操|有氧操|力量训练|体能训练|功能性训练|核心训练|臀腿训练|背部训练|肩部训练|手臂训练|胸部训练|腹部训练|拉伸训练|热身|冷身|放松|按摩|泡沫轴|筋膜枪|运动康复|体能测试|体测|马拉松|半程马拉松|越野跑|接力跑|冲刺跑|折返跑|高抬腿|登山跑|俄罗斯转体|臀桥|桥式|死虫式|鸟狗式|侧平板|倒立|手倒立|单腿硬拉|箭步蹲|保加利亚蹲|靠墙静蹲|马步|引体向上|仰卧起坐|弹力带|阻力带|拉力带|8字拉力器|开肩美背|哑铃弯举|哑铃推举|哑铃飞鸟|哑铃划船|哑铃深蹲|哑铃硬拉|哑铃侧平举|哑铃前平举|杠铃深蹲|杠铃硬拉|杠铃卧推|杠铃划船|杠铃推举|杠铃弯举|杠铃臀推|相扑硬拉|罗马尼亚硬拉|器械训练|器械推胸|器械划船|器械夹胸|腿举|腿弯举|腿屈伸|坐姿划船|高位下拉|史密斯机|龙门架|蝴蝶机|推胸机|壶铃摇摆|壶铃抓举|壶铃深蹲|壶铃推举|土耳其起立|TRX划船|TRX深蹲|TRX俯卧撑|悬挂训练|甩绳|药球|沙袋|轮胎翻|农夫行走|雪橇推|攀岩|攀冰|溯溪|漂流|滑雪|滑冰|轮滑|滑板|羽毛球|乒乓球|网球|排球|篮球|足球|棒球|垒球|高尔夫球|保龄球|台球|门球|壁球|橄榄球|曲棍球|冰球|手球|水球|马球|藤球|毽球|射箭|射击|击剑|马术|赛马|赛艇|皮划艇|帆船|帆板|冲浪|潜水|浮潜|深潜|跳水|水球|花样游泳|体操|艺术体操|蹦床|技巧|健美操|啦啦操|体育舞蹈|街舞|霹雳舞|爵士舞|芭蕾舞|现代舞|民族舞|古典舞|拉丁舞|国标舞|交谊舞|摇摆舞|广场舞|健身舞|燃脂舞|减脂舞|太极|气功|普拉提|冥想|正念|呼吸训练|产后恢复|盆底肌训练|凯格尔运动|腹直肌修复|办公室运动|椅子瑜伽|坐姿运动|床上运动|睡前拉伸|晨间唤醒|午休运动|碎片化运动|微运动|办公室微运动)/i.test(question);
   const needsBodyContext = /(体重|掉秤|涨秤|没瘦|徘徊|不动|平台期|体脂|腰围|臀围|胸围|腿围|臂围|BMI|进度|最近.*体重|这个体重|体重下|体重上)/i.test(question);
@@ -320,6 +378,13 @@ ${exerciseList}
     }
   }
 
+  // 质疑核实修正通知：在所有数据块拼完后统一追加（记录已更正，回复必须引用新值）
+  if (challengedCorrections.length) {
+    const lines = challengedCorrections.map(c =>
+      `- ${c.name}（${c.weight}g）：原记录约${c.oldCalorie}千卡 → 经联网核实更正为约${c.newCalorie}千卡，记录已更新`);
+    enhancedQuestion += `\n\n【数据修正通知】用户质疑了已记录数据的热量，系统已联网核实并更正：\n${lines.join('\n')}\n规则：回复必须引用更正后的数值，并用自然语气告知用户"我重新联网核对了一下，之前这条确实记低了/有误，已经帮你更新记录"；严禁再引用旧数值，也不要说成用户自己改的。`;
+  }
+
   const modeMap = {
     gentle: '温柔鼓励型',
     strict: '严格监督型',
@@ -363,6 +428,8 @@ ${exerciseList}
           },
           // 本轮沉淀结果通知：搭子必须基于真实沉淀结果反馈记录状态，未沉淀成功严禁谎称已记录
           { role: 'system', content: buildPrecipitationContextBlock(options.precipitation) },
+          // 本轮饮食更正结果通知：搭子只能如实反馈删除结果，严禁承诺未执行的删除/替换（可为 null，自动跳过）
+          ...(buildCorrectionContextBlock(options.correction) ? [{ role: 'system', content: buildCorrectionContextBlock(options.correction) }] : []),
           // 最近对话上下文：让 helper 理解依赖上文的追问（可为 null，自动跳过）
           ...(historyBlock ? [{ role: 'system', content: historyBlock }] : []),
           { role: 'user', content: enhancedQuestion }
@@ -420,6 +487,88 @@ ${exerciseList}
     console.error('全能助手 Agent 调用失败:', error.message);
     return '哎呀，我这边算不过来了，你等一下再问好不好？';
   }
+}
+
+/**
+ * 用户质疑已记录数据时的联网核实与记录自愈
+ * 场景：用户说"这个数据不对"——今日记录中来源非食物库（LLM估算/人工兜底）的食物热量不可靠，
+ * 对这些食物强制联网核实（searchAndLearnFood：检索→结构化→合理性校验→回流食品库），
+ * 核实值与记录值差异明显时直接更新 diet_records 并同步沉淀记录，返回修正清单注入 prompt
+ * @param {number} userId 用户ID
+ * @param {string} question 本轮用户消息
+ * @returns {Promise<Array<{name, weight, oldCalorie, newCalorie}>>} 修正清单（无修正返回空数组）
+ */
+async function verifyChallengedRecords(userId, question) {
+  if (!userId) return [];
+
+  const today = getChinaDateStr();
+  const rows = db.prepare(`
+    SELECT id, meal_time, precipitation_id, foods FROM diet_records
+    WHERE user_id = ? AND record_date = ? AND status = 1
+  `).all(userId, today);
+
+  // 收集来源非食物库的待核实食物（每条名字只取第一次出现）
+  const suspects = new Map();
+  for (const row of rows) {
+    const foods = safeJsonParse(row.foods, []);
+    for (const food of foods) {
+      if (!food || !food.name || suspects.has(food.name)) continue;
+      const src = food.nutrition_source || 'food_db';
+      if (src === 'food_db' || src === 'web_learned' || src === 'web_verified') continue;
+      suspects.set(food.name, { row, food });
+    }
+  }
+  if (!suspects.size) return [];
+
+  const { searchAndLearnFood } = require('../webSearchService');
+  const { syncDietExtractedDataToPrecipitation } = require('./precipitationAgent');
+  const corrections = [];
+  for (const [name, { row, food }] of [...suspects.entries()].slice(0, 2)) {
+    try {
+      const r = await searchAndLearnFood(name, question);
+      if (!r || !r.validated || !r.info || !(r.info.calorie_per_100g > 0)) continue;
+      const weight = parseFloat(food.weight) || 100;
+      const ratio = weight / 100;
+      const newCalorie = Math.round(r.info.calorie_per_100g * ratio);
+      const oldCalorie = Math.round(parseFloat(food.calorie) || 0);
+      // 差异不大不动记录，避免频繁改动
+      if (Math.abs(newCalorie - oldCalorie) <= Math.max(10, oldCalorie * 0.15)) continue;
+      // 按核实值重算该食物与整行合计
+      const foods = safeJsonParse(row.foods, []);
+      let changed = false;
+      for (const f of foods) {
+        if (f && f.name === name) {
+          f.calorie = Math.round(r.info.calorie_per_100g * ratio * 10) / 10;
+          f.protein = Math.round((r.info.protein_per_100g || 0) * ratio * 10) / 10;
+          f.carb = Math.round((r.info.carb_per_100g || 0) * ratio * 10) / 10;
+          f.fat = Math.round((r.info.fat_per_100g || 0) * ratio * 10) / 10;
+          f.nutrition_source = 'web_verified';
+          changed = true;
+        }
+      }
+      if (!changed) continue;
+      const totals = foods.reduce((acc, f) => ({
+        calorie: acc.calorie + (parseFloat(f.calorie) || 0),
+        protein: acc.protein + (parseFloat(f.protein) || 0),
+        carb: acc.carb + (parseFloat(f.carb) || 0),
+        fat: acc.fat + (parseFloat(f.fat) || 0)
+      }), { calorie: 0, protein: 0, carb: 0, fat: 0 });
+      db.prepare(`
+        UPDATE diet_records
+        SET foods = ?, total_calorie = ?, total_protein = ?, total_carb = ?, total_fat = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `).run(JSON.stringify(foods), totals.calorie, totals.protein, totals.carb, totals.fat, row.id, userId);
+      if (row.precipitation_id) {
+        try { syncDietExtractedDataToPrecipitation(userId, row.precipitation_id, row.meal_time); } catch (e) { /* 非阻塞 */ }
+      }
+      corrections.push({ name, weight, oldCalorie, newCalorie });
+      console.log(`[helper] 质疑核实更正：「${name}」${oldCalorie} → ${newCalorie} 千卡，记录已更新`);
+    } catch (e) {
+      console.warn(`[helper] 质疑联网核实失败（${name}）:`, e.message);
+    }
+  }
+  return corrections;
 }
 
 /**
@@ -711,11 +860,13 @@ function collectFoodCandidates(question) {
   const candidates = new Set();
 
   // 数量+单位+名称（如：500ml羽衣甘蓝汁、一杯美式）
-  const unitAfterRe = /(\d+(?:\.\d+)?)\s*(ml|mL|毫升|L|升|g|克|kg|千克|个|杯|瓶|罐|份|碗|袋|包|盒|只|片|支|根|条|粒|颗|口)\s*([\u4e00-\u9fa5a-zA-Z]{2,})/g;
+  const unitAfterRe = /(\d+(?:\.\d+)?)\s*(ml|mL|毫升|L|升|g|克|kg|千克|个|杯|瓶|罐|份|碗|袋|包|盒|只|片|支|根|条|粒|颗|口|张|枚)\s*([\u4e00-\u9fa5a-zA-Z]{2,})/g;
   // 名称+数量+单位（如：羽衣甘蓝汁500ml）
-  const unitBeforeRe = /([\u4e00-\u9fa5a-zA-Z]{2,})\s*(\d+(?:\.\d+)?)\s*(ml|mL|毫升|L|升|g|克|kg|千克|个|杯|瓶|罐|份|碗|袋|包|盒|只|片|支|根|条|粒|颗|口)/g;
+  const unitBeforeRe = /([\u4e00-\u9fa5a-zA-Z]{2,})\s*(\d+(?:\.\d+)?)\s*(ml|mL|毫升|L|升|g|克|kg|千克|个|杯|瓶|罐|份|碗|袋|包|盒|只|片|支|根|条|粒|颗|口|张|枚)/g;
   // 量词+名称（如：一大碗卤煮、一份黄焖鸡、一只烤鸡；注意不含数字）
-  const portionRe = /(?:一|两|几|半|大|小|中)?\s*(?:份|碗|盘|个|只|杯|瓶|罐|袋|包|盒|根|条|片|块|勺)\s*([\u4e00-\u9fa5a-zA-Z]{2,})/g;
+  const portionRe = /(?:一|两|几|半|大|小|中)?\s*(?:份|碗|盘|个|只|杯|瓶|罐|袋|包|盒|根|条|片|块|勺|张|枚)(?:半)?\s*([\u4e00-\u9fa5a-zA-Z]{2,})/g;
+  // 中文数字+单位+名称（如：两张山东大煎饼、三片吐司；兼容"两张半"写法）
+  const cnUnitRe = /(?:一|两|三|四|五|六|七|八|九|十|半)(?:张|片|块|个|只|份|碗|杯|瓶|罐|袋|包|盒|根|条|粒|颗|枚|支|勺|口)(?:半)?\s*([\u4e00-\u9fa5a-zA-Z]{2,})/g;
   // 常见饮品/食品关键词（无数量时也尝试）
   // 后缀含"奶青"：一点点"四季奶青"以"青"结尾，不含品类字会被截断成"四季奶"
   const drinkRe = /([\u4e00-\u9fa5]{2,}(?:汁|饮|茶|奶青|奶|酸奶|咖啡|酒|水|汽水|苏打|气泡|美式|拿铁|摩卡|果汁|奶茶))/g;
@@ -729,6 +880,7 @@ function collectFoodCandidates(question) {
   while ((m = unitAfterRe.exec(normalized)) !== null) candidates.add(m[3]);
   while ((m = unitBeforeRe.exec(normalized)) !== null) candidates.add(m[1]);
   while ((m = portionRe.exec(normalized)) !== null) candidates.add(m[1]);
+  while ((m = cnUnitRe.exec(normalized)) !== null) candidates.add(m[1]);
   while ((m = drinkRe.exec(normalized)) !== null) candidates.add(m[1]);
   while ((m = brandRe.exec(normalized)) !== null) candidates.add(m[1]);
   while ((m = toppingRe.exec(normalized)) !== null) candidates.add(m[1]);
@@ -741,7 +893,7 @@ function collectFoodCandidates(question) {
   const connectorSplit = /\s*(?:和|跟|与|还有|以及|或者|还是|加了?|外加|还有)\s*/;
   // 前缀噪声：量词单字/杯型/品牌名/语气词等，允许连续剥离（如"中杯的一点点四季奶青"→"四季奶青"）
   // "霸王茶"为品牌名"霸王茶姬"被饮品类后缀正则截断的残段，一并剥离
-  const prefixNoise = /^(?:的|了|吗|呢|吧|啊|哦|嗯|喂|是|有|吃|喝|要|想|问|算|约|大概|大约|差不多|可能|应该|建议|推荐|怎么|如何|什么|多少|热量|卡路里|千卡|大卡|含糖|无糖|有糖|纯|鲜|现|超大杯|特大杯|中杯|大杯|小杯|一杯|一瓶|一碗|一份|一个|一包|一袋|一盒|一罐|一支|一根|一条|一片|一只|一点点|1點點|1点点|霸王茶姬|霸王茶机|霸王茶|喜茶|奈雪的茶|奈雪|蜜雪冰城|蜜雪|茶百道|古茗|沪上阿姨|书亦烧仙草|书亦|益禾堂|瑞幸|星巴克|coco|CoCo|COCO|杯|碗|盘|个|只|瓶|罐|袋|包|盒|根|条|片|块|勺|的|了|是|有|喝|吃)+/;
+  const prefixNoise = /^(?:的|了|吗|呢|吧|啊|哦|嗯|喂|是|有|吃|喝|要|想|问|算|约|大概|大约|差不多|可能|应该|建议|推荐|怎么|如何|什么|多少|热量|卡路里|千卡|大卡|含糖|无糖|有糖|纯|鲜|现|超大杯|特大杯|中杯|大杯|小杯|一杯|一瓶|一碗|一份|一个|一包|一袋|一盒|一罐|一支|一根|一条|一片|一只|一点点|1點點|1点点|霸王茶姬|霸王茶机|霸王茶|喜茶|奈雪的茶|奈雪|蜜雪冰城|蜜雪|茶百道|古茗|沪上阿姨|书亦烧仙草|书亦|益禾堂|瑞幸|星巴克|coco|CoCo|COCO|杯|碗|盘|个|只|瓶|罐|袋|包|盒|根|条|片|块|勺|张|枚|的|了|是|有|喝|吃)+/;
   // 后缀噪声：语气词/热量疑问词组（brandRe 品名捕获可能带入"热量高吗/含糖量高/会胖/多少卡"等尾巴）
   const suffixNoise = /(的|了|吗|呢|吧|啊|哦|嗯|热量高吗|热量高不高|热量高|含糖量高吗|含糖量高|含糖量|卡路里|千卡|大卡|热量|含糖|无糖|有糖|多少卡|几卡|多少卡|多少钱|多少|哪个|哪种|会胖吗|会胖|好喝吗|好喝|好吃吗|一大杯|一中杯|一小杯|一杯|一瓶|一碗|一份|一个|一包|一袋|一盒|一罐|一大瓶|小料|配料|卡|杯|瓶|碗|份|袋|盒|罐)$/;
 
@@ -1306,6 +1458,7 @@ function getTodayFoods(userId) {
           protein: food.protein || 0,
           carb: food.carb || 0,
           fat: food.fat || 0,
+          nutrition_source: food.nutrition_source || null,
           meal_time: row.meal_time
         });
       }
@@ -1402,7 +1555,7 @@ function getTodayNutrition(userId) {
  * 用于体重/平台期类问题时，让 AI 基于真实记录综合分析
  */
 function getRecentBodyContext(userId, days = 7) {
-  const since = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+  const since = getChinaDateStrOffset(-days);
 
   // 最近体重：每天取最新一条
   const weights = db.prepare(`

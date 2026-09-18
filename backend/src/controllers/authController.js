@@ -379,16 +379,25 @@ async function wechatLogin(req, res) {
 /**
  * 判断用户是否已产生不可迁移的业务数据
  * 用于账号合并前评估是否可以安全删除该用户
+ * 注意：
+ * - chat_messages 只统计用户自己发的消息（建号时系统会插入欢迎语，若不加过滤则
+ *   所有账号恒"有数据"，合并分支永远无法执行）
+ * - 表名需与真实 schema 对齐（历史遗留曾引用不存在的 body_measurements/mood_records
+ *   导致查询抛错；心情数据在 museum_items 中，单独按类型统计）
  * @param {number} userId 用户 ID
  * @returns {boolean} true 表示有业务数据，不可删除
  */
 function hasBusinessData(userId) {
+  // 用户自己发过的聊天消息（排除系统欢迎语/模板消息）
+  const chatRow = db.prepare(`SELECT 1 FROM chat_messages WHERE user_id = ? AND role = 'user' LIMIT 1`).get(userId);
+  if (chatRow) return true;
+  // 心情记录存储在 museum_items（type='insight', sub_type='mood'）
+  const moodRow = db.prepare(`SELECT 1 FROM museum_items WHERE user_id = ? AND type = 'insight' AND sub_type = 'mood' LIMIT 1`).get(userId);
+  if (moodRow) return true;
   const tables = [
-    'chat_messages',
     'diet_records',
     'exercise_records',
-    'body_measurements',
-    'mood_records',
+    'body_records',
     'habit_records',
     'user_inventory',
     'user_events',

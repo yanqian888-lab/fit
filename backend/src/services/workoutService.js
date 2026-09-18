@@ -5,6 +5,7 @@ const { db, withTransaction } = require('../db');
 const currencyService = require('./currencyService');
 const taskService = require('./taskService');
 const achievementService = require('./achievementService');
+const { getChinaDateStr } = require('../utils/chinaTime');
 
 function safeParseJson(value) {
   if (!value) return null;
@@ -74,7 +75,7 @@ function completeWorkout(userId, workoutKey, { duration_seconds = null } = {}) {
     if (!workout) return { error: '课程不存在' };
     if (!workout.is_unlocked) return { error: '需要先解锁对应器材' };
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getChinaDateStr(); // 统一东八区口径
 
     // 每日同一课程去重，避免重复请求多次奖励
     const existing = db.prepare(`

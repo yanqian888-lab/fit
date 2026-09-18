@@ -17,17 +17,18 @@
       :class="currentAnimClass"
       :style="{ backgroundImage: `url(${spriteUrl})` }"
     ></view>
-    <!-- 小程序端：所有帧预加载完成后再开始动画，避免 v-show 切换时图片未加载导致闪动 -->
+    <!-- 小程序端：所有帧常驻渲染 + 仅切换 opacity（v-show 切 display 会触发图片重新解码，
+         这是帧切换闪动的根因）；预加载完成后再开始动画，避免首帧未加载导致闪动 -->
     <template v-else-if="hasValidFrames">
       <image
         v-for="(url, i) in frameUrls"
         :key="url + '_' + i"
         class="pet-sprite-image"
+        :class="{ 'pet-sprite-image--active': framesLoaded && displayFrameIndex === i }"
         :src="url"
         mode="aspectFit"
         @load="onFrameLoad(i)"
         @error="onFrameError(i)"
-        v-show="framesLoaded && displayFrameIndex === i"
       />
       <!-- 未加载完成时显示首帧占位，防止空白闪动 -->
       <image
@@ -353,10 +354,19 @@ onUnmounted(() => {
   left: 0;
   width: 100%;
   height: 100%;
-  /* 关键：添加 hardware-acceleration 和 transition:none 防止图片切换时的闪烁 */
+  /* 帧切换闪动修复：所有帧常驻渲染，只用 opacity 控制可见帧。
+     小程序端 v-show 切换 display 会让 image 重新解码/重排导致闪烁；
+     opacity 切换不触发重解码，配合硬件加速与禁用过场动画消除闪动 */
+  opacity: 0;
   transition: none;
   transform: translateZ(0);
-  will-change: contents;
+  will-change: opacity;
+  pointer-events: none;
+}
+
+.pet-sprite-image--active {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* 兜底占位图：所有帧图都不可用时显示，避免完全空白 */

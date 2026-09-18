@@ -5,11 +5,14 @@ const { success, error } = require('../utils/response');
 const milestoneTemplateService = require('../services/milestoneTemplateService');
 const cmsLogService = require('../services/cmsLogService');
 
-const ALLOWED_VALUES = {
-  weight_loss: [2.5, 5, 10, 15, 20, 30],
-  duration: [7, 30, 60, 100, 180, 365],
-  checkin: [7, 30, 60, 100]
-};
+// 各类型允许的里程碑数值直接取自 seed 默认值（此前硬编码只列了 3 个类型，
+// 导致对话/运动/饮食等类型的已 seed 文案永远无法编辑保存——保存即 400）
+const ALLOWED_VALUES = Object.fromEntries(
+  Object.entries(milestoneTemplateService.DEFAULT_TEMPLATES).map(([type, items]) => [
+    type,
+    items.map(i => i.value)
+  ])
+);
 
 function normalizeValue(data) {
   if (data.value === undefined || data.value === null || data.value === '') {

@@ -13,8 +13,15 @@ export const useUserStore = defineStore('user', () => {
    * 启动初始化：从 storage 恢复 userInfo 并从后端同步
    * 使用 skip401Redirect 防止启动期间 401 跳转登录页
    * token 失效时静默清除登录态，让用户以游客身份浏览 tab 页
+   * 幂等且可等待：App onLaunch 与全局 mixin 的资料门禁共享同一个 Promise，
+   * 保证门禁判断一定发生在用户信息同步完成之后
    */
-  async function init() {
+  let initPromise = null;
+  function init() {
+    if (!initPromise) initPromise = doInit();
+    return initPromise;
+  }
+  async function doInit() {
     // 启动时从 storage 恢复 userInfo（不然后续判断会认为未登录）
     if (!userInfo.value) {
       const storedUser = uni.getStorageSync('userInfo');

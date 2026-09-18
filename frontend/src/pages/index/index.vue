@@ -28,6 +28,7 @@
       scroll-y
       :scroll-top="scrollTop"
       :scroll-into-view="scrollIntoView"
+      :style="{ paddingBottom: listPaddingBottom }"
       scroll-with-animation
       @scrolltoupper="loadMore"
       :upper-threshold="50"
@@ -116,8 +117,8 @@
         <text>搭子正在输入...</text>
       </view>
 
-      <!-- 底部占位，配合 padding-bottom 保证最后一条消息能滚动到可视区 -->
-      <view id="msg-bottom-spacer" style="height: 20rpx;"></view>
+      <!-- 底部占位（8px）：配合 padding-bottom 保证最后一条消息能滚动到可视区，且与输入区间隔 8px -->
+      <view id="msg-bottom-spacer" style="height: 8px;"></view>
     </scroll-view>
 
     <!-- 底部输入区：键盘弹起时通过 keyboardOffset 上浮到键盘上方，顶部 bar 保持置顶 -->
@@ -264,7 +265,7 @@
           </view>
           <view class="form-item">
             <text class="form-label">标题</text>
-            <input v-model="editAssetData.title" class="body-value-input" placeholder="标题" />
+            <input v-model="editAssetData.title" class="asset-text-input" placeholder="标题" />
           </view>
           <view class="form-item">
             <text class="form-label">内容</text>
@@ -283,7 +284,7 @@
             </view>
             <view class="form-item">
               <text class="form-label">小贴士</text>
-              <input v-model="editAssetData.tip" class="body-value-input" placeholder="可选" />
+              <input v-model="editAssetData.tip" class="asset-text-input" placeholder="可选" />
             </view>
           </template>
         </template>
@@ -392,6 +393,7 @@ import { resolveStaticUrl } from '../../utils/environment.js';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { onShow, onHide } from '@dcloudio/uni-app';
 import { useUserStore } from '../../store';
+import { usePageCacheStore, CACHE_KEYS } from '../../store/page-cache.js';
 import { chatApi, partnerApi, recordApi, precipitationApi, systemApi } from '../../api';
 import { showRewardToast } from '../../utils/rewardToast.js';
 import { formatDate } from '../../utils/date';
@@ -402,6 +404,7 @@ import AnnouncementBar from '../../components/AnnouncementBar.vue';
 import AppModal from '../../components/AppModal.vue';
 
 const userStore = useUserStore();
+const pageCache = usePageCacheStore();
 
 /*
  * 键盘高度监听：配合 adjust-position=false，让输入框浮在键盘上方，
@@ -437,15 +440,31 @@ const sysInfo = uni.getSystemInfoSync();
 const TAB_BAR_GAP = Math.max(0, (sysInfo.screenHeight || 0) - (sysInfo.windowHeight || 0));
 
 /**
+ * 实测底部输入区高度，作为消息列表底部预留值。
+ * 键盘弹起时输入区 padding-bottom 被置 0、高度偏小，只在键盘收起态实测。
+ */
+function measureInputArea() {
+  if (keyboardOffset.value > 0) return;
+  nextTick(() => {
+    uni.createSelectorQuery().select('.input-area').boundingClientRect((rect) => {
+      if (rect && rect.height > 0) {
+        inputAreaHeight.value = rect.height;
+      }
+    }).exec();
+  });
+}
+
+/**
  * 键盘高度变化回调（具名函数引用，注册/注销必须是同一个引用才能正确 off）
  */
 function onKeyboardHeightChange(res) {
   const height = Math.max(0, Number(res && res.height) || 0);
   if (height <= 0) {
-    // 键盘收起：无条件归零
+    // 键盘收起：无条件归零；输入区恢复非弹起态高度，重新实测
     keyboardOffset.value = 0;
     lastKeyboardHeight = 0;
     clearKeyboardWatchdog();
+    measureInputArea();
     return;
   }
   // height>0 说明键盘真实弹着——一律抬升输入框，不再被焦点状态否决。
@@ -513,6 +532,8 @@ function onPageTouch() {
 
 onMounted(() => {
   uni.onKeyboardHeightChange(onKeyboardHeightChange);
+  // 实测输入区高度，计算消息列表底部预留
+  measureInputArea();
 });
 
 /**
@@ -565,6 +586,51 @@ const welcomeMessage = computed(() => {
 });
 const displayMessages = computed(() => welcomeMessage.value ? [welcomeMessage.value, ...messages.value] : messages.value);
 
+// ==================== 聊天历史本地缓存 ====================
+// 冷启动时先渲染缓存的历史消息（消除"进来只有欢迎语、等网络才有历史"的空白感），
+// 随后 loadMessages(true) 网络刷新并覆盖缓存。缓存的是第 1 页最新 20 条。
+const CHAT_CACHE_SIZE = 20;
+
+/** 从 page-cache 恢复历史消息到首屏（返回是否有缓存） */
+function initMessagesFromCache() {
+  try {
+    const cached = pageCache.getCache(CACHE_KEYS.CHAT_MESSAGES);
+    if (!Array.isArray(cached) || !cached.length) return false;
+    messages.value = cached.map(m => ({
+      ...m,
+      precipitation_status: Number(m.precipitation_status) || 0,
+      precipitation_id: m.precipitation_id || null,
+      precipitation_type: m.precipitation_type || null
+    })).map(m => sanitizePartnerMessage(m));
+    // 缓存消息一律视为完整内容（不再走打字机效果）
+    messages.value.forEach(m => {
+      if (m.displayContent === undefined) m.displayContent = m.content;
+    });
+    return true;
+  } catch (e) {
+    console.warn('[chat] 恢复消息缓存失败:', e?.message || e);
+    return false;
+  }
+}
+
+/** 把当前首屏消息序列化写入 page-cache（内存+Storage） */
+function saveMessagesCache() {
+  try {
+    const serializable = messages.value.slice(-CHAT_CACHE_SIZE).map(m => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      content_type: m.content_type || 'text',
+      created_at: m.created_at,
+      precipitation_status: m.precipitation_status || 0,
+      precipitation_id: m.precipitation_id || null,
+      precipitation_type: m.precipitation_type || null,
+      is_template: m.is_template || false
+    }));
+    pageCache.setCache(CACHE_KEYS.CHAT_MESSAGES, serializable);
+  } catch (e) { /* 缓存失败不影响主流程 */ }
+}
+
 /**
  * 剔除「身体评估」消息中的计算过程段落（计算明细/校验/修正分配/安全线校验/算式推导等）
  * 保证「身体数据评估」和「饮食执行方案」两个模块只展示结论
@@ -601,6 +667,11 @@ function sanitizePartnerMessage(msg) {
 const inputText = ref('');
 const loading = ref(false);
 const scrollTop = ref(0);
+// 底部输入区实高（px）：onReady 后实测。消息列表底部预留 = 实高（由 listPaddingBottom 提供）+ 占位 8px，
+// 保证滚到底时最后一条消息恰好露出在输入框上方、间隔 8px——写死 66px 在不同机型上会因
+// rpx 换算与输入区实高不一致，导致输入框上方露出过高空白带（遮挡高）
+const inputAreaHeight = ref(58);
+const listPaddingBottom = computed(() => `${inputAreaHeight.value}px`);
 // 用户是否停留在消息列表底部附近：false 时不再强制滚到底，避免打断翻看历史
 const userNearBottom = ref(true);
 // 历史消息加载中标记，防止 scrolltoupper 连续触发重复加载
@@ -783,13 +854,24 @@ function getMessageText(msg) {
 function copyMessage(msg) {
   const text = getMessageText(msg);
   if (!text) return;
+  const showSuccess = () => uni.showToast({ title: '复制成功', icon: 'none' });
+  const showFail = (err) => {
+    // 记录真实错误便于排查（如隐私协议未声明剪贴板、开发者工具剪贴板权限等）
+    console.error('[copy] setClipboardData 失败:', err && (err.errMsg || err.message) || err);
+    uni.showToast({ title: '复制失败', icon: 'none' });
+  };
   uni.setClipboardData({
     data: text,
-    success: () => {
-      uni.showToast({ title: '复制成功', icon: 'none' });
-    },
-    fail: () => {
-      uni.showToast({ title: '复制失败', icon: 'none' });
+    success: showSuccess,
+    fail: (err) => {
+      // uni 封装在部分基础库/开发者工具版本下会误报失败，直连 wx API 重试一次
+      // eslint-disable-next-line no-undef
+      if (typeof wx !== 'undefined' && wx.setClipboardData) {
+        // eslint-disable-next-line no-undef
+        wx.setClipboardData({ data: text, success: showSuccess, fail: (err2) => showFail(err2 || err) });
+      } else {
+        showFail(err);
+      }
     }
   });
 }
@@ -974,13 +1056,21 @@ const partnerMoodText = computed(() => partnerMood.value.text);
 
 onMounted(() => {
   preloadAvatarImages();
+  // 冷启动先渲染缓存的历史消息（有缓存时首屏即见，不展示欢迎语），再异步网络刷新
+  const hasMessageCache = userStore.isLoggedIn && initMessagesFromCache();
+  if (hasMessageCache) {
+    nextTick(() => {
+      requestAnimationFrame ? requestAnimationFrame(() => scrollToBottom(true)) : setTimeout(() => scrollToBottom(true), 50);
+    });
+  }
   // 先完成首帧渲染（欢迎消息立即可见），再异步加载数据，防止白屏
   nextTick(() => {
     if (userStore.isLoggedIn) {
-      userStore.fetchUserInfo();
+      // 不重复 fetchUserInfo：App onLaunch 的 userStore.init() 已同步用户信息
       loadMessages(true);
-      loadTodayStats();
       checkWakeupMessage();
+      // 今日统计在聊天页模板中并未展示，延后加载让出首屏并发槽
+      setTimeout(loadTodayStats, 2500);
     }
     // 量取列表可视高度（判断用户是否在底部附近用，小程序无 DOM 走 SelectorQuery）
     setTimeout(initScrollMetrics, 300);
@@ -989,21 +1079,22 @@ onMounted(() => {
 
 /**
  * 预加载头像图片，减少 AI 对话时图片闪烁
+ * 小程序端没有浏览器 Image 对象，用 uni.getImageInfo 触发下载进缓存
  */
 function preloadAvatarImages() {
-  if (typeof Image === 'undefined') return;
   const paths = [
     resolveStaticUrl('/static/image/icon/rou.png'),
     resolveStaticUrl('/static/image/icon/zhuan.png'),
     resolveStaticUrl('/static/image/icon/sun.png')
   ];
   paths.forEach(src => {
-    const img = new Image();
-    img.src = src;
+    uni.getImageInfo({ src }).catch(() => {});
   });
 }
 
 onShow(() => {
+  // 实测输入区高度（从其他页面返回时 tabBar/安全区布局可能变化）
+  measureInputArea();
   // 消息已在内存中，直接滚动到底部（不再重新加载）
   if (messages.value.length > 0) {
     // 延迟一次滚动，给页面渲染留出时间，避免白屏
@@ -1015,7 +1106,11 @@ onShow(() => {
       checkAdviceMessage();
       // 增量同步迟到消息：AI 建议生成耗时可达 1~2 分钟，上次触发生成后
       // 消息才入库，靠这次拉取补显（onShow 不做全量刷新，保护滚动位置）
-      refreshLatestMessages();
+      // MP 端首次进入时 onShow 先于 onMounted 执行：首屏无消息时全量加载由
+      // onMounted 的 loadMessages 负责，此处跳过，避免同一请求并发两遍
+      if (messages.value.length > 0) {
+        refreshLatestMessages();
+      }
     });
   }
 });
@@ -1104,6 +1199,8 @@ onHide(() => {
 let refreshingLatest = false;
 async function refreshLatestMessages() {
   if (refreshingLatest) return false;
+  // 冷启动时 onMounted 的全量加载与 onShow 的增量刷新会同时发起同一请求，去重
+  if (initialMessagesLoading) return false;
   refreshingLatest = true;
   try {
     const res = await chatApi.getMessages({ page: 1, size: 20 });
@@ -1165,12 +1262,16 @@ async function checkWakeupMessage() {
   }
 }
 
+// 冷启动首屏消息全量加载进行中标记：与 onShow 的增量刷新共享同一请求，互相去重
+let initialMessagesLoading = false;
+
 // 加载聊天记录
 async function loadMessages(reset = false) {
   if (reset) {
     page.value = 1;
+    initialMessagesLoading = true;
   }
-  if (!hasMore.value && !reset) return;
+  if (!hasMore.value && !reset) { initialMessagesLoading = false; return; }
 
   try {
     const res = await chatApi.getMessages({ page: page.value, size: 20 });
@@ -1188,6 +1289,8 @@ async function loadMessages(reset = false) {
       scrollToBottom(true);
       // 图片/气泡布局可能还没完成，延迟再滚几次兜底
       [500, 1500, 2500].forEach(delay => setTimeout(() => scrollToBottom(true), delay));
+      // 网络数据就位后覆盖本地消息缓存，下次冷启动直接渲染
+      saveMessagesCache();
     } else {
       const oldHeight = await getScrollHeight();
       messages.value = [...list, ...messages.value];
@@ -1207,6 +1310,8 @@ async function loadMessages(reset = false) {
     }
   } catch (err) {
     console.error('加载消息失败:', err);
+  } finally {
+    initialMessagesLoading = false;
   }
 }
 
@@ -1459,12 +1564,12 @@ async function processOneMessage(content, tempId) {
   reportCount('ai_chat');
 
   /*
-   * 沉淀为后端异步完成（实测 3~6 秒落库），单次 3 秒刷新可能早于沉淀写库，
-   * 导致"已记录/待确认"标签一直不出现（直至重进页面）。
-   * 按 3s / 8s / 15s 多次重试全量刷新；refreshMessages 幂等且仅在状态变化时更新本地，
+   * 沉淀为后端异步完成（实测 3~6 秒落库，多食物/网络核实的消息可能 15 秒以上），
+   * 单次 3 秒刷新可能早于沉淀写库，导致"已记录/待确认"标签一直不出现（直至重进页面）。
+   * 按 3s / 8s / 15s / 25s / 40s 多次重试全量刷新；refreshMessages 幂等且仅在状态变化时更新本地，
    * 沉淀完成后任意一次刷新即可补上标签。
    */
-  [3000, 8000, 15000].forEach(delay => {
+  [3000, 8000, 15000, 25000, 40000].forEach(delay => {
     setTimeout(() => refreshMessages(), delay);
   });
 }
@@ -1596,7 +1701,8 @@ async function refreshMessages() {
     let hasUpdate = false;
     for (let i = 0; i < messages.value.length; i++) {
       const msg = messages.value[i];
-      if (msg.role === 'user' && statusMap.has(msg.id)) {
+      // 搭子消息也会挂沉淀（如食谱挂在搭子回复上），不限于 user 消息
+      if (statusMap.has(msg.id)) {
         const newStatus = statusMap.get(msg.id);
         const currentStatus = Number(msg.precipitation_status) || 0;
         const targetStatus = Number(newStatus.precipitation_status) || 0;
@@ -1631,10 +1737,10 @@ async function refreshMessages() {
 // 跳转到记录页面
 function goToRecord(type) {
   const urls = {
-    diet: '/pages/record/diet-detail',
-    exercise: '/pages/record/exercise-detail',
-    weight: '/pages/record/body-data',
-    water: '/pages/record/habit'
+    diet: '/pagesRecord/diet-detail',
+    exercise: '/pagesRecord/exercise-detail',
+    weight: '/pagesRecord/body-data',
+    water: '/pagesRecord/habit'
   };
   uni.navigateTo({ url: urls[type] || '/pages/record/index' });
 }
@@ -2270,12 +2376,10 @@ async function onPendingTag(msg) {
   min-height: 0;
   padding: 20rpx 40rpx;
   /*
-   * 底部预留空间：输入区为 fixed 定位浮在滚动区上方，
-   * 保证滚动到底时最后一条消息完整可见、贴近输入框不被遮挡
+   * 底部预留：输入区为 fixed 定位浮在滚动区上方，
+   * padding-bottom 由运行时实测输入区实高驱动（template 内联 style），
+   * 保证滚到底时最后一条消息完整可见、与输入框仅隔 8px（占位 spacer）
    */
-  /* 底部预留 = 输入框容器实高 58px（input 56rpx + 胶囊 padding 8rpx×2 + 区域 padding 12/16rpx）+ 8px 呼吸间距；
-     预留过大时滚到底会在输入框上方露出一条空白带 */
-  padding-bottom: 66px;
   box-sizing: border-box;
   background: #F7FBF4;
 }
@@ -2488,7 +2592,10 @@ async function onPendingTag(msg) {
   transform: translateY(-50%) scale(0.95);
   transition: opacity 0.3s, transform 0.3s;
   z-index: 1001;
-  overflow-y: auto;
+  /* 三段式：头部/按钮固定，仅中间内容区滚动 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   opacity: 0;
   pointer-events: none;
 }
@@ -2504,6 +2611,14 @@ async function onPendingTag(msg) {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24rpx;
+  flex-shrink: 0;
+}
+
+/* 内容区单独滚动，标题栏和底部按钮不随内容滚动 */
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .panel-title {
@@ -2708,6 +2823,18 @@ async function onPendingTag(msg) {
   font-weight: 500;
 }
 
+/* 资产类（食谱/方法等）单行输入框：与饮食记录弹窗的输入框样式保持一致 */
+.asset-text-input {
+  width: 100%;
+  background: #F3F4F6;
+  border-radius: 12rpx;
+  padding: 18rpx 16rpx;
+  font-size: 30rpx;
+  line-height: 1.5;
+  color: #1F2937;
+  min-height: 72rpx;
+}
+
 .asset-content-input {
   width: 100%;
   min-height: 120rpx;
@@ -2722,7 +2849,8 @@ async function onPendingTag(msg) {
 .panel-actions {
   display: flex;
   gap: 20rpx;
-  margin-top: 32rpx;
+  margin-top: 24rpx;
+  flex-shrink: 0;
 }
 
 .btn-cancel,

@@ -4,6 +4,7 @@
 const { db } = require('../db');
 const { success, error } = require('../utils/response');
 const taskService = require('../services/taskService');
+const { getChinaDateStr, getChinaDateStrOffset } = require('../utils/chinaTime');
 
 /**
  * 上传照片
@@ -23,7 +24,7 @@ function uploadPhoto(req, res) {
   if (angle && !VALID_ANGLES.includes(angle)) {
     return res.status(400).json(error('角度参数不合法', 400));
   }
-  const photoDate = record_date || new Date().toISOString().split('T')[0];
+  const photoDate = record_date || getChinaDateStr();
   if (!DATE_REGEX.test(photoDate)) {
     return res.status(400).json(error('记录日期格式不正确', 400));
   }

@@ -171,7 +171,7 @@ function goAchievements() {
 }
 
 function goMilestones() {
-  uni.navigateTo({ url: '/pages/museum/milestones' });
+  uni.navigateTo({ url: '/pagesMuseum/milestones' });
 }
 
 function goNewbieTasks() {

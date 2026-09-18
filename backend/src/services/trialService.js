@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { db } = require('../db');
 const LRUCache = require('../utils/lruCache');
 const { CONFIG_KEYS, POPUP_KEYS, FEATURE_TYPES, DEFAULT_CONFIG_VALUES } = require('../constants/configKeys');
+const { getChinaDateStr, getChinaDateStrOffset } = require('../utils/chinaTime');
 
 const CONFIG_CACHE_TTL_MS = 60 * 1000;
 const configLRUCache = new LRUCache(50, CONFIG_CACHE_TTL_MS);
@@ -351,7 +352,7 @@ function reportCount({ userId, deviceId, featureType, ip }) {
  * 获取当日统计数据（后台看板）
  */
 function getDashboardStats() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getChinaDateStr();
   const blockCount = db.prepare("SELECT COUNT(*) as count FROM trial_logs WHERE action = 'block' AND created_at >= ?").get(`${today}T00:00:00`).count;
   const whitelistCount = db.prepare("SELECT COUNT(*) as count FROM trial_logs WHERE action = 'whitelist' AND created_at >= ?").get(`${today}T00:00:00`).count;
   const copyCount = db.prepare("SELECT COUNT(*) as count FROM trial_logs WHERE action = 'copy_contact' AND created_at >= ?").get(`${today}T00:00:00`).count;

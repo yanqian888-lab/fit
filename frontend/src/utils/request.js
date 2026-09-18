@@ -2,6 +2,18 @@ import { getServerUrl, getBaseUrl } from './environment.js';
 
 let isRedirecting401 = false;
 
+// 同类错误提示节流窗口：窗口内只弹一次，避免并发/轮询请求连环弹 toast
+const TOAST_THROTTLE_MS = 2000;
+const toastThrottleMap = new Map();
+
+function showThrottledToast(title) {
+  const now = Date.now();
+  const last = toastThrottleMap.get(title) || 0;
+  if (now - last < TOAST_THROTTLE_MS) return;
+  toastThrottleMap.set(title, now);
+  uni.showToast({ title, icon: 'none' });
+}
+
 /**
  * 统一请求封装
  * @param {Object} options 请求配置
@@ -56,7 +68,7 @@ export function request(options) {
               reject(data);
             } else {
               if (!options.silent) {
-                uni.showToast({ title: data.message || `请求失败(${res.statusCode})`, icon: 'none' });
+                showThrottledToast(data.message || `请求失败(${res.statusCode})`);
               }
               reject(data);
             }
@@ -68,7 +80,7 @@ export function request(options) {
         fail: (err) => {
           try {
             if (showLoading) uni.hideLoading();
-            uni.showToast({ title: '网络错误', icon: 'none' });
+            if (!options.silent) showThrottledToast('网络错误');
           } catch (e) {
             // 忽略 hideLoading/showToast 异常
           }
@@ -87,8 +99,8 @@ export function request(options) {
 }
 
 export const get = (url, options = {}) => {
-  const { skip401Redirect, ...params } = options;
-  return request({ url, method: 'GET', data: params, skip401Redirect });
+  const { skip401Redirect, silent, ...params } = options;
+  return request({ url, method: 'GET', data: params, skip401Redirect, silent });
 };
 export const post = (url, data = {}, options = {}) => request({ url, method: 'POST', data, ...options });
 export const put = (url, data = {}, options = {}) => request({ url, method: 'PUT', data, ...options });

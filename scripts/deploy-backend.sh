@@ -1,53 +1,8 @@
 #!/bin/bash
-set -e
-
 # ============================================================
-# 后端增量部署脚本
-# 用于在已有服务器上更新测试或正式环境后端代码
-# 用法：
-#   ./scripts/deploy-backend.sh test
-#   ./scripts/deploy-backend.sh prod
+# ⚠️ 已废弃（2026-09-09）：git 部署流程停用，服务器 /opt/jianfeidazi 的 .git 已改名保留。
+# 唯一部署流程为 rsync：./scripts/sync-backend-prod.sh（自动含数据库备份）
+# 本脚本保留仅为历史参考，执行会直接退出。
 # ============================================================
-
-ENV=$1
-
-if [[ "$ENV" != "test" && "$ENV" != "prod" ]]; then
-  echo ""
-  echo "错误：请指定部署环境"
-  echo "用法："
-  echo "  ./scripts/deploy-backend.sh test"
-  echo "  ./scripts/deploy-backend.sh prod"
-  echo ""
-  exit 1
-fi
-
-PM2_NAME="fit-backend-$ENV"
-ENV_FILE=".env.$ENV"
-
-cd /opt/jianfeidazi/backend
-
-echo "====================================="
-echo "  后端增量部署 - $ENV 环境"
-echo "====================================="
-
-echo "[1/5] 拉取最新代码..."
-git pull origin $(git rev-parse --abbrev-ref HEAD)
-
-echo "[2/5] 安装依赖..."
-npm install --production
-
-echo "[3/5] 备份数据库..."
-../scripts/backup-db.sh "$ENV" || true
-
-echo "[4/5] 初始化/迁移数据库..."
-# 避免服务运行时执行写库脚本导致 WAL 损坏，先停止服务
-npm run "pm2:stop:$ENV" 2>/dev/null || pm2 stop "$PM2_NAME" 2>/dev/null || true
-NODE_ENV=$ENV npm run init-db || NODE_ENV=$ENV node src/scripts/init-db.js
-
-echo "[5/5] 启动 PM2 服务..."
-npm run "pm2:$ENV" 2>/dev/null || pm2 start "$PM2_NAME" 2>/dev/null || pm2 restart "$PM2_NAME"
-pm2 save
-
-echo ""
-echo "✅ $ENV 环境后端部署完成"
-echo "查看日志：pm2 logs $PM2_NAME"
+echo "❌ deploy-backend.sh 已废弃。请使用：./scripts/sync-backend-prod.sh"
+exit 1

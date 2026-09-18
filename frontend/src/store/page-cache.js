@@ -171,5 +171,6 @@ export const CACHE_KEYS = {
   RECORD_WORKOUTS: 'record_workouts',
   PET_INFO: 'pet_info',
   PET_CURRENCY: 'pet_currency',
-  PET_CHECKIN: 'pet_checkin'
+  PET_CHECKIN: 'pet_checkin',
+  CHAT_MESSAGES: 'chat_messages'
 };

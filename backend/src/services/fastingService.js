@@ -87,7 +87,7 @@ function ensureTodayPlan(userId, payload = {}) {
  */
 function planFasting(userId, { mode = '16:8', target_hours = 16, eating_window_start, eating_window_end, note = '' }) {
   return withTransaction(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getChinaDateStr();
     const existing = getTodayFasting(userId, today);
     if (existing) {
       db.prepare(`

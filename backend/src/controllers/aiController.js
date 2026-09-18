@@ -4,7 +4,7 @@
  */
 const { db, withTransaction } = require('../db');
 const { success, error } = require('../utils/response');
-const { getChinaDateStr } = require('../utils/chinaTime');
+const { getChinaDateStr, getChinaDateStrOffset } = require('../utils/chinaTime');
 const mainAgent = require('../services/agents/mainAgent');
 const helperAgent = require('../services/agents/helperAgent');
 const { callWithPrompt } = require('../services/aiClient');
@@ -24,7 +24,7 @@ function getRandomTemplate(type, value) {
  */
 async function generateDiary(req, res) {
   const userId = req.userId;
-  const date = req.query.date || new Date().toISOString().split('T')[0];
+  const date = req.query.date || getChinaDateStr();
 
   // 幂等：同一天已生成过则直接返回已有日记，不重复调用 AI、不重复扣费
   const existing = db.prepare(`
@@ -653,7 +653,7 @@ function getMilestones(req, res) {
  */
 async function generateMonthlyDiary(req, res) {
   const userId = req.userId;
-  const month = req.query.month || new Date().toISOString().split('T')[0].slice(0, 7);
+  const month = req.query.month || getChinaDateStr().slice(0, 7);
   const startDate = `${month}-01`;
   const endDate = new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0).toISOString().split('T')[0];
 
@@ -734,7 +734,7 @@ async function generateMonthlyDiary(req, res) {
 async function analyzePlateau(req, res) {
   const userId = req.userId;
   const days = parseInt(req.query.days) || 14;
-  const since = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+  const since = getChinaDateStrOffset(-days);
 
   const weights = db.prepare(`
     SELECT record_date, value FROM body_records

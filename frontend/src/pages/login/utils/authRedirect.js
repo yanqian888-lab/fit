@@ -1,23 +1,9 @@
 import { userApi } from '../../../api';
 import { safeSwitchTab } from './safeSwitchTab';
+import { isProfileComplete } from '../../../utils/profile.js';
 
-/* ………… 中间 isProfileComplete / saveSetupDataIfExists / isStaleReturning 函数保持不变 ………… */
-
-/**
- * 判断用户基础资料是否已完善
- */
-export function isProfileComplete(user) {
-  if (!user) return false;
-  const profile = user.profile || {};
-  return !!(
-    user.gender &&
-    user.birth_date &&
-    user.height &&
-    profile.current_weight &&
-    profile.target_weight &&
-    profile.target_date
-  );
-}
+// isProfileComplete 已迁移到主包 src/utils/profile.js（主包不能同步 require 分包模块）
+export { isProfileComplete };
 
 /**
  * 保存游客阶段填写的 setup_data（如果有）

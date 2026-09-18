@@ -146,8 +146,8 @@ async function doCheckin() {
 
 // 任务「去完成」跳转映射（按任务条件 action）
 const JUMP_MAP = {
-  record_diet: { type: 'page', url: '/pages/record/diet-detail' },
-  record_exercise: { type: 'page', url: '/pages/record/exercise-detail' },
+  record_diet: { type: 'page', url: '/pagesRecord/diet-detail' },
+  record_exercise: { type: 'page', url: '/pagesRecord/exercise-detail' },
   chat: { type: 'tab', url: '/pages/pet/index' },
   record_water: { type: 'tab', url: '/pages/record/index' },
   drink_water_goal: { type: 'tab', url: '/pages/record/index' },

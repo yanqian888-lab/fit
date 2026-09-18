@@ -17,6 +17,7 @@ const routes = [
       { path: 'dashboard', component: () => import('@/views/dashboard/index.vue'), meta: { title: '首页', icon: 'HomeFilled', perm: 'dashboard' } },
       { path: 'app-config', component: () => import('@/views/app-config/index.vue'), meta: { title: '应用配置', icon: 'Setting', perm: 'app_config:read' } },
       { path: 'app-config/protocol', component: () => import('@/views/agreement-config/index.vue'), meta: { title: '协议配置', icon: 'DocumentCopy', perm: 'app_config:read' } },
+      { path: 'about-config', component: () => import('@/views/about-config/index.vue'), meta: { title: '关于我们', icon: 'InfoFilled', perm: 'app_config:read' } },
       { path: 'operation/announcements', component: () => import('@/views/announcement-config/index.vue'), meta: { title: '公告管理', icon: 'Notification', perm: 'announcement:read' } },
       { path: 'operation/notification-channels', component: () => import('@/views/notification-channel-config/index.vue'), meta: { title: '通知渠道', icon: 'Connection', perm: 'notification_channel:read' } },
       { path: 'operation/popup', component: () => import('@/views/popup-config/index.vue'), meta: { title: '弹窗广告管理', icon: 'Picture', perm: 'popup_config:read' } },

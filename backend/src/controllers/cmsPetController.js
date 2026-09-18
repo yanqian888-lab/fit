@@ -28,6 +28,20 @@ function setAppConfig(key, value) {
   invalidateAppConfig(key);
 }
 
+/**
+ * 清除所有用户的状态持续锁，让状态库改动立即生效。
+ * 用户当前展示的状态在 state_expires_at 之前不会因为配置变更而切换，
+ * 最长可能持续 duration_minutes（默认 30 分钟），导致后台修改坐标/时长、
+ * 新增/删除/停用状态后前端长时间看不到变化。CMS 变更后清锁，
+ * 下一次 /pet 请求即按最新配置重新挑选状态。
+ */
+function invalidatePetStateLocks() {
+  db.prepare(`
+    UPDATE pet_states
+    SET current_state_key = NULL, state_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
+  `).run();
+}
+
 // ==================== 全局配置 ====================
 function getGlobal(req, res) {
   const config = getAppConfig('pet_global');
@@ -269,7 +283,8 @@ function createState(req, res) {
   const {
     state_key, name, lottie_url, gif_url, static_url,
     frames_json, frame_rate, pos_x, pos_y, width, height, scene_key,
-    time_ranges, mood_range, duration_minutes, sort_order = 0, is_enabled = 1
+    time_ranges, mood_range, duration_minutes, sort_order = 0, is_enabled = 1,
+    app_pos_x, app_pos_y, app_width, app_height
   } = req.body;
 
   if (!state_key || !String(state_key).trim()) {
@@ -288,9 +303,10 @@ function createState(req, res) {
     INSERT INTO pet_states_lib (
       state_key, name, lottie_url, gif_url, static_url,
       frames_json, frame_rate, pos_x, pos_y, width, height, scene_key,
-      time_ranges, mood_range, duration_minutes, sort_order, is_enabled
+      time_ranges, mood_range, duration_minutes, sort_order, is_enabled,
+      app_pos_x, app_pos_y, app_width, app_height
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     state_key, name, lottie_url || null, gif_url || null, static_url || null,
     serializeJsonField(frames_json),
@@ -304,10 +320,15 @@ function createState(req, res) {
     serializeJsonField(mood_range),
     duration_minutes !== undefined ? duration_minutes : 30,
     sort_order,
-    is_enabled ? 1 : 0
+    is_enabled ? 1 : 0,
+    app_pos_x !== undefined ? app_pos_x : null,
+    app_pos_y !== undefined ? app_pos_y : null,
+    app_width !== undefined ? app_width : null,
+    app_height !== undefined ? app_height : null
   ).lastInsertRowid;
 
   cmsLogService.log(req, 'pet_config:create', 'pet_state', String(id), { state_key, name });
+  invalidatePetStateLocks();
   return res.json(success({ id }, '创建成功'));
 }
 
@@ -316,10 +337,11 @@ function updateState(req, res) {
   const {
     state_key, name, lottie_url, gif_url, static_url,
     frames_json, frame_rate, pos_x, pos_y, width, height, scene_key,
-    time_ranges, mood_range, duration_minutes, sort_order, is_enabled
+    time_ranges, mood_range, duration_minutes, sort_order, is_enabled,
+    app_pos_x, app_pos_y, app_width, app_height
   } = req.body;
 
-  const item = db.prepare('SELECT id FROM pet_states_lib WHERE id = ?').get(id);
+  const item = db.prepare('SELECT * FROM pet_states_lib WHERE id = ?').get(id);
   if (!item) {
     return res.status(404).json(error('状态不存在', 404));
   }
@@ -331,6 +353,8 @@ function updateState(req, res) {
     }
   }
 
+  // App 端坐标/尺寸需要支持"清空"（恢复跟随小程序端），因此不走 COALESCE，
+  // 未传字段保留原值、显式传 null 则置空
   db.prepare(`
     UPDATE pet_states_lib
     SET state_key = COALESCE(?, state_key),
@@ -349,7 +373,11 @@ function updateState(req, res) {
         mood_range = COALESCE(?, mood_range),
         duration_minutes = COALESCE(?, duration_minutes),
         sort_order = COALESCE(?, sort_order),
-        is_enabled = COALESCE(?, is_enabled)
+        is_enabled = COALESCE(?, is_enabled),
+        app_pos_x = ?,
+        app_pos_y = ?,
+        app_width = ?,
+        app_height = ?
     WHERE id = ?
   `).run(
     state_key !== undefined ? state_key : null,
@@ -369,10 +397,15 @@ function updateState(req, res) {
     duration_minutes !== undefined ? duration_minutes : null,
     sort_order !== undefined ? sort_order : null,
     is_enabled !== undefined ? (is_enabled ? 1 : 0) : null,
+    app_pos_x !== undefined ? app_pos_x : item.app_pos_x,
+    app_pos_y !== undefined ? app_pos_y : item.app_pos_y,
+    app_width !== undefined ? app_width : item.app_width,
+    app_height !== undefined ? app_height : item.app_height,
     id
   );
 
   cmsLogService.log(req, 'pet_config:update', 'pet_state', String(id), { state_key, name });
+  invalidatePetStateLocks();
   return res.json(success(null, '更新成功'));
 }
 
@@ -385,6 +418,7 @@ function removeState(req, res) {
 
   db.prepare('DELETE FROM pet_states_lib WHERE id = ?').run(id);
   cmsLogService.log(req, 'pet_config:delete', 'pet_state', String(id), {});
+  invalidatePetStateLocks();
   return res.json(success(null, '删除成功'));
 }
 

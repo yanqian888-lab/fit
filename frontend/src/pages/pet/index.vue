@@ -1422,7 +1422,7 @@ function onShopClose() {
   shopPanelVisible.value = false;
 }
 function goMood() {
-  uni.navigateTo({ url: '/pages/record/mood' });
+  uni.navigateTo({ url: '/pagesRecord/mood' });
 }
 
 // ==================== 外出倒计时 ====================
@@ -1460,6 +1460,8 @@ function updateRemaining(endAt) {
 // ==================== 生命周期 ====================
 onShow(() => {
   timePeriod.value = getTimePeriod();
+
+  // 数据加载统一在 onShow（MP 端首次进入时 onShow 先于 onMounted 执行）
 
   // 先从缓存恢复数据（避免白屏）—— 项目约定：先渲染缓存，再后台异步始终刷新
   if (!hasCachedData.value) {
@@ -1506,30 +1508,12 @@ onShow(() => {
   petDialogueVisible.value = false;
 });
 
+// 注意：MP 端首次进入时 onShow 先于 onMounted 执行，数据加载统一放 onShow，
+// onMounted 只做缓存渲染与布局测量，避免首次双发请求
 onMounted(() => {
   // 1. 先从缓存恢复数据（避免白屏）
-  const hasCache = initFromCache();
-  
-  // 2. 无论登录与否，都加载公共展示配置（让未登录游客也能看到搭搭形象）
-  loadPetConfig();
+  initFromCache();
 
-  // 3. 加载 CMS 配置的二维码（分享海报使用）
-  loadAppConfig();
-
-  // 4. 已登录用户额外加载完整数据
-  if (userStore.isLoggedIn) {
-    if (!hasCache) {
-      loading.value = true;
-    }
-    nextTick(() => {
-      loadPet();
-      loadCurrency();
-      loadCheckin();
-      loading.value = false;
-      hasCachedData.value = true;
-    });
-  }
-  
   measureStage();
   centerMap();
   measureBgAspect(currentBgImage.value);

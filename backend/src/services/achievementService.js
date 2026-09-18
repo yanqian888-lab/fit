@@ -6,6 +6,7 @@ const currencyService = require('./currencyService');
 const { getUsedDays } = require('../utils/date');
 const rewardReceiptService = require('./rewardReceiptService');
 const { safeJsonParse } = require('../utils/safeJson');
+const { getChinaDateStr } = require('../utils/chinaTime');
 
 function getAchievements(userId) {
   const achievements = db.prepare('SELECT * FROM achievements WHERE is_enabled = 1 ORDER BY sort_order ASC').all();
@@ -42,7 +43,7 @@ function unlockAchievement(userId, achievement) {
     db.prepare(`
       INSERT INTO timelines (user_id, event_type, title, content, related_id, related_type, event_date, is_important)
       VALUES (?, 'milestone', ?, ?, ?, 'achievements', ?, 1)
-    `).run(userId, achievement.name, achievement.description || '', achievement.id, new Date().toISOString().split('T')[0]);
+    `).run(userId, achievement.name, achievement.description || '', achievement.id, getChinaDateStr());
 
     // 发送管家回执（只有实际发放奖励时才发送）
     if (hasReward) {

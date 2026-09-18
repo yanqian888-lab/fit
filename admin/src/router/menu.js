@@ -20,6 +20,7 @@ export const routes = [
     perm: 'app_config:read',
     children: [
       { path: '/app-config/protocol', title: '协议配置', icon: 'DocumentCopy', perm: 'app_config:read' },
+      { path: '/about-config', title: '关于我们', icon: 'InfoFilled', perm: 'app_config:read' },
       { path: '/template-config', title: '模板消息', icon: 'ChatLineRound', perm: 'template_config:read' },
       { path: '/exercise-lib', title: '运动库', icon: 'Basketball', perm: 'exercise_lib:read' },
       { path: '/milestone-config', title: '里程碑文案', icon: 'Trophy', perm: 'milestone:read' },

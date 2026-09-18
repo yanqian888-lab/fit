@@ -327,6 +327,10 @@ function remove(req, res) {
     return res.status(404).json(error('事件不存在', 404));
   }
 
+  // 显式级联清理：连接未启用外键时 ON DELETE CASCADE 不会生效，
+  // 不清理会残留无父事件的照片行和用户已下发记录（脏数据）
+  db.prepare('DELETE FROM pet_event_photos WHERE event_id = ?').run(id);
+  db.prepare('DELETE FROM user_events WHERE event_id = ?').run(id);
   db.prepare('DELETE FROM pet_events_lib WHERE id = ?').run(id);
   cmsLogService.log(req, 'event_config:delete', 'pet_event', String(id), {});
   return res.json(success(null, '删除成功'));

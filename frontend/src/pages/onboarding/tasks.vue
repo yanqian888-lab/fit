@@ -11,10 +11,10 @@
       <view class="progress-card">
         <view class="progress-text">
           <text>已完成 {{ completedCount }}/{{ tasks.length }}</text>
-          <text class="progress-percent">{{ Math.round((completedCount / tasks.length) * 100) }}%</text>
+          <text class="progress-percent">{{ progressPercent }}%</text>
         </view>
         <view class="progress-bar">
-          <view class="progress-fill" :style="{ width: (completedCount / tasks.length * 100) + '%' }"></view>
+          <view class="progress-fill" :style="{ width: progressPercent + '%' }"></view>
         </view>
       </view>
 
@@ -66,6 +66,8 @@ const receiptVisible = ref(false);
 const receipt = ref({ content: '', berries: 0 });
 
 const completedCount = computed(() => tasks.value.filter(t => t.status === 'completed' || t.status === 'claimed').length);
+// 任务列表为空（断网/接口失败）时防除零显示 NaN%
+const progressPercent = computed(() => tasks.value.length ? Math.round((completedCount.value / tasks.value.length) * 100) : 0);
 
 onMounted(() => {
   load();

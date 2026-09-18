@@ -8,41 +8,16 @@
         <text v-else class="about-text">暂无内容</text>
       </view>
 
-      <!-- 隐藏环境切换触发区：长按 5 秒弹出环境切换 -->
-      <view
-        class="env-switch-trigger"
-        @touchstart="handleEnvTouchStart"
-        @touchend="handleEnvTouchEnd"
-        @touchcancel="handleEnvTouchEnd"
-      ></view>
     </view>
-
-    <!-- 环境切换完成提示弹框（单按钮） -->
-    <AppModal
-      v-model:visible="showEnvSwitchModal"
-      icon="none"
-      title="环境已切换"
-      :text="envSwitchText"
-      confirmText="立即重启"
-      :showCancel="false"
-      @confirm="confirmRestart"
-    />
   </AppPage>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import AppPage from '../../components/AppPage.vue';
-import AppModal from '../../components/AppModal.vue';
 import { get } from '../../utils/request';
-import { getCurrentEnv, setCurrentEnv, getEnvLabel } from '../../utils/environment.js';
 
 const aboutContent = ref('');
-const longPressTimer = ref(null);
-
-// 环境切换完成提示
-const showEnvSwitchModal = ref(false);
-const envSwitchText = ref('');
 
 const paragraphs = computed(() => {
   return aboutContent.value.split(/\n+/).filter(p => p.trim());
@@ -56,54 +31,6 @@ onMounted(async () => {
     console.error('获取关于我们配置失败', e);
   }
 });
-
-function handleEnvTouchStart() {
-  clearEnvTimer();
-  longPressTimer.value = setTimeout(() => {
-    showEnvSwitchDialog();
-  }, 5000);
-}
-
-function handleEnvTouchEnd() {
-  clearEnvTimer();
-}
-
-function clearEnvTimer() {
-  if (longPressTimer.value) {
-    clearTimeout(longPressTimer.value);
-    longPressTimer.value = null;
-  }
-}
-
-function showEnvSwitchDialog() {
-  const currentEnv = getCurrentEnv();
-  const envList = ['test', 'production'];
-  const itemList = envList.map(env => {
-    const label = getEnvLabel(env);
-    return env === currentEnv ? `${label}（当前）` : `切换到${label}`;
-  });
-
-  uni.showActionSheet({
-    title: '切换后端环境',
-    itemList,
-    success: (res) => {
-      const selectedEnv = envList[res.tapIndex];
-      if (selectedEnv && selectedEnv !== currentEnv) {
-        setCurrentEnv(selectedEnv);
-        envSwitchText.value = `已切换至 ${getEnvLabel(selectedEnv)}，需要重启应用以生效。`;
-        showEnvSwitchModal.value = true;
-      }
-    }
-  });
-}
-
-/**
- * 确认重启应用
- */
-function confirmRestart() {
-  showEnvSwitchModal.value = false;
-  uni.reLaunch({ url: '/pages/index/index' });
-}
 </script>
 
 <style lang="scss" scoped>
@@ -134,13 +61,5 @@ function confirmRestart() {
 
 .about-text:last-child {
   margin-bottom: 0;
-}
-
-.env-switch-trigger {
-  width: 300px;
-  height: 300px;
-  align-self: center;
-  margin-bottom: 32rpx;
-  background: transparent;
 }
 </style>

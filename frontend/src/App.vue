@@ -81,6 +81,17 @@ import { getWindowInfoSafe } from './utils/systemInfo';
 const userStore = useUserStore();
 const noticeStore = useNoticeStore();
 
+// 未读数/公告请求节流：onLaunch 与冷启动后的 onShow 在 500ms 内会各触发一次，
+// 同一数据请求重复发出，挤占冷启动并发槽（wx.request 上限 10）
+let lastNoticeFetchAt = 0;
+function fetchNoticesThrottled() {
+  if (!userStore.isLoggedIn) return;
+  if (Date.now() - lastNoticeFetchAt < 30000) return;
+  lastNoticeFetchAt = Date.now();
+  noticeStore.fetchUnreadCount().catch(() => {});
+  noticeStore.fetchAnnouncements('home').catch(() => {});
+}
+
 onLaunch(async () => {
   // #ifdef MP-WEIXIN
   // 【友盟兜底初始化】uni-app gc() 会丢弃 umengConfig，SDK 自动 init 可能失败，
@@ -134,22 +145,14 @@ onLaunch(async () => {
     }, 500);
   }
   
-  // 登录后拉取未读消息与首页公告
-  if (userStore.isLoggedIn) {
-    noticeStore.fetchUnreadCount().catch(() => {});
-    noticeStore.fetchAnnouncements('home').catch(() => {});
-  }
+  // 登录后拉取未读消息与首页公告（节流防冷启动 onLaunch/onShow 重复）
+  fetchNoticesThrottled();
 });
 
 onShow(() => {
   // 切前台时不再重复调用 popupManager.init()，避免并发请求导致的渲染层错误
   // popupManager.init() 已在 onLaunch 中调用一次即可
-  if (userStore.isLoggedIn) {
-    setTimeout(() => {
-      noticeStore.fetchUnreadCount().catch(() => {});
-      noticeStore.fetchAnnouncements('home').catch(() => {});
-    }, 500);
-  }
+  setTimeout(fetchNoticesThrottled, 500);
 });
 </script>
 

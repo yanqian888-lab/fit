@@ -403,7 +403,12 @@ function buildHomeActivity(row) {
     width: row.width,
     height: row.height,
     scene_key: row.scene_key || null,
-    duration_minutes: row.duration_minutes || 30
+    duration_minutes: row.duration_minutes || 30,
+    // App 端独立坐标/尺寸（CMS 配置；全部为 null 表示跟随小程序端，由 App 自行回退）
+    app_pos_x: row.app_pos_x ?? null,
+    app_pos_y: row.app_pos_y ?? null,
+    app_width: row.app_width ?? null,
+    app_height: row.app_height ?? null
   };
 }
 

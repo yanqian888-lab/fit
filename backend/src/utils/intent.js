@@ -61,6 +61,9 @@ function hasAffirmativeActionMarker(content) {
     // 检测该小句是否含"动词+了/过"
     const verbMatch = trimmed.match(/([吃喝跑走练称睡排做骑游])([了过])/);
     if (!verbMatch) continue;
+    // 饱腹/状态类表达不算摄入动作："这些就够吃了""吃饱了""吃腻了""喝撑了"是状态描述
+    const beforeVerb = trimmed.slice(Math.max(0, trimmed.indexOf(verbMatch[0]) - 2), trimmed.indexOf(verbMatch[0]));
+    if (/(饱|够|腻|烦|撑|醉)$/.test(beforeVerb)) continue;
     // 检测该小句是否含否定词——含则跳过（"不吃饭了"是否定）
     if (/不|没|别|未|勿|莫/.test(trimmed.slice(0, trimmed.indexOf(verbMatch[0])))) continue;
     return true;
@@ -143,6 +146,16 @@ function hasFutureOrIntentionIntent(content) {
   if (/^(我想|想[吃喝]|想个|想试试|想问问)/.test(text) && /[呢吧啊~～]$/.test(text)) return true;
   // 条件/假设
   if (/如果|假如|要是|的话/.test(text)) return true;
+  // 决心/计划表态（"决定今天开始减肥""准备开始锻炼"），不是已发生的记录
+  // 真实案例："我昨天痛定思痛，决定今天开始正儿八经好好减肥！...然后开始力量训练"
+  // 被规则兜底把闲聊段拆成"食物"误记（"脸也很垮不好看" 100 千卡）
+  if (/(决定|准备|打算|计划)[^，。；;！!？?]{0,12}(开始|减肥|减脂|减重|锻炼|运动|健身|控制饮食)/.test(text)) return true;
+  // 「打算/准备/计划 + 吃/喝/练」：事情还没做，不是记录（"中午打算吃轻食""准备喝杯奶茶"）
+  // 混合句"打算吃沙拉，结果吃了炸鸡"含肯定动作（吃了），由 hasSelfReportMarker 放行给 LLM 只提取已发生部分
+  if (/(打算|准备|计划|将要)[^，。；;！!？?]{0,8}[吃喝练]/.test(text)) return true;
+  // 不确定/假设性陈述："没准再吃一点点水果""也许喝杯奶茶""说不定还会吃点"
+  // 是对未来的猜测而非已发生记录，不沉淀
+  if (/(没准|也许|说不定|或许|可能还|可能再)/.test(text)) return true;
   return false;
 }
 

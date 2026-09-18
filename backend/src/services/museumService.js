@@ -2,7 +2,7 @@
  * 博物馆服务（心情日记、每日分析历史）
  */
 const { db } = require('../db');
-const { getChinaDateStr } = require('../utils/chinaTime');
+const { getChinaDateStr, getChinaDateStrOffset } = require('../utils/chinaTime');
 
 function saveMood(userId, { record_date, emotion, content = '', tags = [] }) {
   const date = record_date || getChinaDateStr();
@@ -33,7 +33,7 @@ function saveMood(userId, { record_date, emotion, content = '', tags = [] }) {
 }
 
 function getMoods(userId, month, page = 1, size = 20) {
-  const targetMonth = month || new Date().toISOString().split('T')[0].slice(0, 7);
+  const targetMonth = month || getChinaDateStr().slice(0, 7);
   size = Math.min(100, Math.max(1, parseInt(size) || 20));
   page = Math.max(1, parseInt(page) || 1);
   const offset = (page - 1) * size;
@@ -62,7 +62,7 @@ const EMOTION_SCORES = {
 };
 
 function getMoodStats(userId, month) {
-  const targetMonth = month || new Date().toISOString().split('T')[0].slice(0, 7);
+  const targetMonth = month || getChinaDateStr().slice(0, 7);
   const rows = db.prepare(`
     SELECT record_date, emotion, COUNT(*) as count
     FROM museum_items
@@ -101,7 +101,7 @@ function getMoodStats(userId, month) {
 }
 
 function getDiaryHistory(userId, month, page = 1, size = 20) {
-  const targetMonth = month || new Date().toISOString().split('T')[0].slice(0, 7);
+  const targetMonth = month || getChinaDateStr().slice(0, 7);
   size = Math.min(100, Math.max(1, parseInt(size) || 20));
   page = Math.max(1, parseInt(page) || 1);
   const offset = (page - 1) * size;

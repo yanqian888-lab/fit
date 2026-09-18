@@ -40,6 +40,12 @@ ssh "${REMOTE_HOST}" "
 echo "[3/3] 重启 PM2 服务..."
 ssh "${REMOTE_HOST}" "cd ${REMOTE_DIR}/backend && pm2 reload ${PM2_NAME}"
 
+# 部署前若当日尚未备份，先备份数据库（失败不阻断部署，仅告警）
+if [ -x "$(dirname "$0")/backup-db-prod.sh" ]; then
+  echo "[备份] 同步数据库备份点..."
+  "$(dirname "$0")/backup-db-prod.sh" || echo "⚠️  备份失败（部署已继续），请手动检查"
+fi
+
 echo ""
 echo "✅ 后端同步完成"
 echo "查看日志：pm2 logs ${PM2_NAME}"

@@ -14,6 +14,7 @@ const rewardService = require('../services/rewardService');
 const exerciseMergeService = require('../services/exerciseMergeService');
 const rewardReceiptService = require('../services/rewardReceiptService');
 const { safeJsonParse } = require('../utils/safeJson');
+const { getChinaNow, getChinaDateStr, getChinaDateStrOffset } = require('../utils/chinaTime');
 
 const VALID_MEAL_TIMES = ['breakfast', 'lunch', 'dinner', 'snack'];
 const VALID_EXERCISE_TYPES = ['aerobic', 'strength', 'stretch', 'ball'];
@@ -33,7 +34,7 @@ function getHabitAction(type) {
  */
 function getToday(req, res) {
   const userId = req.userId;
-  const today = new Date().toISOString().split('T')[0];
+  const today = getChinaDateStr();
 
   const profile = db.prepare('SELECT * FROM user_profiles WHERE user_id = ?').get(userId);
   const nutrition = helperAgent.getTodayNutrition(userId);
@@ -46,7 +47,7 @@ function getToday(req, res) {
   `).get(userId, today);
 
   // 昨日体重
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  const yesterday = getChinaDateStrOffset(-1);
   const yesterdayWeight = db.prepare(`
     SELECT value FROM body_records
     WHERE user_id = ? AND record_date = ? AND type = 'weight' AND status = 1
@@ -120,7 +121,7 @@ function getToday(req, res) {
  */
 function getDiet(req, res) {
   const userId = req.userId;
-  const date = req.query.date || new Date().toISOString().split('T')[0];
+  const date = req.query.date || getChinaDateStr();
 
   const rows = db.prepare(`
     SELECT * FROM diet_records
@@ -263,7 +264,7 @@ function deleteDiet(req, res) {
  */
 function getExercise(req, res) {
   const userId = req.userId;
-  const date = req.query.date || new Date().toISOString().split('T')[0];
+  const date = req.query.date || getChinaDateStr();
 
   const rows = db.prepare(`
     SELECT * FROM exercise_records
@@ -385,7 +386,7 @@ function getBody(req, res) {
   const type = req.query.type || 'weight';
   const days = parseInt(req.query.days) || 7;
 
-  const since = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+  const since = getChinaDateStrOffset(-days);
 
   // 兼容处理：前端传weight，数据库可能是'体重'或'weight'
   const typeFilter = type === 'weight' ? "(type = 'weight' OR type = '体重')" : "type = ?";
@@ -522,7 +523,7 @@ function deleteBody(req, res) {
 function getHabits(req, res) {
   const userId = req.userId;
   const type = req.query.type || null;
-  const date = req.query.date || new Date().toISOString().split('T')[0];
+  const date = req.query.date || getChinaDateStr();
 
   let sql = `
     SELECT id, type, value, unit, remark, created_at
@@ -805,32 +806,33 @@ function getMilestoneData(req, res) {
         return streak;
       })(),
       no_late_night_week: (() => {
-        const now = new Date();
-        const day = now.getDay() || 7; // 周一为起点
+        // 统一东八区口径，与 record_date（东八区日期）对齐
+        const now = getChinaNow();
+        const day = now.getUTCDay() || 7; // 周一为起点
         const monday = new Date(now);
-        monday.setDate(now.getDate() - (day - 1));
+        monday.setUTCDate(now.getUTCDate() - (day - 1));
         const weekStart = monday.toISOString().split('T')[0];
         const count = db.prepare(`
           SELECT COUNT(*) as c FROM habit_records
           WHERE user_id = ? AND status = 1
             AND no_late_night = 1
             AND record_date >= ? AND record_date <= ?
-        `).get(userId, weekStart, new Date().toISOString().split('T')[0]).c || 0;
+        `).get(userId, weekStart, getChinaDateStr()).c || 0;
         return count;
       })(),
       no_late_night_streak: maxStreak(lateNightRecords, r => r.no_late_night === 1),
       weigh_week: (() => {
-        const now = new Date();
-        const day = now.getDay() || 7;
+        const now = getChinaNow();
+        const day = now.getUTCDay() || 7;
         const monday = new Date(now);
-        monday.setDate(now.getDate() - (day - 1));
+        monday.setUTCDate(now.getUTCDate() - (day - 1));
         const weekStart = monday.toISOString().split('T')[0];
         const count = db.prepare(`
           SELECT COUNT(DISTINCT record_date) as c FROM body_records
           WHERE user_id = ? AND status = 1
             AND type = 'weight'
             AND record_date >= ? AND record_date <= ?
-        `).get(userId, weekStart, new Date().toISOString().split('T')[0]).c || 0;
+        `).get(userId, weekStart, getChinaDateStr()).c || 0;
         return count;
       })(),
       weigh_streak: (() => {
@@ -869,7 +871,7 @@ function getMilestoneData(req, res) {
 function getRecordDates(req, res) {
   const userId = req.userId;
   const { type, start_date, end_date } = req.query;
-  const start = start_date || new Date().toISOString().split('T')[0];
+  const start = start_date || getChinaDateStr();
   const end = end_date || start;
 
   const tableMap = {
@@ -895,7 +897,7 @@ function getRecordDates(req, res) {
  */
 function getFasting(req, res) {
   const userId = req.userId;
-  const date = req.query.date || new Date().toISOString().split('T')[0];
+  const date = req.query.date || getChinaDateStr();
   const fasting = fastingService.getTodayFasting(userId, date);
   return res.json(success({ fasting }));
 }

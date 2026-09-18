@@ -13,6 +13,15 @@ function getChinaDateStr() {
   return getChinaNow().toISOString().split('T')[0];
 }
 
+/**
+ * 东八区日期 ±N 天（负数往前），返回 YYYY-MM-DD
+ */
+function getChinaDateStrOffset(days = 0) {
+  const d = getChinaNow();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
 function getChinaTimeStr() {
   const d = getChinaNow();
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
@@ -38,6 +47,7 @@ function getMsUntilChinaMidnight() {
 module.exports = {
   getChinaNow,
   getChinaDateStr,
+  getChinaDateStrOffset,
   getChinaTimeStr,
   getChinaHour,
   getChinaDateTimeStr,

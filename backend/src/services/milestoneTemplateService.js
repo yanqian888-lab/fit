@@ -191,5 +191,6 @@ module.exports = {
   update,
   remove,
   seedDefaults,
-  getRandomTemplate
+  getRandomTemplate,
+  DEFAULT_TEMPLATES
 };

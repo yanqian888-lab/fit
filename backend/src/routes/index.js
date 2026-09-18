@@ -213,6 +213,7 @@ router.post('/trial/report-count', authMiddleware, trialController.reportCount);
 
 // 反馈管理后台（管理员接口）
 router.get('/admin/feedbacks', authMiddleware, adminMiddleware, feedbackController.getAllFeedbacks);
+router.get('/admin/feedbacks/stats', authMiddleware, adminMiddleware, feedbackController.getFeedbackStats);
 router.post('/admin/feedbacks/:id/reply', authMiddleware, adminMiddleware, feedbackController.replyFeedback);
 router.put('/admin/feedbacks/:id/status', authMiddleware, adminMiddleware, feedbackController.updateFeedbackStatus);
 

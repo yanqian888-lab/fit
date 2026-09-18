@@ -1,39 +1,53 @@
 /**
- * 将 promptDefaults.js 中的默认提示词同步到 ai_prompts 表
- * 用法：NODE_ENV=test node scripts/sync-prompts.js
+ * 将 promptDefaults.js 的默认提示词同步发布到 ai_prompts 表
+ *
+ * 用法：node scripts/sync-prompts.js [--dry-run]
+ *
+ * 规则：
+ * - 只处理 DB 中已存在的 prompt_key（initPrompts 负责首次写入，这里不新建 key）
+ * - 若「最新启用版本」内容与代码默认版逐字一致 → 跳过
+ * - 否则调用 publishVersion 发布新版本（继承原 ai_config_id）
+ *
+ * 每次修改 promptDefaults.js 后运行本脚本，即等价于在 CMS Prompts 页逐条发布。
  */
 const path = require('path');
+process.env.DB_PATH = process.env.DB_PATH || path.join(__dirname, '../data/app.db');
+
 const { db } = require('../src/db');
-const promptDefaults = require('../src/config/promptDefaults');
+const promptService = require('../src/services/promptService');
+const defaults = require('../src/config/promptDefaults');
 
-const prompts = promptDefaults.default || promptDefaults;
-if (!prompts || typeof prompts !== 'object') {
-  console.error('无法读取 promptDefaults');
-  process.exit(1);
+const dryRun = process.argv.includes('--dry-run');
+
+function main() {
+  const keys = Object.keys(defaults);
+  let synced = 0;
+  let skipped = 0;
+
+  for (const key of keys) {
+    const latest = db.prepare(`
+      SELECT content FROM ai_prompts
+      WHERE prompt_key = ? AND is_enabled = 1
+      ORDER BY version DESC LIMIT 1
+    `).get(key);
+
+    if (latest && latest.content === defaults[key]) {
+      skipped++;
+      continue;
+    }
+
+    if (dryRun) {
+      console.log(`[dry-run] ${key}: 将发布新版本（当前 ${latest ? 'DB 有旧版' : 'DB 无启用版'}）`);
+      synced++;
+      continue;
+    }
+
+    const version = promptService.publishVersion(key, defaults[key]);
+    console.log(`✅ ${key}: 已发布 v${version}`);
+    synced++;
+  }
+
+  console.log(`\n完成：同步 ${synced} 条，跳过（已一致）${skipped} 条${dryRun ? '（dry-run 未写入）' : ''}`);
 }
 
-const insertVersion = db.prepare(`
-  INSERT INTO ai_prompts (prompt_key, version, content, is_enabled, is_latest)
-  VALUES (?, ?, ?, 1, 1)
-`);
-
-const updateLatest = db.prepare(`
-  UPDATE ai_prompts SET is_latest = 0 WHERE prompt_key = ?
-`);
-
-for (const [key, content] of Object.entries(prompts)) {
-  const latest = db.prepare(`
-    SELECT version FROM ai_prompts WHERE prompt_key = ? AND is_latest = 1
-  `).get(key);
-
-  const nextVersion = latest ? latest.version + 1 : 1;
-
-  // 将旧版本标记为非最新
-  updateLatest.run(key);
-
-  // 插入新版本
-  insertVersion.run(key, nextVersion, content);
-  console.log(`已同步 prompt: ${key} -> version ${nextVersion}`);
-}
-
-console.log('提示词同步完成');
+main();
