@@ -77,6 +77,42 @@ function extractResponsesText(data) {
   return '';
 }
 
+/**
+ * 从 LLM 输出文本中提取全部可解析的顶层 JSON 对象
+ * 平衡截取：逐字符扫描，跟踪字符串字面量与转义，按大括号深度配对截取候选片段，
+ * 每个片段独立 JSON.parse，容错 JSON 前后的污染文本（尾随说明、markdown 包裹、多对象输出）
+ * @param {string} text LLM 原始输出文本
+ * @returns {object[]} 解析成功的对象数组（按出现顺序，嵌套对象会产生外层+内层两条）
+ */
+function extractJsonObjects(text) {
+  if (!text || typeof text !== 'string') return [];
+  const results = [];
+  for (let i = text.indexOf('{'); i !== -1; i = text.indexOf('{', i + 1)) {
+    let depth = 0, inStr = false, esc = false, end = -1;
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === '\\') esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) { end = j; break; }
+      }
+    }
+    if (end === -1) continue;
+    try {
+      const obj = JSON.parse(text.slice(i, end + 1));
+      if (obj && typeof obj === 'object') results.push(obj);
+    } catch (_) { /* 该起点截取片段非法，跳过继续找下一个 { */ }
+  }
+  return results;
+}
+
 function isWebSearchDisabledError(body) {
   if (typeof body !== 'object' || !body.error) return false;
   const code = body.error.code || '';
@@ -258,17 +294,15 @@ ${webText}`;
       { temperature: 0.2, max_tokens: 2000, timeout: ESTIMATE_TIMEOUT_MS }
     );
     const message = response?.choices?.[0]?.message || {};
-    // Hy3 偶发 content 为空、内容落在 reasoning_content（思考过程）：从中提取最后一个 JSON 块兜底
-    let text = (message.content || '').trim();
-    if (!text && message.reasoning_content) {
-      const blocks = message.reasoning_content.match(/\{[\s\S]*\}/g);
-      text = blocks && blocks.length ? blocks[blocks.length - 1] : '';
-      if (text) console.log('[webSearchService] 结构化结果从 reasoning_content 兜底提取');
+    // 平衡截取解析：容错 JSON 前后的污染文本（尾随说明、markdown 包裹、多对象输出）
+    let objs = extractJsonObjects(message.content || '');
+    if (objs.length === 0 && message.reasoning_content) {
+      // Hy3 偶发 content 为空、内容落在 reasoning_content：取最后一个 JSON 对象（结论通常在思考末尾）
+      objs = extractJsonObjects(message.reasoning_content);
+      if (objs.length) console.log('[webSearchService] 结构化结果从 reasoning_content 兜底提取');
     }
-    // 剥离可能的 ```json 代码块包裹
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    const data = JSON.parse(jsonMatch[0]);
+    // 取最后一个可解析对象：多对象输出时结论通常在末尾
+    const data = objs.length ? objs[objs.length - 1] : null;
     if (!data || !(Number(data.calorie_per_100g) > 0)) return null;
     return data;
   } catch (e) {
@@ -486,16 +520,14 @@ ${webText}`;
       { temperature: 0.2, max_tokens: 1200, timeout: ESTIMATE_TIMEOUT_MS }
     );
     const message = response?.choices?.[0]?.message || {};
-    let text = (message.content || '').trim();
-    // Hy3 偶发 content 为空、内容落在 reasoning_content：从中提取最后一个 JSON 块兜底
-    if (!text && message.reasoning_content) {
-      const blocks = message.reasoning_content.match(/\{[\s\S]*\}/g);
-      text = blocks && blocks.length ? blocks[blocks.length - 1] : '';
-      if (text) console.log('[webSearchService] 运动结构化结果从 reasoning_content 兜底提取');
+    // 平衡截取解析（同食品结构化）：容错 JSON 前后的污染文本
+    let objs = extractJsonObjects(message.content || '');
+    if (objs.length === 0 && message.reasoning_content) {
+      // Hy3 偶发 content 为空、内容落在 reasoning_content：取最后一个 JSON 对象兜底
+      objs = extractJsonObjects(message.reasoning_content);
+      if (objs.length) console.log('[webSearchService] 运动结构化结果从 reasoning_content 兜底提取');
     }
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    const data = JSON.parse(jsonMatch[0]);
+    const data = objs.length ? objs[objs.length - 1] : null;
     if (!data || !(Number(data.calorie_per_unit) > 0)) return null;
     return data;
   } catch (e) {
