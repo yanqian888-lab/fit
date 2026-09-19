@@ -378,7 +378,7 @@ function saveLearnedFood(queryName, data) {
     // 确保口语短名（如"大冰桶"）也能命中库（标准名常为"大冰桶雪糕（天冰纯奶基底500ml家庭装）"这类长名）
     const trunk = standardName.replace(/[（(].*?[)）]/g, '').trim();
     const shortName = trunk
-      .replace(/(雪糕|冰淇淋|冰激凌|冰棍|棒冰|冰棒|甜筒|圣代|雪泥|饮料|汽水|奶茶|咖啡|酸奶|果汁|面包|饼干|薯片|辣条|糖果|巧克力|瓜子|坚果)$/g, '')
+      .replace(/(雪糕|冰淇淋|冰激凌|冰棍|棒冰|冰棒|甜筒|圣代|雪泥|饮料|汽水|奶茶|咖啡|酸奶|果汁|面包|饼干|薯片|辣条|糖果|巧克力|瓜子|坚果|蛋卷|威化|麻花|桃酥|雪花酥|牛轧糖|甜甜圈|麻薯|麻糬)$/g, '')
       .trim();
     // 防重：标准名/主干/短名/用户问名 已存在于 food_name 或 aliases 中则不重复入库
     const candidateNames = [...new Set([standardName, trunk, shortName, queryName].filter(n => n && n.length >= 2))];
