@@ -494,7 +494,7 @@ function generateContextualFallbackReply(userMessage, history = [], partnerMode 
 
   const isShortCasual = /^[？?！!，,。.\.\s哈呵嘿哼嗯哦啊呀…~～]{1,10}$/.test(text);
   // 只按当前消息内容分类，避免"上一句在说食物，这一句说运动"被错分到食物池
-  const hasFood = /吃|喝|饭|菜|肉|蛋|奶|面|米|粥|包|饺|饼|糕|零食|奶茶|咖啡|水果|蔬菜|蛋糕|巧克力|冰淇淋|薯片|坚果|酸奶|牛奶|豆浆|饮料|白开水|茶/.test(text);
+  const hasFood = /吃|喝|饭|菜|肉|蛋|奶|面|米|粥|包|饺|饼|糕|零食|奶茶|咖啡|水果|蔬菜|蛋糕|巧克力|冰淇淋|冰激凌|薯片|坚果|酸奶|牛奶|豆浆|饮料|白开水|茶/.test(text);
   const hasExercise = /运动|跑|走|跳|练|健身|瑜伽|游泳|骑车|骑行|自行车|哑铃|杠铃|深蹲|俯卧撑|平板支撑|HIIT|Tabata|帕梅拉|拉伸|公里|千卡|卡|步|爬楼|爬山|登山|动感单车|椭圆机|划船机/.test(text);
   const hasBody = /体重|体脂|腰围|腿围|臀围|胸围|身高|BMI|掉秤|涨秤|平台期|瘦了|胖了/.test(text);
   // 情绪/状态闲聊兜底，避免被误判为专业问题后给出生硬回复
