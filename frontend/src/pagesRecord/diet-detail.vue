@@ -784,7 +784,9 @@ onShow(() => {
   flex: 1;
   height: 100%;
   margin-top: 32rpx;
-  padding: 0 32rpx 180rpx;
+  /* 140rpx = 底部按钮容器高度（上24 + 按钮92 + 下24）+ 安全区：
+     列表滚到底时按钮正好覆盖 padding 区，可见间距由 bottom-placeholder 的 16px 提供 */
+  padding: 0 32rpx calc(140rpx + env(safe-area-inset-bottom));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -931,8 +933,9 @@ onShow(() => {
   line-height: 40rpx;
 }
 
+/* 底部占位：最后一条饮食记录与「添加饮食」按钮之间的固定间距（16px） */
 .bottom-placeholder {
-  height: 56rpx;
+  height: 32rpx;
 }
 
 /* 底部按钮 */

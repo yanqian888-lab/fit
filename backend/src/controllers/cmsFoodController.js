@@ -21,6 +21,23 @@ function toNumber(value, fallback = 0) {
 }
 
 /**
+ * 来源标签映射（英文key/中文值 → CMS 展示文本）
+ */
+const SOURCE_LABELS = {
+  builtin: '本身',
+  legacy: '本身',
+  cnfood6: '中国食物成分表第6版',
+  'cn-brands': '品牌官方数据',
+  user: '用户创建',
+  web_learned: '网络学习'
+};
+
+function sourceLabel(source) {
+  if (!source) return '本身';
+  return SOURCE_LABELS[source] || source; // '来自网络ai选取' 等中文值原样展示
+}
+
+/**
  * 列表
  */
 function list(req, res) {
@@ -29,6 +46,7 @@ function list(req, res) {
   const offset = (page - 1) * size;
   const keyword = (req.query.keyword || '').trim();
   const category = req.query.category || '';
+  const source = (req.query.source || '').trim();
 
   // 清除 LIKE 通配符，避免干扰匹配
   const safeKeyword = keyword.replace(/[%_]/g, '');
@@ -39,6 +57,11 @@ function list(req, res) {
   if (category) {
     where += ' AND category = ?';
     params.push(category);
+  }
+
+  if (source) {
+    where += ' AND source = ?';
+    params.push(source);
   }
 
   if (safeKeyword) {
@@ -74,10 +97,15 @@ function list(req, res) {
     LIMIT ? OFFSET ?
   `).all(...params, size, offset);
 
+  // 来源筛选选项：库内实际存在的来源值去重 + 附展示标签
+  const sources = db.prepare('SELECT DISTINCT source FROM food_db ORDER BY source').all()
+    .map(row => ({ value: row.source, label: sourceLabel(row.source) }));
+
   return res.json(success({
     list,
     pagination: { page, size, total, has_more: total > page * size },
-    categories: CATEGORIES
+    categories: CATEGORIES,
+    sources
   }));
 }
 

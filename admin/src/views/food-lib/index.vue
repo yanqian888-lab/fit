@@ -6,6 +6,9 @@
         <el-select v-model="query.category" placeholder="分类" clearable style="width:160px;">
           <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
         </el-select>
+        <el-select v-model="query.source" placeholder="来源" clearable style="width:180px;">
+          <el-option v-for="s in sources" :key="s.value" :label="s.label" :value="s.value" />
+        </el-select>
         <el-button type="primary" @click="load">查询</el-button>
         <el-button @click="reset">重置</el-button>
         <el-button type="success" @click="openDialog()" v-perm="'food_lib:write'">新增</el-button>
@@ -35,10 +38,7 @@
         <el-table-column prop="fat_per_100g" label="脂肪" width="90" />
         <el-table-column label="来源" width="150">
           <template #default="{ row }">
-            <el-tag v-if="row.source === 'cnfood6'" type="success" size="small">中国食物成分表第6版</el-tag>
-            <el-tag v-else-if="row.source === 'cn-brands'" type="warning" size="small">品牌官方数据</el-tag>
-            <el-tag v-else-if="row.source === 'user'" type="danger" size="small">用户创建</el-tag>
-            <el-tag v-else size="small">本身</el-tag>
+            <el-tag size="small">{{ sourceLabel(row.source) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="160">
@@ -94,7 +94,8 @@ const loading = ref(false)
 const list = ref([])
 const total = ref(0)
 const categories = ref([])
-const query = ref({ keyword: '', category: '', page: 1, size: 20 })
+const sources = ref([])
+const query = ref({ keyword: '', category: '', source: '', page: 1, size: 20 })
 const dialogVisible = ref(false)
 const form = ref({ food_name: '', category: '', sub_category: '', calories_per_100g: 0, protein_per_100g: 0, carb_per_100g: 0, fat_per_100g: 0, common_unit: '', remark: '', aliases: [] })
 
@@ -109,9 +110,28 @@ async function load() {
     list.value = res.data.list
     total.value = res.data.pagination.total
     categories.value = res.data.categories || []
+    sources.value = res.data.sources || []
   } finally {
     loading.value = false
   }
+}
+
+/**
+ * 来源值 → 展示文本（与后端 SOURCE_LABELS 保持一致）
+ * @param {string} source - 数据库 source 字段值，如 'cnfood6'、'来自网络ai选取'
+ * @returns {string} 展示文本，未匹配的中文值原样返回，空值兜底为「本身」
+ */
+function sourceLabel(source) {
+  const labels = {
+    builtin: '本身',
+    legacy: '本身',
+    cnfood6: '中国食物成分表第6版',
+    'cn-brands': '品牌官方数据',
+    user: '用户创建',
+    web_learned: '网络学习'
+  }
+  if (!source) return '本身'
+  return labels[source] || source
 }
 
 function handleFilterChange(filters) {
@@ -123,7 +143,7 @@ function handleFilterChange(filters) {
 }
 
 function reset() {
-  query.value = { keyword: '', category: '', page: 1, size: 20 }
+  query.value = { keyword: '', category: '', source: '', page: 1, size: 20 }
   load()
 }
 
