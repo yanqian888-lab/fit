@@ -255,7 +255,7 @@ async function callHelperAgent(question, userInfo = {}, partnerInfo = {}, option
       let webSearchBlock = ''; // 未通过校验的网络原文（仅供 LLM 估算参考，禁止当作权威值）
       let foodDbBlock = '';    // 可靠营养条目（食品库命中 + 网络核实后新收录）
       try {
-        const asksCalorieOrSugar = /(热量|卡路里|千卡|大卡|含糖|无糖|有糖|低糖|能喝|能吃|可以喝|可以吃|多少卡|胖不胖|减肥|减脂|热量高|营养)/.test(question);
+        const asksCalorieOrSugar = /(热量|卡路里|千卡|大卡|含糖|无糖|有糖|低糖|能喝|能吃|可以喝|可以吃|多少卡|胖不胖|会胖|长胖|发胖|减肥|减脂|热量高|营养)/.test(question);
         // 本轮饮食沉淀已成功：本条消息里的食物已由沉淀系统定值（摘要为准），
         // helper 不再联网核实这些食物——否则网搜失败会退化成"估算值"，
         // 和刚写入的记录数值打架（真实案例：记录604.5千卡 vs helper估算504千卡）
@@ -837,12 +837,17 @@ function shouldUseWebSearch(question, unknownFood) {
   const drinkRe = /汁|饮|茶|奶|酸奶|咖啡|酒|水|汽水|苏打|气泡|美式|拿铁|摩卡|奶茶|可乐|雪碧|芬达|脉动|电解质|乌龙茶|柠檬水|红牛|东鹏|王老吉|加多宝|椰汁|旺仔|娃哈哈|AD钙|营养快线|椰树|红牛|脉动|宝矿力|佳得乐|气泡水|电解质水|NFC|鲜榨|浓缩|瓶装|罐装|盒装|袋装|杯装/;
   if (drinkRe.test(f)) return true;
 
+  // 2.5 零食/甜品/烘焙/炒货品类词（与 collectFoodCandidates.snackRe 同口径，保证候选与检索判断一致）：
+  // "下午吃个薯片会胖吗"这类不含"热量"字样的零食提问，没有本规则会漏联网、LLM 只能凭记忆回答
+  const snackRe = /雪糕|冰淇淋|冰棍|棒冰|冰棒|甜筒|圣代|雪泥|薯片|薯条|虾条|锅巴|爆米花|沙琪玛|雪饼|米饼|月饼|烧饼|煎饼|蛋糕|年糕|面包|吐司|饼干|曲奇|蛋挞|泡芙|披萨|汉堡|巧克力|棉花糖|太妃糖|麦芽糖|软糖|奶糖|果冻|辣条|肉干|肉脯|豆干|香肠|火腿肠|凤爪|鸡爪|鸭脖|鸭翅|海苔|鱼片|话梅|蜜饯|瓜子|花生|核桃|腰果|开心果|巴旦木|松子|板栗|红枣|桂圆/;
+  if (snackRe.test(f)) return true;
+
   // 3. 常见连锁/品牌关键词（茶饮、咖啡、便利店、快餐品牌）
   const brandRe = /喜茶|瑞幸|星巴克|霸王茶姬|蜜雪冰城|茶百道|奈雪|乐乐茶|沪上阿姨|书亦|古茗|茶颜悦色|益禾堂|CoCo|一点点|肯德基|麦当劳|汉堡王|赛百味|便利店|罗森|全家|7-11|喜市多|美宜佳/;
   if (brandRe.test(q)) return true;
 
   // 4. 兜底：用户明显在问热量/营养/能不能吃/减脂相关，且该食物不在库中，一律尝试联网检索
-  const asksCalorieOrDiet = /(热量|卡路里|千卡|大卡|含糖|无糖|有糖|低糖|能喝|能吃|可以喝|可以吃|多少卡|胖不胖|减肥|减脂|热量高|营养|脂肪|蛋白质|碳水)/.test(q);
+  const asksCalorieOrDiet = /(热量|卡路里|千卡|大卡|含糖|无糖|有糖|低糖|能喝|能吃|可以喝|可以吃|多少卡|胖不胖|会胖|长胖|发胖|减肥|减脂|热量高|营养|脂肪|蛋白质|碳水)/.test(q);
   if (asksCalorieOrDiet) return true;
 
   return false;
@@ -875,6 +880,13 @@ function collectFoodCandidates(question) {
   const brandRe = /(?:一点点|1點點|1点点|霸王茶姬|霸王茶机|喜茶|奈雪的茶|奈雪|蜜雪冰城|蜜雪|茶百道|古茗|沪上阿姨|书亦烧仙草|书亦|益禾堂|瑞幸|星巴克|coco|CoCo|COCO)\s*的?\s*([\u4e00-\u9fa5a-zA-Z]{2,10})/g;
   // 奶茶/糖水小料专名（无量词无数字时也能识别，如"加了小珍珠和黑糖粉稞小料"）
   const toppingRe = /(小珍珠|大珍珠|黑糖珍珠|珍珠|波霸|粉圆|黑糖粉稞|黑糖粉粿|粉稞|粉粿|椰果粒|椰果|芋圆|仙草|布丁|脆啵啵|寒天|燕麦|红豆)/g;
+  // 零食/甜品/烘焙/炒货等固体品类专名（真实案例："绿色心情雪糕的热量是多少"被 mainAgent 改写后
+  // 丢失量词"个"，原 7 条正则全部不命中→候选为空→不联网→LLM 只能答"没查到"）。
+  // 设计要点：
+  // - 前缀 0~4 字：品类名本身（"冰淇淋""辣条"）可整词命中；"绿色心情雪糕"这类品牌+品类组合靠前缀捕获
+  // - 只列足够具体的后缀，禁用裸字（如裸"糖"会误抓"血糖"、裸"糕"会误抓"糟糕"、裸"饼"会误抓"铁饼"）
+  // - 个别日常歧义词（面包车/脑瓜子）漏网后由 searchAndLearnFood 四重校验兜底，最坏浪费一次检索
+  const snackRe = /([\u4e00-\u9fa5]{0,4}(?:雪糕|冰淇淋|冰棍|棒冰|冰棒|甜筒|圣代|雪泥|薯片|薯条|虾条|锅巴|爆米花|沙琪玛|雪饼|米饼|月饼|烧饼|煎饼|蛋糕|年糕|面包|吐司|饼干|曲奇|蛋挞|泡芙|披萨|汉堡|巧克力|棉花糖|太妃糖|麦芽糖|软糖|奶糖|果冻|辣条|肉干|肉脯|豆干|香肠|火腿肠|凤爪|鸡爪|鸭脖|鸭翅|海苔|鱼片|话梅|蜜饯|瓜子|花生|核桃|腰果|开心果|巴旦木|松子|板栗|红枣|桂圆))/g;
 
   let m;
   while ((m = unitAfterRe.exec(normalized)) !== null) candidates.add(m[3]);
@@ -884,6 +896,7 @@ function collectFoodCandidates(question) {
   while ((m = drinkRe.exec(normalized)) !== null) candidates.add(m[1]);
   while ((m = brandRe.exec(normalized)) !== null) candidates.add(m[1]);
   while ((m = toppingRe.exec(normalized)) !== null) candidates.add(m[1]);
+  while ((m = snackRe.exec(normalized)) !== null) candidates.add(m[1]);
 
   const stopWords = new Set([
     '今天','现在','这个','那个','这些','那些','多少','热量','卡路里','千卡','大卡',
